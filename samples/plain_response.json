@@ -1,0 +1,16 @@
+{
+    "model": "gemma4:e4b",
+    "created_at": "2026-04-06T21:33:40.99225Z",
+    "message": {
+        "role": "assistant",
+        "content": "Hello there!"
+    },
+    "done": true,
+    "done_reason": "stop",
+    "total_duration": 7259105708,
+    "load_duration": 6715061166,
+    "prompt_eval_count": 21,
+    "prompt_eval_duration": 321585333,
+    "eval_count": 4,
+    "eval_duration": 61664209
+}

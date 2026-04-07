@@ -1,0 +1,15 @@
+# macOS
+.DS_Store
+
+# Xcode / SPM build artifacts
+OllamaBob/.build/
+OllamaBob/build/
+OllamaBob/.swiftpm/
+DerivedData/
+xcuserdata/
+*.xcuserstate
+
+# Databases (runtime only)
+*.sqlite
+*.sqlite-journal
+*.db

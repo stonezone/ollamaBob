@@ -1,0 +1,29 @@
+{
+    "model": "gemma4:e4b",
+    "created_at": "2026-04-06T21:34:08.849233Z",
+    "message": {
+        "role": "assistant",
+        "content": "",
+        "thinking": "The user wants to list the files in the `/tmp` directory. I should use the `shell` tool to execute the `ls` command with the `/tmp` argument.",
+        "tool_calls": [
+            {
+                "id": "call_nxszzglf",
+                "function": {
+                    "index": 0,
+                    "name": "shell",
+                    "arguments": {
+                        "command": "ls /tmp"
+                    }
+                }
+            }
+        ]
+    },
+    "done": true,
+    "done_reason": "stop",
+    "total_duration": 21503178584,
+    "load_duration": 20019807709,
+    "prompt_eval_count": 77,
+    "prompt_eval_duration": 259899500,
+    "eval_count": 55,
+    "eval_duration": 1063658582
+}
