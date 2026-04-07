@@ -17,6 +17,10 @@ enum ShellTool {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/zsh")
         process.arguments = ["-c", command]
+        // Run from $HOME, not the app's inherited cwd. When launched from Finder
+        // the cwd is `/`, which is read-only under SIP — relative writes like
+        // `echo ... > index.html` would fail with "read-only file system".
+        process.currentDirectoryURL = URL(fileURLWithPath: NSHomeDirectory())
 
         let stdoutPipe = Pipe()
         let stderrPipe = Pipe()

@@ -57,7 +57,7 @@ struct OllamaBobApp: App {
         .defaultSize(width: 500, height: 600)
 
         Window("Tool Activity", id: "tool-activity") {
-            ToolActivityView(entries: appState.agentLoop.toolActivity)
+            ToolActivityView(agentLoop: appState.agentLoop)
         }
         .defaultSize(width: 450, height: 400)
     }

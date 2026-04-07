@@ -1,16 +1,19 @@
 import SwiftUI
 
 struct ToolActivityView: View {
-    let entries: [AgentLoop.ToolLogEntry]
+    // Must observe the AgentLoop directly — passing a value-type snapshot of
+    // `toolActivity` at scene-creation time leaves the window frozen, since
+    // SwiftUI has no signal to re-render when the @Published array mutates.
+    @ObservedObject var agentLoop: AgentLoop
 
     var body: some View {
         List {
-            if entries.isEmpty {
+            if agentLoop.toolActivity.isEmpty {
                 Text("No tool activity yet")
                     .foregroundColor(.secondary)
                     .frame(maxWidth: .infinity, alignment: .center)
             } else {
-                ForEach(entries.reversed()) { entry in
+                ForEach(agentLoop.toolActivity.reversed()) { entry in
                     ToolActivityRow(entry: entry)
                 }
             }
