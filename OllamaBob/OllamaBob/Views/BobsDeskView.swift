@@ -80,17 +80,14 @@ struct BobsDeskView: View {
     var body: some View {
         VStack(spacing: 0) {
             portraitSection
-                .frame(height: 304)   // ~40% of 760
+                .frame(height: 240)
 
             statusLine
                 .padding(.horizontal, 12)
                 .padding(.vertical, 4)
 
-            Divider()
-                .background(Self.phosphorGreen.opacity(0.3))
-
             transcriptSection
-                .frame(maxHeight: .infinity)  // fills remaining ~50%
+                .frame(maxHeight: .infinity)
 
             inputRow
                 .frame(height: 48)
