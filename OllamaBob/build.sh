@@ -19,6 +19,15 @@ mkdir -p "$CONTENTS/MacOS"
 mkdir -p "$CONTENTS/Resources"
 cp .build/debug/OllamaBob "$CONTENTS/MacOS/OllamaBob"
 
+# Copy the SPM-generated resource bundle (sprites, etc.) so Bundle.module
+# can find it at runtime. Bundle.module searches Bundle.main.resourceURL
+# first, which on macOS .app bundles resolves to Contents/Resources.
+RESOURCE_BUNDLE=".build/debug/OllamaBob_OllamaBob.bundle"
+if [[ -d "$RESOURCE_BUNDLE" ]]; then
+    rm -rf "$CONTENTS/Resources/OllamaBob_OllamaBob.bundle"
+    cp -R "$RESOURCE_BUNDLE" "$CONTENTS/Resources/OllamaBob_OllamaBob.bundle"
+fi
+
 echo "Build complete: $APP_BUNDLE"
 
 if [[ "$1" == "--run" || "$1" == "-r" ]]; then

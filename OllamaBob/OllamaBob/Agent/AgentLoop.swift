@@ -23,6 +23,13 @@ typealias ApprovalHandler = @Sendable (String, String, ApprovalLevel) async -> B
 /// Callback for model switch notifications.
 typealias ModelSwitchHandler = @Sendable (String, String) async -> Void
 
+/// Visual mood that drives which Bob portrait sprite the UI shows.
+/// Set at meaningful state transitions inside the agent loop. Persists
+/// until the next transition — view layer reads it and cross-fades.
+enum BobMood: String {
+    case idle, thinking, typing, happy, sheepish, confused
+}
+
 @MainActor
 final class AgentLoop: ObservableObject {
     @Published var isProcessing = false
@@ -30,6 +37,8 @@ final class AgentLoop: ObservableObject {
     @Published var toolActivity: [ToolLogEntry] = []
     /// Most recent model-switch event, if any. Cleared by the UI after display.
     @Published var modelSwitchNotice: ModelSwitchNotice?
+    /// Drives the Bob portrait sprite. Updated at transitions in process().
+    @Published var bobMood: BobMood = .idle
 
     struct ModelSwitchNotice: Equatable, Identifiable {
         let id = UUID()
@@ -69,6 +78,7 @@ final class AgentLoop: ObservableObject {
     /// Returns the full message history including tool calls and final response.
     func process(userMessage: String, history: [OllamaMessage]) async throws -> [OllamaMessage] {
         isProcessing = true
+        bobMood = .thinking
         defer { isProcessing = false }
 
         let loopStart = Date()
@@ -81,6 +91,7 @@ final class AgentLoop: ObservableObject {
         for _ in 0..<AppConfig.agentLoopMaxIterations {
             // Check total timeout
             if Date().timeIntervalSince(loopStart) > AppConfig.agentLoopTimeoutSeconds {
+                bobMood = .confused
                 throw AgentLoopError.totalTimeoutReached
             }
 
@@ -93,6 +104,7 @@ final class AgentLoop: ObservableObject {
                     tools: registry.toolDefs
                 )
             } catch {
+                bobMood = .confused
                 throw AgentLoopError.ollamaUnavailable(error.localizedDescription)
             }
 
@@ -102,11 +114,13 @@ final class AgentLoop: ObservableObject {
             guard let toolCalls = assistantMessage.toolCalls, !toolCalls.isEmpty else {
                 messages.append(assistantMessage)
                 consecutiveFailures = 0
+                bobMood = .happy
                 return messages
             }
 
             // Append the assistant message with tool calls
             messages.append(assistantMessage)
+            bobMood = .typing
 
             // Process each tool call
             for call in toolCalls {
@@ -115,6 +129,7 @@ final class AgentLoop: ObservableObject {
             }
         }
 
+        bobMood = .confused
         throw AgentLoopError.maxIterationsReached
     }
 
@@ -129,6 +144,7 @@ final class AgentLoop: ObservableObject {
             logTool(name: name, input: "\(args)", output: "Unknown tool", approval: .forbidden, approved: false, durationMs: 0)
             consecutiveFailures += 1
             await checkFallback()
+            bobMood = .confused
             return .failure(tool: name, error: "Unknown tool '\(name)'. Available tools: \(registry.toolNames.joined(separator: ", "))", durationMs: 0)
         }
 
@@ -137,6 +153,7 @@ final class AgentLoop: ObservableObject {
             logTool(name: name, input: "\(args)", output: "Invalid arguments", approval: .forbidden, approved: false, durationMs: 0)
             consecutiveFailures += 1
             await checkFallback()
+            bobMood = .confused
             return .failure(tool: name, error: "Invalid or missing arguments for '\(name)'", durationMs: 0)
         }
 
@@ -146,6 +163,7 @@ final class AgentLoop: ObservableObject {
         if approval == .forbidden {
             let result = ToolResult.forbidden(tool: name)
             logTool(name: name, input: "\(args)", output: result.content, approval: .forbidden, approved: false, durationMs: 0)
+            bobMood = .sheepish
             return result
         }
 
@@ -155,6 +173,7 @@ final class AgentLoop: ObservableObject {
             if !approved {
                 let result = ToolResult.denied(tool: name, reason: "User denied this action.")
                 logTool(name: name, input: "\(args)", output: result.content, approval: .modal, approved: false, durationMs: 0)
+                bobMood = .sheepish
                 return result
             }
         }

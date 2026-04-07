@@ -42,10 +42,10 @@ struct OllamaBobApp: App {
             .keyboardShortcut("q")
         }
 
-        Window("OllamaBob Chat", id: "chat") {
+        Window("Bob's Desk", id: "chat") {
             Group {
                 if appState.preflightPassed {
-                    ChatPanel(agentLoop: appState.agentLoop)
+                    BobsDeskView(agentLoop: appState.agentLoop)
                 } else if let status = appState.preflightStatus {
                     PreflightErrorView(status: status, onRetry: { appState.runPreflight() })
                 } else {
@@ -54,7 +54,7 @@ struct OllamaBobApp: App {
                 }
             }
         }
-        .defaultSize(width: 500, height: 600)
+        .defaultSize(width: 520, height: 760)
 
         Window("Tool Activity", id: "tool-activity") {
             ToolActivityView(agentLoop: appState.agentLoop)
