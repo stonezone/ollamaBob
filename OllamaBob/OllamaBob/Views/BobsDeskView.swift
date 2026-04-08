@@ -1,4 +1,34 @@
 import SwiftUI
+import AppKit
+
+// MARK: - Window Transparency
+
+/// Strips all macOS chrome from the chat window: makes the NSWindow non-opaque,
+/// hides the title bar visuals and traffic-light buttons, and lets the user
+/// drag from any background area. Result is a chrome-free surface where only
+/// the SwiftUI content (Bob's sprite + the rounded chat container) is visible.
+/// Close via Cmd+W.
+private struct WindowTransparencyConfigurator: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async {
+            guard let window = view.window else { return }
+            window.isOpaque = false
+            window.backgroundColor = .clear
+            window.hasShadow = false
+            window.titlebarAppearsTransparent = true
+            window.titleVisibility = .hidden
+            window.styleMask.insert(.fullSizeContentView)
+            window.standardWindowButton(.closeButton)?.isHidden = true
+            window.standardWindowButton(.miniaturizeButton)?.isHidden = true
+            window.standardWindowButton(.zoomButton)?.isHidden = true
+            window.isMovableByWindowBackground = true
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {}
+}
 
 // MARK: - Speech Bubble Shape
 
@@ -49,6 +79,7 @@ struct BobsDeskView: View {
     // MARK: State
 
     @ObservedObject var agentLoop: AgentLoop
+    @ObservedObject private var settings = AppSettings.shared
     @State private var inputText      = ""
     @State private var messages:       [ChatMessage]   = []
     @State private var ollamaHistory:  [OllamaMessage] = []
@@ -79,21 +110,16 @@ struct BobsDeskView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            portraitSection
-                .frame(height: 240)
+            if settings.showBob {
+                portraitSection
+                    .frame(height: 240)
+                    .padding(.top, 8)
+            }
 
-            statusLine
-                .padding(.horizontal, 12)
-                .padding(.vertical, 4)
-
-            transcriptSection
-                .frame(maxHeight: .infinity)
-
-            inputRow
-                .frame(height: 48)
+            chatContainer
         }
         .frame(width: 520, height: 760)
-        .background(Self.bgBlack)
+        .background(WindowTransparencyConfigurator())
         .task { loadExistingConversation() }
         // Sync bubble visibility whenever messages change
         .onChange(of: messages.count) {
@@ -109,6 +135,34 @@ struct BobsDeskView: View {
                 }
             }
         }
+    }
+
+    // MARK: - Chat Container
+
+    /// Rounded matte-dark panel holding status, transcript, divider and input.
+    /// Bob's portrait lives outside this container (above it), so the area
+    /// around Bob is fully transparent — the desktop shows through directly.
+    private var chatContainer: some View {
+        VStack(spacing: 0) {
+            statusLine
+                .padding(.horizontal, 16)
+                .padding(.top, 14)
+                .padding(.bottom, 8)
+
+            transcriptSection
+                .frame(maxHeight: .infinity)
+
+            Divider()
+                .background(Self.phosphorGreen.opacity(0.15))
+
+            inputRow
+                .frame(height: 48)
+        }
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Self.bgBlack.opacity(settings.chatWindowOpacity))
+                .shadow(color: .black.opacity(0.4), radius: 12, x: 0, y: 4)
+        )
     }
 
     // MARK: - Portrait Section
@@ -147,13 +201,13 @@ struct BobsDeskView: View {
                 Image(nsImage: nsImage)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
-                    .frame(maxHeight: 200)
+                    .frame(maxHeight: 140)
             } else if let url = Bundle.module.url(forResource: imageName, withExtension: "png"),
                       let nsImage = NSImage(contentsOf: url) {
                 Image(nsImage: nsImage)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
-                    .frame(maxHeight: 200)
+                    .frame(maxHeight: 140)
             } else {
                 // Fallback placeholder when sprite not found
                 RoundedRectangle(cornerRadius: 12)
@@ -266,10 +320,7 @@ struct BobsDeskView: View {
                 }
             }
         }
-        .background(Self.bgPanel)
-        .cornerRadius(8)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
+        .padding(.horizontal, 12)
         // Model switch notice
         .safeAreaInset(edge: .top, spacing: 0) {
             modelSwitchBanner
@@ -323,11 +374,10 @@ struct BobsDeskView: View {
             TextField("Ask Bob…", text: $inputText)
                 .textFieldStyle(.plain)
                 .foregroundColor(.white)
+                .font(.system(size: 13))
                 .onSubmit { sendMessage() }
-                .padding(.horizontal, 12)
+                .padding(.horizontal, 4)
                 .padding(.vertical, 8)
-                .background(Self.bgPanel)
-                .cornerRadius(8)
 
             Button(action: sendMessage) {
                 Image(systemName: "arrow.up.circle.fill")

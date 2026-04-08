@@ -8,31 +8,31 @@ final class AppSettings: ObservableObject {
 
     static let shared = AppSettings()
 
-    @Published var showFloatingAvatar: Bool {
-        didSet { UserDefaults.standard.set(showFloatingAvatar, forKey: Keys.showFloatingAvatar) }
+    @Published var showBob: Bool {
+        didSet { UserDefaults.standard.set(showBob, forKey: Keys.showBob) }
     }
 
-    @Published var avatarPersistAcrossSpaces: Bool {
-        didSet { UserDefaults.standard.set(avatarPersistAcrossSpaces, forKey: Keys.avatarPersistAcrossSpaces) }
+    @Published var chatWindowOpacity: Double {
+        didSet { UserDefaults.standard.set(chatWindowOpacity, forKey: Keys.chatWindowOpacity) }
     }
 
     private enum Keys {
-        static let showFloatingAvatar        = "showFloatingAvatar"
-        static let avatarPersistAcrossSpaces = "avatarPersistAcrossSpaces"
+        static let showBob           = "showBob"
+        static let chatWindowOpacity = "chatWindowOpacity"
     }
 
     private init() {
         let defaults = UserDefaults.standard
 
         // Write first-launch defaults only when no value exists yet.
-        if defaults.object(forKey: Keys.showFloatingAvatar) == nil {
-            defaults.set(false, forKey: Keys.showFloatingAvatar)
+        if defaults.object(forKey: Keys.showBob) == nil {
+            defaults.set(true, forKey: Keys.showBob)
         }
-        if defaults.object(forKey: Keys.avatarPersistAcrossSpaces) == nil {
-            defaults.set(true, forKey: Keys.avatarPersistAcrossSpaces)
+        if defaults.object(forKey: Keys.chatWindowOpacity) == nil {
+            defaults.set(1.0, forKey: Keys.chatWindowOpacity)
         }
 
-        self.showFloatingAvatar        = defaults.bool(forKey: Keys.showFloatingAvatar)
-        self.avatarPersistAcrossSpaces = defaults.bool(forKey: Keys.avatarPersistAcrossSpaces)
+        self.showBob           = defaults.bool(forKey: Keys.showBob)
+        self.chatWindowOpacity = defaults.double(forKey: Keys.chatWindowOpacity)
     }
 }

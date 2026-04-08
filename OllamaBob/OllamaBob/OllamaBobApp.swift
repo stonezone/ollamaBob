@@ -4,7 +4,6 @@ import AppKit
 @main
 struct OllamaBobApp: App {
     @StateObject private var appState = AppState()
-    @ObservedObject private var settings = AppSettings.shared
 
     @Environment(\.openWindow) private var openWindow
 
@@ -14,13 +13,6 @@ struct OllamaBobApp: App {
                 openWindow(id: "chat")
             }
             .keyboardShortcut("o")
-
-            Button(settings.showFloatingAvatar ? "Hide Floating Bob" : "Show Floating Bob") {
-                settings.showFloatingAvatar.toggle()
-                appState.syncAvatarVisibility {
-                    openWindow(id: "chat")
-                }
-            }
 
             Button("Tool Activity") {
                 openWindow(id: "tool-activity")
@@ -62,6 +54,7 @@ struct OllamaBobApp: App {
             }
         }
         .defaultSize(width: 520, height: 760)
+        .windowStyle(.hiddenTitleBar)
 
         Window("Tool Activity", id: "tool-activity") {
             ToolActivityView(agentLoop: appState.agentLoop)
@@ -70,16 +63,8 @@ struct OllamaBobApp: App {
 
         Window("Preferences", id: "preferences") {
             PreferencesView()
-                .onChange(of: settings.showFloatingAvatar) { _, _ in
-                    appState.syncAvatarVisibility {
-                        openWindow(id: "chat")
-                    }
-                }
-                .onChange(of: settings.avatarPersistAcrossSpaces) { _, newValue in
-                    appState.setAvatarPersistAcrossSpaces(newValue)
-                }
         }
-        .defaultSize(width: 480, height: 320)
+        .defaultSize(width: 480, height: 340)
         .windowResizability(.contentSize)
     }
 }
@@ -90,38 +75,10 @@ final class AppState: ObservableObject {
     @Published var preflightStatus: PreflightStatus?
     @Published var preflightPassed = false
 
-    private let avatarController = AvatarWindowController()
-    private let settings = AppSettings.shared
-
     init() {
         initDatabase()
         setupApprovalHandler()
         runPreflight()
-        // Apply persisted preference at launch
-        if settings.showFloatingAvatar {
-            // Defer until after init so SwiftUI windows are ready
-            Task { @MainActor in
-                self.syncAvatarVisibility(openChat: {})
-            }
-        }
-    }
-
-    /// Reconciles the floating avatar window with the current setting.
-    /// Pass an `openChat` closure that the avatar can invoke when tapped.
-    func syncAvatarVisibility(openChat: @escaping () -> Void) {
-        if settings.showFloatingAvatar {
-            avatarController.show(
-                agentLoop: agentLoop,
-                persistAcrossSpaces: settings.avatarPersistAcrossSpaces,
-                toggleChat: openChat
-            )
-        } else {
-            avatarController.hide()
-        }
-    }
-
-    func setAvatarPersistAcrossSpaces(_ persist: Bool) {
-        avatarController.setPersistAcrossSpaces(persist)
     }
 
     private func initDatabase() {

@@ -23,7 +23,7 @@ struct PreferencesView: View {
             Spacer()
             footer
         }
-        .frame(width: 480, height: 320)
+        .frame(width: 480, height: 340)
         .background(PreferencesView.bgBlack)
     }
 
@@ -45,16 +45,16 @@ struct PreferencesView: View {
     private var toggleRows: some View {
         VStack(spacing: 1) {
             toggleRow(
-                title: "Show floating Bob",
-                subtitle: "Display Bob's avatar above all windows",
-                isOn: $settings.showFloatingAvatar,
+                title: "Show Bob",
+                subtitle: "Display Bob and his speech bubbles at the top of the chat",
+                isOn: $settings.showBob,
                 dimmed: false
             )
-            toggleRow(
-                title: "Persist across all Spaces",
-                subtitle: "Bob stays visible when switching desktops/Spaces",
-                isOn: $settings.avatarPersistAcrossSpaces,
-                dimmed: !settings.showFloatingAvatar
+            sliderRow(
+                title: "Chat window transparency",
+                subtitle: "Lower values let your desktop show through",
+                value: $settings.chatWindowOpacity,
+                range: 0.4...1.0
             )
         }
         .padding(.top, 8)
@@ -96,5 +96,35 @@ struct PreferencesView: View {
         .padding(.vertical, 14)
         .background(PreferencesView.bgPanel)
         .opacity(dimmed ? 0.4 : 1.0)
+    }
+
+    private func sliderRow(
+        title: String,
+        subtitle: String,
+        value: Binding<Double>,
+        range: ClosedRange<Double>
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.system(.body, design: .monospaced))
+                    .foregroundColor(.white)
+                Text(subtitle)
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundColor(PreferencesView.textGrey)
+            }
+            HStack(spacing: 12) {
+                Slider(value: value, in: range)
+                    .tint(PreferencesView.phosphorGreen)
+                Text("\(Int(value.wrappedValue * 100))%")
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundColor(PreferencesView.phosphorGreen)
+                    .frame(width: 44, alignment: .trailing)
+                    .monospacedDigit()
+            }
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 14)
+        .background(PreferencesView.bgPanel)
     }
 }
