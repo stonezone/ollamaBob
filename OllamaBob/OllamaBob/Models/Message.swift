@@ -77,6 +77,16 @@ struct OllamaChatRequest: Codable, Sendable {
     let tools: [OllamaToolDef]?
     let options: OllamaOptions?
     let stream: Bool
+    /// Controls how long the model stays loaded after the response.
+    /// `"0"` unloads immediately (used by the compactor so qwen3
+    /// doesn't compete for VRAM with the primary model). Nil omits
+    /// the field, keeping the Ollama default (typically 5 minutes).
+    let keepAlive: String?
+
+    enum CodingKeys: String, CodingKey {
+        case model, messages, tools, options, stream
+        case keepAlive = "keep_alive"
+    }
 
     struct OllamaOptions: Codable, Sendable {
         let numCtx: Int?

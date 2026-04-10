@@ -30,10 +30,15 @@ actor OllamaClient {
     }
 
     /// Send a chat request to /api/chat and return the parsed response.
+    /// `numCtx` is passed through to Ollama's `options.num_ctx` — callers
+    /// should read the live value from `AppSettings.shared.numCtx` so user
+    /// changes take effect on the next turn without restarting the client.
     func chat(
         model: String,
         messages: [OllamaMessage],
-        tools: [OllamaToolDef]? = nil
+        tools: [OllamaToolDef]? = nil,
+        numCtx: Int = AppConfig.numCtx,
+        keepAlive: String? = nil
     ) async throws -> OllamaChatResponse {
         guard let url = URL(string: baseURL + AppConfig.ollamaChatEndpoint) else {
             throw OllamaError.invalidURL
@@ -43,8 +48,9 @@ actor OllamaClient {
             model: model,
             messages: messages,
             tools: tools,
-            options: .init(numCtx: AppConfig.numCtx),
-            stream: false
+            options: .init(numCtx: numCtx),
+            stream: false,
+            keepAlive: keepAlive
         )
 
         var urlRequest = URLRequest(url: url)

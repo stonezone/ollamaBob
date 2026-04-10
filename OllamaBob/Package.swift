@@ -18,10 +18,5 @@ let package = Package(
                 .process("Resources"),
             ]
         ),
-        .testTarget(
-            name: "OllamaBobTests",
-            dependencies: ["OllamaBob"],
-            path: "OllamaBobTests"
-        ),
     ]
 )

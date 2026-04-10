@@ -15,6 +15,33 @@ enum ApprovalPolicy {
         case "web_search":
             return .none
 
+        case "read_tool_output":
+            // Reads a file Bob himself wrote during this conversation,
+            // under OllamaBob's own app support dir. No user-visible
+            // side effects, no approval required.
+            return .none
+
+        case "tool_help":
+            // Pure in-memory lookup against the bundled ToolCatalog.
+            // No filesystem, no network, no shell. Never approve.
+            return .none
+
+        case "remember":
+            // Writing to the facts DB. No external side effects but
+            // the user might not want Bob auto-remembering things, so
+            // keep it silent (the user told Bob to remember it in
+            // the first place). No approval needed.
+            return .none
+
+        case "list_facts":
+            // Pure read from the local facts DB. No approval.
+            return .none
+
+        case "forget":
+            // Deleting a fact. V2 plan says modal approval so the
+            // user can see what Bob is about to delete.
+            return .modal
+
         case "shell":
             return shellApproval(arguments)
 

@@ -21,6 +21,17 @@ struct MessageRecord: Codable, FetchableRecord, PersistableRecord {
     var createdAt: Date
 }
 
+struct FactRecord: Codable, FetchableRecord, MutablePersistableRecord {
+    static let databaseTableName = "facts"
+    var id: String
+    var category: String
+    var content: String
+    var source: String
+    var createdAt: Date
+    var updatedAt: Date
+    var lastUsedAt: Date
+}
+
 struct ToolLogRecord: Codable, FetchableRecord, PersistableRecord {
     static let databaseTableName = "toolLog"
     var id: String
@@ -141,6 +152,73 @@ final class DatabaseManager {
                 toolCalls: toolCalls,
                 toolName: record.toolName,
                 timestamp: record.createdAt
+            )
+        }
+    }
+
+    // MARK: - Facts (Phase 4 sticky memory)
+
+    func saveFact(category: String, content: String, source: String = "user-explicit") throws -> FactRecord {
+        let now = Date()
+        var record = FactRecord(
+            id: UUID().uuidString,
+            category: category,
+            content: String(content.prefix(400)),
+            source: source,
+            createdAt: now,
+            updatedAt: now,
+            lastUsedAt: now
+        )
+        try dbQueue?.write { db in
+            try record.insert(db)
+        }
+        return record
+    }
+
+    func deleteFact(id: String) throws -> Bool {
+        let deleted = try dbQueue?.write { db -> Int in
+            try db.execute(sql: "DELETE FROM facts WHERE id = ?", arguments: [id])
+            return db.changesCount
+        }
+        return (deleted ?? 0) > 0
+    }
+
+    func fetchFacts(category: String? = nil) throws -> [FactRecord] {
+        try dbQueue?.read { db in
+            if let cat = category {
+                return try FactRecord
+                    .filter(Column("category") == cat)
+                    .order(Column("updatedAt").desc)
+                    .fetchAll(db)
+            } else {
+                return try FactRecord
+                    .order(Column("category").asc, Column("updatedAt").desc)
+                    .fetchAll(db)
+            }
+        } ?? []
+    }
+
+    /// Fetch facts for prompt injection per V2 plan §4.3:
+    /// all facts where lastUsedAt > 30 days ago OR category = 'identity'.
+    func fetchActiveFacts() throws -> [FactRecord] {
+        let thirtyDaysAgo = Calendar.current.date(byAdding: .day, value: -30, to: Date()) ?? Date()
+        return try dbQueue?.read { db in
+            try FactRecord
+                .filter(Column("category") == "identity" || Column("lastUsedAt") > thirtyDaysAgo)
+                .order(Column("category").asc, Column("lastUsedAt").desc)
+                .fetchAll(db)
+        } ?? []
+    }
+
+    /// Touch lastUsedAt for a batch of fact ids (called once per turn
+    /// after PromptComposer injects them into the system prompt).
+    func touchFacts(ids: [String]) throws {
+        guard !ids.isEmpty else { return }
+        try dbQueue?.write { db in
+            let placeholders = ids.map { _ in "?" }.joined(separator: ",")
+            try db.execute(
+                sql: "UPDATE facts SET lastUsedAt = ? WHERE id IN (\(placeholders))",
+                arguments: StatementArguments([Date()] + ids)
             )
         }
     }

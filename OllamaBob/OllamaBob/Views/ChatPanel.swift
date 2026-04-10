@@ -145,7 +145,11 @@ struct ChatPanel: View {
 
         Task {
             do {
-                let updatedHistory = try await agentLoop.process(userMessage: text, history: ollamaHistory)
+                let updatedHistory = try await agentLoop.process(
+                    userMessage: text,
+                    history: ollamaHistory,
+                    conversationId: convoId
+                )
 
                 // Extract new messages from the updated history
                 // Skip the system message and messages we already had, plus the user message we just added

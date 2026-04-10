@@ -45,5 +45,20 @@ enum AppDatabase {
             t.column("createdAt", .datetime).defaults(sql: "CURRENT_TIMESTAMP")
             t.column("updatedAt", .datetime).defaults(sql: "CURRENT_TIMESTAMP")
         }
+
+        // Phase 4 — sticky facts memory. Separate from the v1 `memory`
+        // table which used a flat key/value scheme. This table follows
+        // V2 plan §4.1 with category, source tracking, and lastUsedAt
+        // for LRU trimming during prompt injection.
+        try db.create(table: "facts", ifNotExists: true) { t in
+            t.column("id", .text).primaryKey()
+            t.column("category", .text).notNull()          // identity, preference, project, reference, other
+            t.column("content", .text).notNull()            // the fact itself, ≤ 400 chars
+            t.column("source", .text).notNull()             // user-explicit, user-implicit, imported
+            t.column("createdAt", .datetime).defaults(sql: "CURRENT_TIMESTAMP")
+            t.column("updatedAt", .datetime).defaults(sql: "CURRENT_TIMESTAMP")
+            t.column("lastUsedAt", .datetime).defaults(sql: "CURRENT_TIMESTAMP")
+        }
+        try db.create(index: "idx_facts_category", on: "facts", columns: ["category"], ifNotExists: true)
     }
 }

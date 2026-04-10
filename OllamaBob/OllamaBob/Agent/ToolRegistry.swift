@@ -50,6 +50,70 @@ struct ToolRegistry {
             reqs["web_search"] = ["query"]
         }
 
+        // read_tool_output — meta-tool for fetching spillover outputs.
+        // Registered unconditionally; no approval needed (it only reads
+        // files Bob himself wrote during this conversation).
+        defs["read_tool_output"] = .tool(
+            name: "read_tool_output",
+            description: "Read back a previously-stored large tool output by its integer id. Use this when an earlier tool result was replaced with a pointer like '[output too large to inline — stored with id=7]'. Optionally pass a range (e.g. '0-2000' or '500-') to read only a slice.",
+            properties: [
+                "id":    ("integer", "The integer id returned in the inline pointer."),
+                "range": ("string",  "Optional character range like '0-2000' or '500-'. Omit to read the whole stored output.")
+            ],
+            required: ["id"]
+        )
+        reqs["read_tool_output"] = ["id"]
+
+        // tool_help — meta-tool Bob calls when he's uncertain which
+        // external CLI tool to use for a task. Reads straight from the
+        // in-memory ToolCatalog via ToolRuntime, no LLM, no approval.
+        // `tool_help("list")` returns all live tools grouped by category;
+        // `tool_help("<name>")` returns the full catalog entry for that
+        // tool (description, whenToUse, example, commonFlags).
+        defs["tool_help"] = .tool(
+            name: "tool_help",
+            description: "Look up help for an external CLI tool. Pass name='list' to see every tool available in this session grouped by category, or name='<tool>' (e.g. 'yt-dlp', 'ffmpeg', 'jq') for the full description, whenToUse guidance, example command, and common flags. Use this BEFORE calling shell with an unfamiliar tool.",
+            properties: [
+                "name": ("string", "Either 'list' or an exact tool name like 'jq', 'rg', 'yt-dlp'.")
+            ],
+            required: ["name"]
+        )
+        reqs["tool_help"] = ["name"]
+
+        // remember — save a fact to Bob's sticky memory.
+        defs["remember"] = .tool(
+            name: "remember",
+            description: "Store a fact the user wants you to remember across sessions. Categories: 'identity' (who the user is), 'preference' (how they like things), 'project' (current work context), 'reference' (useful links/paths), 'other'.",
+            properties: [
+                "category": ("string", "One of: identity, preference, project, reference, other"),
+                "content":  ("string", "The fact to remember, max 400 characters")
+            ],
+            required: ["category", "content"]
+        )
+        reqs["remember"] = ["category", "content"]
+
+        // forget — delete a remembered fact by id.
+        defs["forget"] = .tool(
+            name: "forget",
+            description: "Delete a fact from Bob's memory by its id. Get the id from list_facts first.",
+            properties: [
+                "id": ("string", "The fact id to delete")
+            ],
+            required: ["id"]
+        )
+        reqs["forget"] = ["id"]
+
+        // list_facts — list all remembered facts, optionally filtered.
+        defs["list_facts"] = .tool(
+            name: "list_facts",
+            description: "List all facts Bob remembers about the user. Optionally filter by category (identity, preference, project, reference, other). Returns id + category + content for each.",
+            properties: [
+                "category": ("string", "Optional: filter to a specific category")
+            ],
+            required: []
+        )
+        reqs["list_facts"] = []
+
         self.tools = defs
         self.requiredArgs = reqs
     }

@@ -106,6 +106,40 @@ struct BobsDeskView: View {
         agentLoop.isProcessing ? agentLoop.bobMood.rawValue : "idle"
     }
 
+    // MARK: - Context Budget
+
+    /// Rough token estimate for everything Bob currently carries: system prompt
+    /// plus every persisted message. Ollama counts tokens, not characters; the
+    /// common rule of thumb is ~4 chars per token for English which is close
+    /// enough for a visual meter.
+    private var contextTokensUsed: Int {
+        let persona = PersonaStore.shared.activePersona
+        var chars = PromptComposer.compose(persona: persona).count
+        for msg in ollamaHistory where msg.role != "system" {
+            chars += msg.content.count
+            if let calls = msg.toolCalls {
+                for call in calls {
+                    chars += call.function.name.count
+                    // arguments payload is small — rough add
+                    chars += 40
+                }
+            }
+        }
+        return chars / 4
+    }
+
+    private var contextFraction: Double {
+        min(1.0, Double(contextTokensUsed) / Double(settings.numCtx))
+    }
+
+    private var contextColor: Color {
+        switch contextFraction {
+        case ..<0.75: return Self.phosphorGreen
+        case ..<0.90: return .yellow
+        default:      return .red
+        }
+    }
+
     // MARK: Body
 
     var body: some View {
@@ -281,7 +315,24 @@ struct BobsDeskView: View {
             Text(statusWord)
                 .font(.system(size: 11, design: .monospaced))
                 .foregroundColor(Self.phosphorGreen)
+
             Spacer()
+
+            // Context meter — shows how full the 8K window is.
+            Text("ctx \(Int(contextFraction * 100))%")
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundColor(contextColor)
+                .padding(.trailing, 10)
+
+            // New Chat — wipes the transcript and starts a fresh conversation.
+            Button(action: newChat) {
+                Image(systemName: "square.and.pencil")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(Self.phosphorGreen)
+            }
+            .buttonStyle(.plain)
+            .help("New Chat (⌘N) — start a fresh conversation, Bob forgets everything")
+            .keyboardShortcut("n", modifiers: .command)
         }
     }
 
@@ -406,9 +457,40 @@ struct BobsDeskView: View {
         }
     }
 
+    /// Starts a brand new conversation: creates a fresh row in the database,
+    /// blanks the transcript, the Ollama history, the input field, and any
+    /// error banner. Bob forgets everything from the previous session except
+    /// his system prompt (which is re-injected on every request anyway).
+    private func newChat() {
+        // Wipe the outgoing conversation's spillout files so the fresh
+        // conversation starts with empty read_tool_output counters and
+        // no stale data on disk.
+        if let oldId = conversationId {
+            Task { await ToolOutputStore.shared.clearConversation(oldId) }
+        }
+        do {
+            let new = try DatabaseManager.shared.createConversation()
+            conversationId = new.id
+            messages = []
+            ollamaHistory = []
+            inputText = ""
+            errorMessage = nil
+            bubbleVisible = false
+        } catch {
+            errorMessage = "Failed to start new chat: \(error.localizedDescription)"
+        }
+    }
+
     private func sendMessage() {
         let text = inputText.trimmingCharacters(in: .whitespaces)
         guard !text.isEmpty else { return }
+
+        // Local slash commands — intercepted before the agent loop sees them.
+        // `/clear` and `/new` both start a fresh conversation without asking Bob.
+        if text == "/clear" || text == "/new" {
+            newChat()
+            return
+        }
 
         let convoId: String
         do {
@@ -440,7 +522,11 @@ struct BobsDeskView: View {
 
         Task {
             do {
-                let updatedHistory = try await agentLoop.process(userMessage: text, history: ollamaHistory)
+                let updatedHistory = try await agentLoop.process(
+                    userMessage: text,
+                    history: ollamaHistory,
+                    conversationId: convoId
+                )
 
                 let startIndex = previousHistoryCount + 1  // +1 for the user message we just added
                 if startIndex < updatedHistory.count {

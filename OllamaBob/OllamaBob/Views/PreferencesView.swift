@@ -12,6 +12,11 @@ struct PreferencesView: View {
     // MARK: State
 
     @ObservedObject var settings = AppSettings.shared
+    @ObservedObject var toolRuntime = ToolRuntime.shared
+    @ObservedObject var personaStore = PersonaStore.shared
+    @State private var selectedTab = 0
+    @State private var facts: [FactRecord] = []
+    @State private var factsError: String?
 
     // MARK: Body
 
@@ -19,12 +24,55 @@ struct PreferencesView: View {
         VStack(alignment: .leading, spacing: 0) {
             header
             Divider().background(PreferencesView.phosphorGreen.opacity(0.3))
-            toggleRows
-            Spacer()
+            tabBar
+            Divider().background(PreferencesView.phosphorGreen.opacity(0.15))
+            Group {
+                switch selectedTab {
+                case 0:  generalTab
+                case 1:  toolsTab
+                case 2:  personasTab
+                case 3:  memoryTab
+                default: generalTab
+                }
+            }
+            Spacer(minLength: 0)
             footer
         }
-        .frame(width: 480, height: 340)
+        .frame(width: 480, height: 460)
         .background(PreferencesView.bgBlack)
+    }
+
+    private var tabBar: some View {
+        HStack(spacing: 0) {
+            tabButton("General", index: 0)
+            tabButton("Tools", index: 1)
+            tabButton("Persona", index: 2)
+            tabButton("Memory", index: 3)
+            Spacer()
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 6)
+    }
+
+    private func tabButton(_ label: String, index: Int) -> some View {
+        Button(action: { selectedTab = index }) {
+            Text(label)
+                .font(.system(.caption, design: .monospaced).weight(selectedTab == index ? .bold : .regular))
+                .foregroundColor(selectedTab == index ? PreferencesView.phosphorGreen : PreferencesView.textGrey)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 4)
+                .background(
+                    selectedTab == index
+                        ? PreferencesView.phosphorGreen.opacity(0.12)
+                        : Color.clear
+                )
+                .cornerRadius(4)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var generalTab: some View {
+        toggleRows
     }
 
     // MARK: Sections
@@ -56,9 +104,359 @@ struct PreferencesView: View {
                 value: $settings.chatWindowOpacity,
                 range: 0.4...1.0
             )
+            numCtxRow
         }
         .padding(.top, 8)
     }
+
+    private var numCtxRow: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Context window")
+                    .font(.system(.body, design: .monospaced))
+                    .foregroundColor(.white)
+                Text("Tokens Bob can hold in memory per turn. Larger = longer conversations before truncation.")
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundColor(PreferencesView.textGrey)
+            }
+            HStack(spacing: 12) {
+                Slider(
+                    value: Binding(
+                        get: { Double(settings.numCtx) },
+                        set: { newValue in
+                            let snapped = PreferencesView.snapNumCtx(newValue)
+                            if snapped != settings.numCtx { settings.numCtx = snapped }
+                        }
+                    ),
+                    in: 8192...32768,
+                    step: 8192
+                )
+                .tint(PreferencesView.phosphorGreen)
+                Text(PreferencesView.formatNumCtx(settings.numCtx))
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundColor(PreferencesView.phosphorGreen)
+                    .frame(width: 44, alignment: .trailing)
+                    .monospacedDigit()
+            }
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 14)
+        .background(PreferencesView.bgPanel)
+    }
+
+    private static func snapNumCtx(_ raw: Double) -> Int {
+        let candidates = AppConfig.numCtxAllowed
+        return candidates.min(by: { abs(Double($0) - raw) < abs(Double($1) - raw) }) ?? AppConfig.numCtx
+    }
+
+    private static func formatNumCtx(_ value: Int) -> String {
+        "\(value / 1024)K"
+    }
+
+    // MARK: - Tools Tab
+
+    private var toolsTab: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 2) {
+                if toolRuntime.isProbing {
+                    HStack(spacing: 6) {
+                        ProgressView().scaleEffect(0.6)
+                        Text("Probing tools...")
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundColor(PreferencesView.textGrey)
+                    }
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 8)
+                }
+
+                // Beta tools toggle
+                betaToolsToggle
+
+                let categories = orderedCategories()
+                ForEach(categories, id: \.self) { category in
+                    toolCategorySection(category)
+                }
+            }
+            .padding(.vertical, 8)
+        }
+    }
+
+    private var betaToolsToggle: some View {
+        HStack(alignment: .center, spacing: 16) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Beta tools")
+                    .font(.system(.caption, design: .monospaced).weight(.medium))
+                    .foregroundColor(.white)
+                Text("Enable tools that may confuse the model or have security implications.")
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundColor(PreferencesView.textGrey)
+            }
+            Spacer()
+            Toggle("", isOn: $settings.betaToolsEnabled)
+                .toggleStyle(.switch)
+                .tint(.orange)
+                .labelsHidden()
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 10)
+        .background(PreferencesView.bgPanel)
+    }
+
+    private func orderedCategories() -> [String] {
+        let cats = Set(toolRuntime.catalog.tools.map(\.category))
+        return cats.sorted()
+    }
+
+    private func toolCategorySection(_ category: String) -> some View {
+        let tools = toolRuntime.catalog.tools.filter { $0.category == category }
+        return VStack(alignment: .leading, spacing: 1) {
+            Text(category.uppercased())
+                .font(.system(.caption2, design: .monospaced).weight(.bold))
+                .foregroundColor(PreferencesView.phosphorGreen.opacity(0.6))
+                .padding(.horizontal, 24)
+                .padding(.top, 8)
+                .padding(.bottom, 2)
+
+            ForEach(tools) { entry in
+                toolRow(entry)
+            }
+        }
+    }
+
+    private func toolRow(_ entry: ToolCatalogEntry) -> some View {
+        let state = toolRuntime.states[entry.name]
+        let isLive = toolRuntime.isLive(entry.name)
+
+        return HStack(spacing: 8) {
+            // Status dot
+            Circle()
+                .fill(dotColor(for: state))
+                .frame(width: 6, height: 6)
+
+            // Tool name
+            Text(entry.name)
+                .font(.system(.caption, design: .monospaced).weight(.medium))
+                .foregroundColor(isLive ? .white : PreferencesView.textGrey)
+
+            if entry.beta {
+                Text("BETA")
+                    .font(.system(size: 8, weight: .bold, design: .monospaced))
+                    .foregroundColor(.black)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 1)
+                    .background(Color.orange)
+                    .cornerRadius(2)
+            }
+
+            if entry.bundled {
+                Text("BUNDLED")
+                    .font(.system(size: 8, weight: .bold, design: .monospaced))
+                    .foregroundColor(PreferencesView.phosphorGreen.opacity(0.7))
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 1)
+                    .background(PreferencesView.phosphorGreen.opacity(0.15))
+                    .cornerRadius(2)
+            }
+
+            Spacer()
+
+            // Version or status text
+            Text(statusText(for: state))
+                .font(.system(.caption2, design: .monospaced))
+                .foregroundColor(isLive ? PreferencesView.phosphorGreen.opacity(0.7) : PreferencesView.textGrey.opacity(0.6))
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 5)
+        .background(PreferencesView.bgPanel)
+    }
+
+    private func dotColor(for state: ToolState?) -> Color {
+        switch state {
+        case .homebrewDetected: return PreferencesView.phosphorGreen
+        case .bundled:          return .blue
+        case .missing:          return PreferencesView.textGrey.opacity(0.4)
+        case .none:             return PreferencesView.textGrey.opacity(0.2)
+        }
+    }
+
+    private func statusText(for state: ToolState?) -> String {
+        switch state {
+        case .homebrewDetected(_, let version):
+            return version ?? "detected"
+        case .bundled(let version):
+            return version ?? "bundled"
+        case .missing(let reason):
+            return String(reason.prefix(40))
+        case .none:
+            return "unknown"
+        }
+    }
+
+    // MARK: - Personas Tab
+
+    private var personasTab: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Choose Bob's voice and personality. The active persona controls tone — safety rules always apply regardless.")
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundColor(PreferencesView.textGrey)
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 8)
+
+                ForEach(personaStore.personas) { persona in
+                    personaRow(persona)
+                }
+            }
+            .padding(.vertical, 4)
+        }
+    }
+
+    private func personaRow(_ persona: Persona) -> some View {
+        let isActive = persona.id == personaStore.activePersonaID
+        return Button(action: { personaStore.activePersonaID = persona.id }) {
+            HStack(alignment: .top, spacing: 10) {
+                // Radio dot
+                Circle()
+                    .strokeBorder(isActive ? PreferencesView.phosphorGreen : PreferencesView.textGrey, lineWidth: 1.5)
+                    .background(Circle().fill(isActive ? PreferencesView.phosphorGreen : Color.clear))
+                    .frame(width: 12, height: 12)
+                    .padding(.top, 3)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 6) {
+                        Text(persona.name)
+                            .font(.system(.caption, design: .monospaced).weight(.medium))
+                            .foregroundColor(isActive ? .white : PreferencesView.textGrey)
+
+                        if persona.isBuiltin {
+                            Text("PRESET")
+                                .font(.system(size: 8, weight: .bold, design: .monospaced))
+                                .foregroundColor(PreferencesView.phosphorGreen.opacity(0.7))
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 1)
+                                .background(PreferencesView.phosphorGreen.opacity(0.12))
+                                .cornerRadius(2)
+                        }
+                    }
+
+                    // Preview: first 120 chars of the system prompt
+                    let preview = String(persona.systemPromptMarkdown.prefix(120))
+                        .replacingOccurrences(of: "\n", with: " ")
+                    Text(preview + (persona.systemPromptMarkdown.count > 120 ? "..." : ""))
+                        .font(.system(.caption2, design: .monospaced))
+                        .foregroundColor(PreferencesView.textGrey.opacity(0.7))
+                        .lineLimit(2)
+                }
+
+                Spacer()
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 8)
+            .background(isActive ? PreferencesView.phosphorGreen.opacity(0.06) : PreferencesView.bgPanel)
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - Memory Tab
+
+    private var memoryTab: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack {
+                    Text("Facts Bob remembers about you")
+                        .font(.system(.caption, design: .monospaced).weight(.medium))
+                        .foregroundColor(.white)
+                    Spacer()
+                    Text("\(facts.count) fact\(facts.count == 1 ? "" : "s")")
+                        .font(.system(.caption2, design: .monospaced))
+                        .foregroundColor(PreferencesView.textGrey)
+                }
+                .padding(.horizontal, 24)
+                .padding(.vertical, 8)
+
+                if let error = factsError {
+                    Text(error)
+                        .font(.system(.caption2, design: .monospaced))
+                        .foregroundColor(.orange)
+                        .padding(.horizontal, 24)
+                }
+
+                if facts.isEmpty {
+                    Text("No facts stored yet. Tell Bob \"remember that I prefer dark mode\" and it'll show up here.")
+                        .font(.system(.caption2, design: .monospaced))
+                        .foregroundColor(PreferencesView.textGrey)
+                        .padding(.horizontal, 24)
+                        .padding(.vertical, 16)
+                } else {
+                    let grouped = Dictionary(grouping: facts, by: \.category)
+                    let categories = grouped.keys.sorted()
+                    ForEach(categories, id: \.self) { category in
+                        factCategorySection(category, facts: grouped[category] ?? [])
+                    }
+                }
+            }
+            .padding(.vertical, 4)
+        }
+        .onAppear { loadFacts() }
+    }
+
+    private func factCategorySection(_ category: String, facts: [FactRecord]) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(category.uppercased())
+                .font(.system(.caption2, design: .monospaced).weight(.bold))
+                .foregroundColor(PreferencesView.phosphorGreen.opacity(0.6))
+                .padding(.horizontal, 24)
+                .padding(.top, 6)
+                .padding(.bottom, 2)
+
+            ForEach(facts, id: \.id) { fact in
+                factRow(fact)
+            }
+        }
+    }
+
+    private func factRow(_ fact: FactRecord) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Text(fact.content)
+                .font(.system(.caption, design: .monospaced))
+                .foregroundColor(.white)
+                .lineLimit(3)
+
+            Spacer()
+
+            Button(action: { deleteFact(fact) }) {
+                Image(systemName: "trash")
+                    .font(.caption2)
+                    .foregroundColor(PreferencesView.textGrey.opacity(0.6))
+            }
+            .buttonStyle(.plain)
+            .help("Delete this fact")
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 6)
+        .background(PreferencesView.bgPanel)
+    }
+
+    private func loadFacts() {
+        do {
+            facts = try DatabaseManager.shared.fetchFacts()
+            factsError = nil
+        } catch {
+            factsError = error.localizedDescription
+        }
+    }
+
+    private func deleteFact(_ fact: FactRecord) {
+        do {
+            _ = try DatabaseManager.shared.deleteFact(id: fact.id)
+            facts.removeAll { $0.id == fact.id }
+        } catch {
+            factsError = error.localizedDescription
+        }
+    }
+
+    // MARK: - Footer
 
     private var footer: some View {
         Text("v1.0.2  \u{2022}  localhost:11434")
