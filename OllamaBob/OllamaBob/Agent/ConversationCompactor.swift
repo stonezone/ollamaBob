@@ -24,8 +24,37 @@ enum ConversationCompactor {
     /// PromptComposer — intentionally consistent across the codebase.
     static func approxTokens(_ messages: [OllamaMessage]) -> Int {
         messages.reduce(0) { sum, msg in
-            sum + msg.content.count / 4
+            sum + approxChars(for: msg) / 4
         }
+    }
+
+    private static func approxChars(for msg: OllamaMessage) -> Int {
+        var chars = msg.content.count
+        if let thinking = msg.thinking {
+            chars += thinking.count
+        }
+        if let toolName = msg.toolName {
+            chars += toolName.count
+        }
+        if let toolCalls = msg.toolCalls {
+            chars += approxChars(for: toolCalls)
+        }
+        return chars
+    }
+
+    private static func approxChars(for toolCalls: [OllamaToolCall]) -> Int {
+        var total = 0
+        let encoder = JSONEncoder()
+        for call in toolCalls {
+            total += call.id?.count ?? 0
+            total += call.function.name.count
+            if let data = try? encoder.encode(call.function.arguments) {
+                total += data.count
+            } else {
+                total += String(describing: call.function.parsedArguments).count
+            }
+        }
+        return total
     }
 
     /// Returns true if the conversation should be compacted before the
@@ -42,8 +71,8 @@ enum ConversationCompactor {
     /// is structurally identical to the input.
     ///
     /// `client` is used for qwen3:14b extraction calls on assistant turns.
-    /// If qwen3 is unreachable or times out, the assistant turn is dropped
-    /// entirely rather than blocking the user. Compaction is best-effort.
+    /// If qwen3 is unreachable or returns no facts, the original assistant
+    /// content is kept in a shortened form so the turn is never lost.
     static func compact(
         messages: [OllamaMessage],
         client: OllamaClient
@@ -79,17 +108,19 @@ enum ConversationCompactor {
                         let argsStr = String(String(describing: args).prefix(120))
                         lines.append("[tool call: \(name), args: \(argsStr)]")
                     }
-                    let summary = lines.joined(separator: "\n")
-                    result.append(.assistant(summary))
+                    result.append(.assistant(lines.joined(separator: "\n")))
                 } else if !msg.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     // Plain assistant text — extract facts via qwen3.
                     let extracted = await extractFacts(from: msg.content, client: client)
                     if let extracted, !extracted.isEmpty {
                         result.append(.assistant("[assistant: \(extracted)]"))
+                    } else {
+                        let trimmed = msg.content
+                            .trimmingCharacters(in: .whitespacesAndNewlines)
+                            .replacingOccurrences(of: "\n", with: " ")
+                        let fallback = String(trimmed.prefix(240))
+                        result.append(.assistant("[assistant: \(fallback)]"))
                     }
-                    // If extraction failed or returned empty, we drop the
-                    // turn entirely. Better to lose a chatty reply than to
-                    // keep 2K tokens of fluff that blocks the next real turn.
                 }
 
             default:
@@ -143,7 +174,8 @@ enum ConversationCompactor {
                 .joined(separator: "; ")
             return facts
         } catch {
-            // Best-effort — if qwen3 is unavailable, drop the turn.
+            // Best-effort — if qwen3 is unavailable, the caller keeps a
+            // shortened copy of the original assistant turn.
             print("[ConversationCompactor] qwen3 extraction failed: \(error.localizedDescription)")
             return nil
         }

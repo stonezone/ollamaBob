@@ -27,6 +27,75 @@ struct ToolRegistry {
         )
         reqs["read_file"] = ["path"]
 
+        // create_directory
+        defs["create_directory"] = .tool(
+            name: "create_directory",
+            description: "Create a local directory path. Intermediate directories are created if needed, and existing directories are left unchanged.",
+            properties: ["path": ("string", "Directory path to create")],
+            required: ["path"]
+        )
+        reqs["create_directory"] = ["path"]
+
+        // list_directory
+        defs["list_directory"] = .tool(
+            name: "list_directory",
+            description: "List the contents of a local directory. Optional depth is capped at 3.",
+            properties: [
+                "path": ("string", "Directory path to inspect"),
+                "depth": ("integer", "Optional recursion depth from 1 to 3")
+            ],
+            required: ["path"]
+        )
+        reqs["list_directory"] = ["path"]
+
+        // write_file
+        defs["write_file"] = .tool(
+            name: "write_file",
+            description: "Write UTF-8 text to a local file, overwriting the file if it already exists.",
+            properties: [
+                "path": ("string", "File path to write"),
+                "content": ("string", "UTF-8 text content to write")
+            ],
+            required: ["path", "content"]
+        )
+        reqs["write_file"] = ["path", "content"]
+
+        // move_file
+        defs["move_file"] = .tool(
+            name: "move_file",
+            description: "Move or rename a local file or directory.",
+            properties: [
+                "source": ("string", "Source path to move"),
+                "destination": ("string", "Destination path")
+            ],
+            required: ["source", "destination"]
+        )
+        reqs["move_file"] = ["source", "destination"]
+
+        // git_status
+        defs["git_status"] = .tool(
+            name: "git_status",
+            description: "Show `git status --short --branch` for a local repository.",
+            properties: [
+                "repo_path": ("string", "Path to the local git repository")
+            ],
+            required: ["repo_path"]
+        )
+        reqs["git_status"] = ["repo_path"]
+
+        // git_diff
+        defs["git_diff"] = .tool(
+            name: "git_diff",
+            description: "Show the current working-tree diff for a local repository. Optionally limit to staged changes or one relative path.",
+            properties: [
+                "repo_path": ("string", "Path to the local git repository"),
+                "relative_path": ("string", "Optional relative path inside the repo"),
+                "staged": ("boolean", "Optional: true to show staged diff")
+            ],
+            required: ["repo_path"]
+        )
+        reqs["git_diff"] = ["repo_path"]
+
         // search_files
         defs["search_files"] = .tool(
             name: "search_files",
@@ -133,9 +202,15 @@ struct ToolRegistry {
         guard let required = requiredArgs[name] else { return false }
         for key in required {
             guard let val = args[key] else { return false }
-            if let s = val as? String, s.isEmpty { return false }
+            if let s = val as? String, s.isEmpty, !allowsEmptyString(toolName: name, key: key) {
+                return false
+            }
         }
         return true
+    }
+
+    private func allowsEmptyString(toolName: String, key: String) -> Bool {
+        toolName == "write_file" && key == "content"
     }
 
     var toolNames: [String] {

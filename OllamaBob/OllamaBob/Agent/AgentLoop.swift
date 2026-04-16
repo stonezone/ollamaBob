@@ -89,6 +89,15 @@ final class AgentLoop: ObservableObject {
     ) async throws -> [OllamaMessage] {
         isProcessing = true
         bobMood = .thinking
+        consecutiveFailures = 0
+        if currentModel == AppConfig.fallbackModel {
+            let oldModel = currentModel
+            currentModel = AppConfig.primaryModel
+            modelSwitchNotice = ModelSwitchNotice(from: oldModel, to: currentModel, at: Date())
+            if let handler = modelSwitchHandler {
+                await handler(oldModel, currentModel)
+            }
+        }
         currentConversationId = conversationId
         defer {
             isProcessing = false
@@ -237,6 +246,35 @@ final class AgentLoop: ObservableObject {
         case "read_file":
             let path = args["path"] as? String ?? ""
             return await FileReadTool.execute(path: path)
+
+        case "create_directory":
+            let path = args["path"] as? String ?? ""
+            return await DirectoryCreateTool.execute(path: path)
+
+        case "list_directory":
+            let path = args["path"] as? String ?? ""
+            let depth = Self.parseInt(args["depth"]) ?? 1
+            return await DirectoryListTool.execute(path: path, depth: depth)
+
+        case "write_file":
+            let path = args["path"] as? String ?? ""
+            let content = args["content"] as? String ?? ""
+            return await FileWriteTool.execute(path: path, content: content)
+
+        case "move_file":
+            let source = args["source"] as? String ?? ""
+            let destination = args["destination"] as? String ?? ""
+            return await FileMoveTool.execute(source: source, destination: destination)
+
+        case "git_status":
+            let repoPath = args["repo_path"] as? String ?? ""
+            return await GitStatusTool.execute(repoPath: repoPath)
+
+        case "git_diff":
+            let repoPath = args["repo_path"] as? String ?? ""
+            let relativePath = args["relative_path"] as? String
+            let staged = args["staged"] as? Bool ?? false
+            return await GitDiffTool.execute(repoPath: repoPath, relativePath: relativePath, staged: staged)
 
         case "search_files":
             let pattern = args["pattern"] as? String ?? ""
@@ -522,6 +560,26 @@ final class AgentLoop: ObservableObject {
             return args["command"] as? String ?? "shell command"
         case "read_file":
             return "Read file: \(args["path"] as? String ?? "unknown")"
+        case "create_directory":
+            return "Create directory: \(args["path"] as? String ?? "unknown")"
+        case "list_directory":
+            return "List directory: \(args["path"] as? String ?? "unknown")"
+        case "write_file":
+            let path = args["path"] as? String ?? "unknown"
+            let content = args["content"] as? String ?? ""
+            return "Write file: \(path) (\(content.count) chars)"
+        case "move_file":
+            let source = args["source"] as? String ?? "unknown"
+            let destination = args["destination"] as? String ?? "unknown"
+            return "Move file: \(source) -> \(destination)"
+        case "git_status":
+            return "Git status: \(args["repo_path"] as? String ?? "unknown")"
+        case "git_diff":
+            let repoPath = args["repo_path"] as? String ?? "unknown"
+            let relativePath = args["relative_path"] as? String
+            let staged = args["staged"] as? Bool ?? false
+            let scope = relativePath.map { " (\($0))" } ?? ""
+            return "Git diff: \(repoPath)\(scope)\(staged ? " [staged]" : "")"
         case "search_files":
             return "Search files: \(args["pattern"] as? String ?? "unknown")"
         case "web_search":

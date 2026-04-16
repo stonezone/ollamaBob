@@ -6,6 +6,7 @@ enum AppDatabase {
         try db.create(table: "conversations", ifNotExists: true) { t in
             t.column("id", .text).primaryKey()
             t.column("title", .text)
+            t.column("isPinned", .boolean).notNull().defaults(to: false)
             t.column("createdAt", .datetime).defaults(sql: "CURRENT_TIMESTAMP")
             t.column("updatedAt", .datetime).defaults(sql: "CURRENT_TIMESTAMP")
         }

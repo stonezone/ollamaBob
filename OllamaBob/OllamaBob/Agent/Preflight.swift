@@ -13,31 +13,43 @@ struct PreflightStatus {
 }
 
 enum Preflight {
-    static func run() async -> PreflightStatus {
+    static func run(
+        clientReachable: @escaping () async -> Bool = {
+            await OllamaClient().isReachable()
+        },
+        installedModels: @escaping () async -> [String] = {
+            await OllamaClient().installedModels()
+        },
+        braveKeyPresent: Bool = !AppConfig.braveAPIKey.isEmpty,
+        databaseWritable: () -> Bool = {
+            DatabaseManager.shared.canWrite()
+        },
+        sandboxDisabled: () -> Bool = {
+            !ProcessInfo.processInfo.environment.keys.contains("APP_SANDBOX_CONTAINER_ID")
+        }
+    ) async -> PreflightStatus {
         var status = PreflightStatus()
-        let client = OllamaClient()
 
         // 1. Ollama reachable
-        status.ollamaReachable = await client.isReachable()
+        status.ollamaReachable = await clientReachable()
 
         // 2. Model installed
         if status.ollamaReachable {
-            let models = await client.installedModels()
+            let models = await installedModels()
             status.modelInstalled = models.contains(where: { name in
                 name.hasPrefix(AppConfig.primaryModel) || name.hasPrefix(AppConfig.fallbackModel)
             })
         }
 
         // 3. Brave API key present (optional)
-        status.braveKeyPresent = !AppConfig.braveAPIKey.isEmpty
+        status.braveKeyPresent = braveKeyPresent
 
         // 4. Database writable (DatabaseManager is already initialized by AppState)
-        status.databaseWritable = DatabaseManager.shared.canWrite()
+        status.databaseWritable = databaseWritable()
 
         // 5. Sandbox disabled (SPM-built executables don't have sandbox by default)
-        status.sandboxDisabled = !ProcessInfo.processInfo.environment.keys.contains("APP_SANDBOX_CONTAINER_ID")
+        status.sandboxDisabled = sandboxDisabled()
 
         return status
     }
-
 }

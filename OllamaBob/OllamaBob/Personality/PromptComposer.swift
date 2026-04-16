@@ -9,6 +9,7 @@ import Foundation
 /// slot for it so the call site doesn't need to change when it lands.
 @MainActor
 enum PromptComposer {
+    static var memoryStore: PromptComposerMemoryStoring = DatabasePromptComposerMemoryStore()
 
     /// Rough token estimate: ~4 chars per token. Used for budget checks.
     /// Not precise but fine for an upper-bound soft cap — we're guarding
@@ -101,7 +102,8 @@ enum PromptComposer {
     /// - Touch lastUsedAt for the injected set so active facts stay warm
     static func renderUserProfile() -> String? {
         do {
-            var facts = try DatabaseManager.shared.fetchActiveFacts()
+            let memoryStore = Self.memoryStore
+            var facts = try memoryStore.fetchActiveFacts()
             guard !facts.isEmpty else { return nil }
 
             // Enforce the 40-fact cap. Identity facts are exempt from
@@ -132,7 +134,7 @@ enum PromptComposer {
             guard includedIds.count > 0 else { return nil }
 
             // Touch lastUsedAt so these facts stay warm for next time.
-            try DatabaseManager.shared.touchFacts(ids: includedIds)
+            try memoryStore.touchFacts(ids: includedIds)
 
             return lines.joined(separator: "\n")
         } catch {

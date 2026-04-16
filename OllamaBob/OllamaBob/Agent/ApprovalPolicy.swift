@@ -8,6 +8,31 @@ enum ApprovalPolicy {
             let path = arguments["path"] as? String ?? ""
             return pathToApproval(path, defaultForAllowed: .none)
 
+        case "create_directory":
+            let path = arguments["path"] as? String ?? ""
+            return structuredWriteApproval(path)
+
+        case "list_directory":
+            let path = arguments["path"] as? String ?? ""
+            return structuredReadApproval(path)
+
+        case "write_file":
+            let path = arguments["path"] as? String ?? ""
+            return structuredWriteApproval(path)
+
+        case "move_file":
+            let source = arguments["source"] as? String ?? ""
+            let destination = arguments["destination"] as? String ?? ""
+            return structuredMoveApproval(source: source, destination: destination)
+
+        case "git_status":
+            let repoPath = arguments["repo_path"] as? String ?? ""
+            return structuredReadApproval(repoPath)
+
+        case "git_diff":
+            let repoPath = arguments["repo_path"] as? String ?? ""
+            return structuredReadApproval(repoPath)
+
         case "search_files":
             let path = arguments["path"] as? String ?? NSHomeDirectory()
             return pathToApproval(path, defaultForAllowed: .none)
@@ -66,13 +91,12 @@ enum ApprovalPolicy {
             return .forbidden
         }
 
-        // Forbidden: downloading and piping to a shell. Match any form of
-        // `curl|wget ... | sh|bash|zsh` — the literal-substring checks above
-        // only caught the pipe-with-no-URL form.
+        // Forbidden: download-and-execute chains, whether piped directly to a shell
+        // or written to disk and executed later in the same command line.
         let downloaders = ["curl ", "wget "]
         let shellSinks = ["| sh", "|sh", "| bash", "|bash", "| zsh", "|zsh"]
         if downloaders.contains(where: { lower.contains($0) })
-            && shellSinks.contains(where: { lower.contains($0) }) {
+            && (shellSinks.contains(where: { lower.contains($0) }) || containsDownloadThenExecuteChain(lower)) {
             return .forbidden
         }
 
@@ -89,7 +113,7 @@ enum ApprovalPolicy {
             return .modal
         }
 
-        // Check path policy for any paths in the command
+        // Check path policy for any path-like arguments in the command.
         let pathApproval = extractPathApproval(from: cmd)
         if pathApproval != .none {
             return pathApproval
@@ -109,17 +133,178 @@ enum ApprovalPolicy {
         }
     }
 
-    /// Best-effort path extraction from shell commands
+    private static func structuredReadApproval(_ path: String) -> ApprovalLevel {
+        guard let resolved = structuredPath(for: path) else { return .modal }
+        return pathToApproval(resolved, defaultForAllowed: .none)
+    }
+
+    private static func structuredWriteApproval(_ path: String) -> ApprovalLevel {
+        guard let resolved = structuredPath(for: path) else { return .modal }
+        switch PathPolicy.check(resolved) {
+        case .denied: return .forbidden
+        case .requiresApproval, .allowed: return .modal
+        }
+    }
+
+    private static func structuredMoveApproval(source: String, destination: String) -> ApprovalLevel {
+        guard let sourceResolved = structuredPath(for: source),
+              let destinationResolved = structuredPath(for: destination) else {
+            return .modal
+        }
+
+        if case .denied = PathPolicy.check(sourceResolved) { return .forbidden }
+        if case .denied = PathPolicy.check(destinationResolved) { return .forbidden }
+        return .modal
+    }
+
+    private static func structuredPath(for path: String) -> String? {
+        FileToolPaths.resolvedURL(for: path)?.path
+    }
+
+    /// Best-effort path extraction from shell commands. Quoted, relative, env-expanded,
+    /// and subshell-based paths are treated conservatively instead of being ignored.
     private static func extractPathApproval(from command: String) -> ApprovalLevel {
-        let tokens = command.split(separator: " ").map(String.init)
-        for token in tokens {
-            let expanded = NSString(string: token).expandingTildeInPath
-            if expanded.hasPrefix("/") {
-                let access = PathPolicy.check(expanded)
-                if access == .denied { return .forbidden }
-                if access == .requiresApproval { return .modal }
+        for token in shellTokens(from: command) {
+            if let approval = approvalForShellToken(token) {
+                if approval != .none {
+                    return approval
+                }
             }
         }
         return .none
+    }
+
+    private static func approvalForShellToken(_ token: String) -> ApprovalLevel? {
+        let candidate = token.trimmingCharacters(in: pathTokenTrimCharacters)
+        guard looksPathLike(candidate) else { return nil }
+
+        if candidate.contains("$(") || candidate.contains("`") {
+            return .modal
+        }
+
+        guard let canonicalPath = canonicalShellPath(from: candidate) else {
+            return .modal
+        }
+
+        return pathToApproval(canonicalPath, defaultForAllowed: .none)
+    }
+
+    private static func looksPathLike(_ token: String) -> Bool {
+        token.hasPrefix("/") ||
+        token.hasPrefix(".") ||
+        token.hasPrefix("~") ||
+        token.hasPrefix("$") ||
+        token.contains("/")
+    }
+
+    private static func canonicalShellPath(from token: String) -> String? {
+        let expandedTilde = NSString(string: expandEnvironmentVariables(in: token)).expandingTildeInPath
+        guard !expandedTilde.contains("$("), !expandedTilde.contains("`") else {
+            return nil
+        }
+
+        let url: URL
+        if expandedTilde.hasPrefix("/") {
+            url = URL(fileURLWithPath: expandedTilde)
+        } else {
+            url = URL(fileURLWithPath: expandedTilde, relativeTo: URL(fileURLWithPath: NSHomeDirectory()))
+        }
+
+        return url.standardizedFileURL.resolvingSymlinksInPath().path
+    }
+
+    private static func expandEnvironmentVariables(in string: String) -> String {
+        guard let regex = try? NSRegularExpression(pattern: #"\$(\{)?([A-Za-z_][A-Za-z0-9_]*)\}?"#) else {
+            return string
+        }
+
+        let range = NSRange(string.startIndex..., in: string)
+        let matches = regex.matches(in: string, range: range)
+        guard !matches.isEmpty else { return string }
+
+        var result = ""
+        var cursor = string.startIndex
+
+        for match in matches {
+            guard let matchRange = Range(match.range, in: string) else { continue }
+            result += String(string[cursor..<matchRange.lowerBound])
+
+            if let nameRange = Range(match.range(at: 2), in: string) {
+                let name = String(string[nameRange])
+                if let value = ProcessInfo.processInfo.environment[name] {
+                    result += value
+                } else {
+                    result += String(string[matchRange])
+                }
+            } else {
+                result += String(string[matchRange])
+            }
+
+            cursor = matchRange.upperBound
+        }
+
+        result += String(string[cursor...])
+        return result
+    }
+
+    private static func shellTokens(from command: String) -> [String] {
+        var tokens: [String] = []
+        var token = ""
+        var quote: Character?
+        var escaping = false
+
+        for character in command {
+            if escaping {
+                token.append(character)
+                escaping = false
+                continue
+            }
+
+            if character == "\\" {
+                escaping = true
+                continue
+            }
+
+            if let activeQuote = quote {
+                if character == activeQuote {
+                    quote = nil
+                } else {
+                    token.append(character)
+                }
+                continue
+            }
+
+            if character == "'" || character == "\"" {
+                quote = character
+                continue
+            }
+
+            if character.isWhitespace {
+                if !token.isEmpty {
+                    tokens.append(token)
+                    token = ""
+                }
+                continue
+            }
+
+            token.append(character)
+        }
+
+        if !token.isEmpty {
+            tokens.append(token)
+        }
+
+        return tokens
+    }
+
+    private static let pathTokenTrimCharacters = CharacterSet(charactersIn: "()[]{}<>.,;|&")
+
+    private static func containsDownloadThenExecuteChain(_ command: String) -> Bool {
+        let pattern = #"(?:curl|wget)\b[\s\S]*?(?:&&|\|\||;)\s*(?:sh|bash|zsh)\b"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
+            return false
+        }
+        let range = NSRange(command.startIndex..., in: command)
+        return regex.firstMatch(in: command, range: range) != nil
     }
 }

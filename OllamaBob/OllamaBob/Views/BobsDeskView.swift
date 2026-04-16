@@ -80,25 +80,26 @@ struct BobsDeskView: View {
 
     @ObservedObject var agentLoop: AgentLoop
     @ObservedObject private var settings = AppSettings.shared
-    @State private var inputText      = ""
-    @State private var messages:       [ChatMessage]   = []
-    @State private var ollamaHistory:  [OllamaMessage] = []
-    @State private var errorMessage:   String?
-    @State private var conversationId: String?
+    @StateObject private var session: ChatSessionController
     @State private var breathPhase     = false
     @State private var bubbleVisible   = false
+
+    init(agentLoop: AgentLoop) {
+        self.agentLoop = agentLoop
+        _session = StateObject(wrappedValue: ChatSessionController(agentLoop: agentLoop))
+    }
 
     // MARK: Computed helpers
 
     /// The most recent assistant message with non-empty content, for the speech bubble.
     private var latestAssistantLine: String? {
-        messages.last(where: { $0.role == .assistant && !$0.content.isEmpty })
+        session.messages.last(where: { $0.role == .assistant && !$0.content.isEmpty })
             .map { $0.content }
     }
 
     /// True only when the very last visible message is an assistant text reply.
     private var shouldShowBubble: Bool {
-        guard let last = messages.last(where: { $0.role != .system }) else { return false }
+        guard let last = session.messages.last(where: { $0.role != .system }) else { return false }
         return last.role == .assistant && !last.content.isEmpty
     }
 
@@ -115,13 +116,12 @@ struct BobsDeskView: View {
     private var contextTokensUsed: Int {
         let persona = PersonaStore.shared.activePersona
         var chars = PromptComposer.compose(persona: persona).count
-        for msg in ollamaHistory where msg.role != "system" {
+        for msg in session.history where msg.role != "system" {
             chars += msg.content.count
             if let calls = msg.toolCalls {
                 for call in calls {
                     chars += call.function.name.count
-                    // arguments payload is small — rough add
-                    chars += 40
+                    chars += String(describing: call.function.parsedArguments).count
                 }
             }
         }
@@ -154,9 +154,9 @@ struct BobsDeskView: View {
         }
         .frame(width: 520, height: 760)
         .background(WindowTransparencyConfigurator())
-        .task { loadExistingConversation() }
+        .task { session.loadExistingConversationIfNeeded() }
         // Sync bubble visibility whenever messages change
-        .onChange(of: messages.count) {
+        .onChange(of: session.messages.count) {
             withAnimation(.easeInOut(duration: 0.3)) {
                 bubbleVisible = shouldShowBubble
             }
@@ -318,21 +318,15 @@ struct BobsDeskView: View {
 
             Spacer()
 
+            ConversationManagerView(session: session)
+                .foregroundColor(Self.phosphorGreen)
+                .padding(.trailing, 10)
+
             // Context meter — shows how full the 8K window is.
             Text("ctx \(Int(contextFraction * 100))%")
                 .font(.system(size: 11, design: .monospaced))
                 .foregroundColor(contextColor)
                 .padding(.trailing, 10)
-
-            // New Chat — wipes the transcript and starts a fresh conversation.
-            Button(action: newChat) {
-                Image(systemName: "square.and.pencil")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(Self.phosphorGreen)
-            }
-            .buttonStyle(.plain)
-            .help("New Chat (⌘N) — start a fresh conversation, Bob forgets everything")
-            .keyboardShortcut("n", modifiers: .command)
         }
     }
 
@@ -342,7 +336,7 @@ struct BobsDeskView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 4) {
-                    ForEach(messages) { msg in
+                    ForEach(session.messages) { msg in
                         if msg.role != .system {
                             ChatBubble(message: msg)
                                 .id(msg.id)
@@ -365,9 +359,9 @@ struct BobsDeskView: View {
                 }
                 .padding(.vertical, 8)
             }
-            .onChange(of: messages.count) {
+            .onChange(of: session.messages.count) {
                 withAnimation {
-                    proxy.scrollTo(messages.last?.id ?? "thinking", anchor: .bottom)
+                    proxy.scrollTo(session.messages.last?.id ?? "thinking", anchor: .bottom)
                 }
             }
         }
@@ -402,7 +396,7 @@ struct BobsDeskView: View {
 
     @ViewBuilder
     private var errorBanner: some View {
-        if let error = errorMessage {
+        if let error = session.errorMessage {
             HStack {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundColor(.orange)
@@ -410,7 +404,7 @@ struct BobsDeskView: View {
                     .font(.caption)
                     .foregroundColor(.secondary)
                 Spacer()
-                Button("Dismiss") { errorMessage = nil }
+                Button("Dismiss") { session.dismissError() }
                     .font(.caption)
             }
             .padding(8)
@@ -422,189 +416,24 @@ struct BobsDeskView: View {
 
     private var inputRow: some View {
         HStack(spacing: 8) {
-            TextField("Ask Bob…", text: $inputText)
+            TextField("Ask Bob…", text: $session.inputText)
                 .textFieldStyle(.plain)
                 .foregroundColor(.white)
                 .font(.system(size: 13))
-                .onSubmit { sendMessage() }
+                .onSubmit { session.sendCurrentInput(allowsLocalCommands: true) }
                 .padding(.horizontal, 4)
                 .padding(.vertical, 8)
 
-            Button(action: sendMessage) {
+            Button(action: { session.sendCurrentInput(allowsLocalCommands: true) }) {
                 Image(systemName: "arrow.up.circle.fill")
                     .font(.title2)
                     .foregroundColor(Self.phosphorGreen)
             }
             .buttonStyle(.plain)
-            .disabled(inputText.trimmingCharacters(in: .whitespaces).isEmpty || agentLoop.isProcessing)
+            .disabled(session.inputText.trimmingCharacters(in: .whitespaces).isEmpty || agentLoop.isProcessing)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
     }
 
-    // MARK: - Conversation Persistence (verbatim from ChatPanel)
-
-    private func loadExistingConversation() {
-        guard conversationId == nil else { return }
-        do {
-            guard let convo = try DatabaseManager.shared.currentConversation() else { return }
-            let stored = try DatabaseManager.shared.loadMessages(conversationId: convo.id)
-            conversationId = convo.id
-            messages = stored
-            ollamaHistory = stored.compactMap(Self.toOllamaMessage(_:))
-        } catch {
-            errorMessage = "Failed to load history: \(error.localizedDescription)"
-        }
-    }
-
-    /// Starts a brand new conversation: creates a fresh row in the database,
-    /// blanks the transcript, the Ollama history, the input field, and any
-    /// error banner. Bob forgets everything from the previous session except
-    /// his system prompt (which is re-injected on every request anyway).
-    private func newChat() {
-        // Wipe the outgoing conversation's spillout files so the fresh
-        // conversation starts with empty read_tool_output counters and
-        // no stale data on disk.
-        if let oldId = conversationId {
-            Task { await ToolOutputStore.shared.clearConversation(oldId) }
-        }
-        do {
-            let new = try DatabaseManager.shared.createConversation()
-            conversationId = new.id
-            messages = []
-            ollamaHistory = []
-            inputText = ""
-            errorMessage = nil
-            bubbleVisible = false
-        } catch {
-            errorMessage = "Failed to start new chat: \(error.localizedDescription)"
-        }
-    }
-
-    private func sendMessage() {
-        let text = inputText.trimmingCharacters(in: .whitespaces)
-        guard !text.isEmpty else { return }
-
-        // Local slash commands — intercepted before the agent loop sees them.
-        // `/clear` and `/new` both start a fresh conversation without asking Bob.
-        if text == "/clear" || text == "/new" {
-            newChat()
-            return
-        }
-
-        let convoId: String
-        do {
-            if let existing = conversationId {
-                convoId = existing
-            } else {
-                let new = try DatabaseManager.shared.createConversation()
-                conversationId = new.id
-                convoId = new.id
-            }
-        } catch {
-            errorMessage = "Failed to start conversation: \(error.localizedDescription)"
-            return
-        }
-
-        let userMsg = ChatMessage(role: .user, content: text)
-        messages.append(userMsg)
-        inputText = ""
-        errorMessage = nil
-
-        do {
-            try DatabaseManager.shared.saveMessage(userMsg, conversationId: convoId)
-        } catch {
-            errorMessage = "Failed to save message: \(error.localizedDescription)"
-        }
-
-        let previousHistoryCount      = ollamaHistory.count
-        let previousToolActivityCount = agentLoop.toolActivity.count
-
-        Task {
-            do {
-                let updatedHistory = try await agentLoop.process(
-                    userMessage: text,
-                    history: ollamaHistory,
-                    conversationId: convoId
-                )
-
-                let startIndex = previousHistoryCount + 1  // +1 for the user message we just added
-                if startIndex < updatedHistory.count {
-                    for i in startIndex..<updatedHistory.count {
-                        let ollamaMsg = updatedHistory[i]
-                        if ollamaMsg.role == "assistant" {
-                            if let toolCalls = ollamaMsg.toolCalls, !toolCalls.isEmpty {
-                                for call in toolCalls {
-                                    let chatMsg = ChatMessage(
-                                        role: .assistant,
-                                        content: "",
-                                        toolCalls: [call]
-                                    )
-                                    messages.append(chatMsg)
-                                    persist(chatMsg, in: convoId)
-                                }
-                            } else if !ollamaMsg.content.isEmpty {
-                                let chatMsg = ChatMessage(role: .assistant, content: ollamaMsg.content)
-                                messages.append(chatMsg)
-                                persist(chatMsg, in: convoId)
-                            }
-                        } else if ollamaMsg.role == "tool" {
-                            let chatMsg = ChatMessage(
-                                role: .tool,
-                                content: ollamaMsg.content,
-                                toolName: ollamaMsg.toolName
-                            )
-                            messages.append(chatMsg)
-                            persist(chatMsg, in: convoId)
-                        }
-                    }
-                }
-
-                ollamaHistory = updatedHistory
-
-                let newActivity = agentLoop.toolActivity.dropFirst(previousToolActivityCount)
-                for entry in newActivity {
-                    do {
-                        try DatabaseManager.shared.saveToolLog(
-                            conversationId: convoId,
-                            toolName: entry.toolName,
-                            inputJson: entry.input,
-                            outputText: entry.output,
-                            approvalLevel: entry.approval,
-                            approved: entry.approved,
-                            durationMs: entry.durationMs
-                        )
-                    } catch {
-                        errorMessage = "Failed to log tool: \(error.localizedDescription)"
-                    }
-                }
-            } catch {
-                errorMessage = error.localizedDescription
-            }
-        }
-    }
-
-    private func persist(_ msg: ChatMessage, in convoId: String) {
-        do {
-            try DatabaseManager.shared.saveMessage(msg, conversationId: convoId)
-        } catch {
-            errorMessage = "Failed to save message: \(error.localizedDescription)"
-        }
-    }
-
-    /// Convert a stored ChatMessage back into the Ollama wire-format so that
-    /// the agent loop can resume an existing conversation. The system prompt is
-    /// re-added by AgentLoop.process if missing, so we never store/replay it.
-    private static func toOllamaMessage(_ msg: ChatMessage) -> OllamaMessage? {
-        switch msg.role {
-        case .system:
-            return nil
-        case .user:
-            return .user(msg.content)
-        case .assistant:
-            return .assistant(msg.content, toolCalls: msg.toolCalls)
-        case .tool:
-            return .toolResult(name: msg.toolName ?? "unknown", content: msg.content)
-        }
-    }
 }

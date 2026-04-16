@@ -1,11 +1,23 @@
 import Foundation
 import GRDB
 
+enum DatabaseManagerError: LocalizedError {
+    case notInitialized
+
+    var errorDescription: String? {
+        switch self {
+        case .notInitialized:
+            return "Database is not initialized."
+        }
+    }
+}
+
 // GRDB record types
 struct ConversationRecord: Codable, FetchableRecord, PersistableRecord {
     static let databaseTableName = "conversations"
     var id: String
     var title: String
+    var isPinned: Bool
     var createdAt: Date
     var updatedAt: Date
 }
@@ -53,20 +65,33 @@ final class DatabaseManager {
 
     func setup() throws {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let dbDir = appSupport.appendingPathComponent("OllamaBob")
-        try FileManager.default.createDirectory(at: dbDir, withIntermediateDirectories: true)
-        let dbPath = dbDir.appendingPathComponent("ollamabob.sqlite").path
+        let dbURL = appSupport
+            .appendingPathComponent("OllamaBob", isDirectory: true)
+            .appendingPathComponent("ollamabob.sqlite", isDirectory: false)
+        try setup(at: dbURL)
+    }
 
-        dbQueue = try DatabaseQueue(path: dbPath)
-        try dbQueue?.write { db in
+    func setup(at dbURL: URL) throws {
+        try FileManager.default.createDirectory(
+            at: dbURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        let queue = try DatabaseQueue(path: dbURL.path)
+        try queue.write { db in
             try AppDatabase.createTables(db)
+            try Self.ensureConversationColumns(in: db)
         }
+        dbQueue = queue
+    }
+
+    func resetForTesting() {
+        dbQueue = nil
     }
 
     func canWrite() -> Bool {
-        guard dbQueue != nil else { return false }
         do {
-            try dbQueue?.write { db in
+            let queue = try requireQueue()
+            try queue.write { db in
                 try db.execute(sql: "SELECT 1")
             }
             return true
@@ -78,28 +103,141 @@ final class DatabaseManager {
     // MARK: - Conversations
 
     func createConversation(title: String = "New Chat") throws -> ConversationRecord {
+        let queue = try requireQueue()
         let record = ConversationRecord(
             id: UUID().uuidString,
             title: title,
+            isPinned: false,
             createdAt: Date(),
             updatedAt: Date()
         )
-        try dbQueue?.write { db in
+        try queue.write { db in
             try record.insert(db)
         }
         return record
     }
 
     func currentConversation() throws -> ConversationRecord? {
-        try dbQueue?.read { db in
+        let queue = try requireQueue()
+        return try queue.read { db in
             try ConversationRecord
                 .order(Column("updatedAt").desc)
                 .fetchOne(db)
         }
     }
 
+    func listConversations() throws -> [ConversationSummary] {
+        let queue = try requireQueue()
+        return try queue.read { db in
+            let records = try ConversationRecord
+                .order(Column("isPinned").desc, Column("updatedAt").desc, Column("createdAt").desc)
+                .fetchAll(db)
+            return records.map {
+                ConversationSummary(
+                    id: $0.id,
+                    title: $0.title,
+                    isPinned: $0.isPinned,
+                    createdAt: $0.createdAt,
+                    updatedAt: $0.updatedAt
+                )
+            }
+        }
+    }
+
+    func loadConversation(id: String) throws -> ConversationSnapshot? {
+        let queue = try requireQueue()
+        return try queue.read { db in
+            guard let record = try ConversationRecord.fetchOne(db, key: id) else {
+                return nil
+            }
+
+            return ConversationSnapshot(
+                id: record.id,
+                title: record.title,
+                isPinned: record.isPinned,
+                messages: try loadMessages(in: db, conversationId: id),
+                createdAt: record.createdAt,
+                updatedAt: record.updatedAt
+            )
+        }
+    }
+
+    func renameConversation(id: String, title: String) throws -> ConversationSummary? {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            throw ConversationStoreError.invalidTitle
+        }
+
+        let queue = try requireQueue()
+        return try queue.write { db in
+            guard let record = try ConversationRecord.fetchOne(db, key: id) else {
+                return nil
+            }
+            if record.title == trimmed {
+                return ConversationSummary(
+                    id: record.id,
+                    title: record.title,
+                    isPinned: record.isPinned,
+                    createdAt: record.createdAt,
+                    updatedAt: record.updatedAt
+                )
+            }
+
+            let now = Date()
+            try db.execute(
+                sql: "UPDATE conversations SET title = ?, updatedAt = ? WHERE id = ?",
+                arguments: [trimmed, now, id]
+            )
+
+            return try ConversationRecord.fetchOne(db, key: id).map {
+                ConversationSummary(
+                    id: $0.id,
+                    title: $0.title,
+                    isPinned: $0.isPinned,
+                    createdAt: $0.createdAt,
+                    updatedAt: $0.updatedAt
+                )
+            }
+        }
+    }
+
+    func setConversationPinned(id: String, isPinned: Bool) throws -> ConversationSummary? {
+        let queue = try requireQueue()
+        return try queue.write { db in
+            guard try ConversationRecord.fetchOne(db, key: id) != nil else {
+                return nil
+            }
+
+            try db.execute(
+                sql: "UPDATE conversations SET isPinned = ?, updatedAt = ? WHERE id = ?",
+                arguments: [isPinned, Date(), id]
+            )
+
+            return try ConversationRecord.fetchOne(db, key: id).map {
+                ConversationSummary(
+                    id: $0.id,
+                    title: $0.title,
+                    isPinned: $0.isPinned,
+                    createdAt: $0.createdAt,
+                    updatedAt: $0.updatedAt
+                )
+            }
+        }
+    }
+
+    func deleteConversation(id: String) throws -> Bool {
+        let queue = try requireQueue()
+        return try queue.write { db in
+            try db.execute(sql: "DELETE FROM toolLog WHERE conversationId = ?", arguments: [id])
+            try db.execute(sql: "DELETE FROM messages WHERE conversationId = ?", arguments: [id])
+            try db.execute(sql: "DELETE FROM conversations WHERE id = ?", arguments: [id])
+            return db.changesCount > 0
+        }
+    }
+
     func updateConversationTimestamp(_ id: String) throws {
-        try dbQueue?.write { db in
+        let queue = try requireQueue()
+        try queue.write { db in
             try db.execute(
                 sql: "UPDATE conversations SET updatedAt = ? WHERE id = ?",
                 arguments: [Date(), id]
@@ -110,6 +248,7 @@ final class DatabaseManager {
     // MARK: - Messages
 
     func saveMessage(_ msg: ChatMessage, conversationId: String) throws {
+        let queue = try requireQueue()
         var toolCallsJson: String?
         if let calls = msg.toolCalls {
             let data = try JSONEncoder().encode(calls)
@@ -125,40 +264,27 @@ final class DatabaseManager {
             toolName: msg.toolName,
             createdAt: msg.timestamp
         )
-        try dbQueue?.write { db in
+        let updatedAt = Date()
+        try queue.write { db in
             try record.insert(db)
+            try db.execute(
+                sql: "UPDATE conversations SET updatedAt = ? WHERE id = ?",
+                arguments: [updatedAt, conversationId]
+            )
         }
-        try updateConversationTimestamp(conversationId)
     }
 
     func loadMessages(conversationId: String) throws -> [ChatMessage] {
-        let records = try dbQueue?.read { db in
-            try MessageRecord
-                .filter(Column("conversationId") == conversationId)
-                .order(Column("createdAt").asc)
-                .fetchAll(db)
-        } ?? []
-
-        return records.compactMap { record in
-            guard let role = MessageRole(rawValue: record.role) else { return nil }
-            var toolCalls: [OllamaToolCall]?
-            if let json = record.toolCallsJson, let data = json.data(using: .utf8) {
-                toolCalls = try? JSONDecoder().decode([OllamaToolCall].self, from: data)
-            }
-            return ChatMessage(
-                id: record.id,
-                role: role,
-                content: record.content ?? "",
-                toolCalls: toolCalls,
-                toolName: record.toolName,
-                timestamp: record.createdAt
-            )
+        let queue = try requireQueue()
+        return try queue.read { db in
+            try loadMessages(in: db, conversationId: conversationId)
         }
     }
 
     // MARK: - Facts (Phase 4 sticky memory)
 
     func saveFact(category: String, content: String, source: String = "user-explicit") throws -> FactRecord {
+        let queue = try requireQueue()
         let now = Date()
         var record = FactRecord(
             id: UUID().uuidString,
@@ -169,22 +295,24 @@ final class DatabaseManager {
             updatedAt: now,
             lastUsedAt: now
         )
-        try dbQueue?.write { db in
+        try queue.write { db in
             try record.insert(db)
         }
         return record
     }
 
     func deleteFact(id: String) throws -> Bool {
-        let deleted = try dbQueue?.write { db -> Int in
+        let queue = try requireQueue()
+        let deleted = try queue.write { db -> Int in
             try db.execute(sql: "DELETE FROM facts WHERE id = ?", arguments: [id])
             return db.changesCount
         }
-        return (deleted ?? 0) > 0
+        return deleted > 0
     }
 
     func fetchFacts(category: String? = nil) throws -> [FactRecord] {
-        try dbQueue?.read { db in
+        let queue = try requireQueue()
+        return try queue.read { db in
             if let cat = category {
                 return try FactRecord
                     .filter(Column("category") == cat)
@@ -195,26 +323,28 @@ final class DatabaseManager {
                     .order(Column("category").asc, Column("updatedAt").desc)
                     .fetchAll(db)
             }
-        } ?? []
+        }
     }
 
     /// Fetch facts for prompt injection per V2 plan §4.3:
     /// all facts where lastUsedAt > 30 days ago OR category = 'identity'.
     func fetchActiveFacts() throws -> [FactRecord] {
         let thirtyDaysAgo = Calendar.current.date(byAdding: .day, value: -30, to: Date()) ?? Date()
-        return try dbQueue?.read { db in
+        let queue = try requireQueue()
+        return try queue.read { db in
             try FactRecord
                 .filter(Column("category") == "identity" || Column("lastUsedAt") > thirtyDaysAgo)
                 .order(Column("category").asc, Column("lastUsedAt").desc)
                 .fetchAll(db)
-        } ?? []
+        }
     }
 
     /// Touch lastUsedAt for a batch of fact ids (called once per turn
     /// after PromptComposer injects them into the system prompt).
     func touchFacts(ids: [String]) throws {
         guard !ids.isEmpty else { return }
-        try dbQueue?.write { db in
+        let queue = try requireQueue()
+        try queue.write { db in
             let placeholders = ids.map { _ in "?" }.joined(separator: ",")
             try db.execute(
                 sql: "UPDATE facts SET lastUsedAt = ? WHERE id IN (\(placeholders))",
@@ -234,6 +364,7 @@ final class DatabaseManager {
         approved: Bool,
         durationMs: Int
     ) throws {
+        let queue = try requireQueue()
         let record = ToolLogRecord(
             id: UUID().uuidString,
             conversationId: conversationId,
@@ -245,8 +376,48 @@ final class DatabaseManager {
             durationMs: durationMs,
             executedAt: Date()
         )
-        try dbQueue?.write { db in
+        try queue.write { db in
             try record.insert(db)
+        }
+    }
+
+    private func requireQueue() throws -> DatabaseQueue {
+        guard let dbQueue else {
+            throw DatabaseManagerError.notInitialized
+        }
+        return dbQueue
+    }
+
+    private static func ensureConversationColumns(in db: Database) throws {
+        let columns = try db.columns(in: "conversations").map(\.name)
+        if columns.contains("isPinned") == false {
+            try db.execute(sql: "ALTER TABLE conversations ADD COLUMN isPinned BOOLEAN NOT NULL DEFAULT 0")
+        }
+    }
+
+    private func loadMessageRecords(in db: Database, conversationId: String) throws -> [MessageRecord] {
+        try MessageRecord
+            .filter(Column("conversationId") == conversationId)
+            .order(Column("createdAt").asc)
+            .fetchAll(db)
+    }
+
+    private func loadMessages(in db: Database, conversationId: String) throws -> [ChatMessage] {
+        let records = try loadMessageRecords(in: db, conversationId: conversationId)
+        return records.compactMap { record in
+            guard let role = MessageRole(rawValue: record.role) else { return nil }
+            var toolCalls: [OllamaToolCall]?
+            if let json = record.toolCallsJson, let data = json.data(using: .utf8) {
+                toolCalls = try? JSONDecoder().decode([OllamaToolCall].self, from: data)
+            }
+            return ChatMessage(
+                id: record.id,
+                role: role,
+                content: record.content ?? "",
+                toolCalls: toolCalls,
+                toolName: record.toolName,
+                timestamp: record.createdAt
+            )
         }
     }
 }
