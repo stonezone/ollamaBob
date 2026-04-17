@@ -190,6 +190,22 @@ struct PreferencesView: View {
     private var toolsTab: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 2) {
+                // Built-in (first-class Swift) tools always come first — they
+                // don't depend on PATH probing and they're the core of what
+                // Bob can do out of the box.
+                builtinToolsHeader
+                ForEach(BuiltinToolsCatalog.categoryOrder, id: \.self) { category in
+                    builtinToolCategorySection(category)
+                }
+
+                Divider()
+                    .background(PreferencesView.phosphorGreen.opacity(0.2))
+                    .padding(.horizontal, 24)
+                    .padding(.top, 12)
+
+                // External CLI tools (jq, rg, yt-dlp, ffmpeg, …) probed at launch.
+                externalToolsHeader
+
                 if toolRuntime.isProbing {
                     HStack(spacing: 6) {
                         ProgressView().scaleEffect(0.6)
@@ -210,6 +226,97 @@ struct PreferencesView: View {
                 }
             }
             .padding(.vertical, 8)
+        }
+    }
+
+    private var builtinToolsHeader: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text("BUILT-IN TOOLS")
+                .font(.system(.caption, design: .monospaced).weight(.bold))
+                .foregroundColor(PreferencesView.phosphorGreen)
+            Text("Native Swift tools Bob can always call. Green = runs silently, orange = asks first.")
+                .font(.system(.caption2, design: .monospaced))
+                .foregroundColor(PreferencesView.textGrey)
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 8)
+    }
+
+    private var externalToolsHeader: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text("EXTERNAL CLI TOOLS")
+                .font(.system(.caption, design: .monospaced).weight(.bold))
+                .foregroundColor(PreferencesView.phosphorGreen)
+            Text("Detected on $PATH. Bob can call these via the shell tool.")
+                .font(.system(.caption2, design: .monospaced))
+                .foregroundColor(PreferencesView.textGrey)
+        }
+        .padding(.horizontal, 24)
+        .padding(.top, 12)
+        .padding(.bottom, 4)
+    }
+
+    private func builtinToolCategorySection(_ category: String) -> some View {
+        let entries = BuiltinToolsCatalog.entries(for: category)
+        return VStack(alignment: .leading, spacing: 1) {
+            if !entries.isEmpty {
+                Text(category.uppercased())
+                    .font(.system(.caption2, design: .monospaced).weight(.bold))
+                    .foregroundColor(PreferencesView.phosphorGreen.opacity(0.6))
+                    .padding(.horizontal, 24)
+                    .padding(.top, 8)
+                    .padding(.bottom, 2)
+                ForEach(entries, id: \.name) { entry in
+                    builtinToolRow(entry)
+                }
+            }
+        }
+    }
+
+    private func builtinToolRow(_ entry: BuiltinToolsCatalog.Entry) -> some View {
+        HStack(spacing: 8) {
+            Circle()
+                .fill(builtinDotColor(for: entry.posture))
+                .frame(width: 6, height: 6)
+
+            Text(entry.name)
+                .font(.system(.caption, design: .monospaced).weight(.medium))
+                .foregroundColor(.white)
+
+            Text(postureBadge(for: entry.posture))
+                .font(.system(size: 8, weight: .bold, design: .monospaced))
+                .foregroundColor(.black)
+                .padding(.horizontal, 4)
+                .padding(.vertical, 1)
+                .background(builtinDotColor(for: entry.posture))
+                .cornerRadius(2)
+
+            Spacer()
+
+            Text(entry.description)
+                .font(.system(.caption2, design: .monospaced))
+                .foregroundColor(PreferencesView.textGrey)
+                .lineLimit(1)
+                .truncationMode(.tail)
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 5)
+        .background(PreferencesView.bgPanel)
+    }
+
+    private func builtinDotColor(for posture: BuiltinToolsCatalog.ApprovalPosture) -> Color {
+        switch posture {
+        case .none:    return PreferencesView.phosphorGreen
+        case .modal:   return .orange
+        case .dynamic: return .yellow
+        }
+    }
+
+    private func postureBadge(for posture: BuiltinToolsCatalog.ApprovalPosture) -> String {
+        switch posture {
+        case .none:    return "AUTO"
+        case .modal:   return "ASK"
+        case .dynamic: return "DYN"
         }
     }
 
