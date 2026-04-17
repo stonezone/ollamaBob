@@ -95,6 +95,7 @@ struct BobsDeskView: View {
     @ObservedObject var agentLoop: AgentLoop
     @ObservedObject private var settings = AppSettings.shared
     @ObservedObject private var personaStore = PersonaStore.shared
+    @ObservedObject private var avatarStore = AvatarStore.shared
     @StateObject private var session: ChatSessionController
     @State private var breathPhase     = false
     @State private var bubbleVisible   = false
@@ -362,28 +363,26 @@ struct BobsDeskView: View {
 
     private var bobPortrait: some View {
         let mood = agentLoop.bobMood
-        let imageName = "bob_\(mood.rawValue)"
+        let pack = avatarStore.effectivePack(activePersonaID: personaStore.activePersonaID)
+        // Only the classic robot pack is a monochrome phosphor sprite where
+        // the persona tint reads as "different character." Cartoon packs are
+        // full-color and need the identity color (.white) so colorMultiply is
+        // a no-op — tinting them turns the shirt into sludge.
+        let tint = pack.id == AvatarPacks.classicRobot.id ? spriteAccent : Color.white
 
         return ZStack {
-            if let nsImage = NSImage(named: imageName) {
+            if let nsImage = pack.image(for: mood) {
                 Image(nsImage: nsImage)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
                     .frame(maxHeight: 140)
-                    .colorMultiply(spriteAccent)     // F7 — persona tint
-            } else if let url = Bundle.module.url(forResource: imageName, withExtension: "png"),
-                      let nsImage = NSImage(contentsOf: url) {
-                Image(nsImage: nsImage)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(maxHeight: 140)
-                    .colorMultiply(spriteAccent)     // F7 — persona tint
+                    .colorMultiply(tint)
             } else {
                 RoundedRectangle(cornerRadius: 12)
                     .fill(Self.bgPanel)
                     .frame(width: 140, height: 200)
                     .overlay(
-                        Text(imageName)
+                        Text("\(pack.filePrefix)\(mood.rawValue)")
                             .font(.caption2)
                             .foregroundColor(Self.phosphorGreen.opacity(0.6))
                     )

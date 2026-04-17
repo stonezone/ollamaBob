@@ -14,6 +14,7 @@ struct PreferencesView: View {
     @ObservedObject var settings = AppSettings.shared
     @ObservedObject var toolRuntime = ToolRuntime.shared
     @ObservedObject var personaStore = PersonaStore.shared
+    @ObservedObject var avatarStore = AvatarStore.shared
     @State private var selectedTab = 0
     @State private var facts: [FactRecord] = []
     @State private var factsError: String?
@@ -35,7 +36,8 @@ struct PreferencesView: View {
                 case 2:  personasTab
                 case 3:  memoryTab
                 case 4:  shortcutsTab
-                case 5:  helpTab
+                case 5:  appearanceTab
+                case 6:  helpTab
                 default: generalTab
                 }
             }
@@ -53,7 +55,8 @@ struct PreferencesView: View {
             tabButton("Persona", index: 2)
             tabButton("Memory", index: 3)
             tabButton("Shortcuts", index: 4)
-            tabButton("Help", index: 5)
+            tabButton("Look", index: 5)
+            tabButton("Help", index: 6)
             Spacer()
         }
         .padding(.horizontal, 24)
@@ -699,6 +702,124 @@ struct PreferencesView: View {
                 RoundedRectangle(cornerRadius: 4, style: .continuous)
                     .stroke(PreferencesView.phosphorGreen.opacity(0.5), lineWidth: 0.5)
             )
+    }
+
+    // MARK: - Appearance Tab
+
+    private var appearanceTab: some View {
+        let followOn = avatarStore.followPersona
+        let personaPack = AvatarPacks.defaultForPersona(personaStore.activePersonaID)
+        return ScrollView {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Pick Bob's look. Turn on \"Follow persona\" and the sprite auto-matches whichever voice you're using.")
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundColor(PreferencesView.textGrey)
+                    .padding(.horizontal, 24)
+                    .padding(.top, 10)
+                    .padding(.bottom, 6)
+
+                followPersonaToggle(currentPack: personaPack)
+
+                Text("AVATAR PACKS")
+                    .font(.system(.caption2, design: .monospaced).weight(.bold))
+                    .foregroundColor(PreferencesView.phosphorGreen.opacity(0.6))
+                    .padding(.horizontal, 24)
+                    .padding(.top, 12)
+                    .padding(.bottom, 4)
+
+                ForEach(AvatarPacks.all) { pack in
+                    avatarPackRow(pack, disabled: followOn)
+                }
+            }
+            .padding(.bottom, 12)
+        }
+    }
+
+    private func followPersonaToggle(currentPack: AvatarPack) -> some View {
+        HStack(alignment: .center, spacing: 16) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Follow active persona")
+                    .font(.system(.body, design: .monospaced))
+                    .foregroundColor(.white)
+                Text(avatarStore.followPersona
+                     ? "Auto: \(currentPack.name)"
+                     : "Manual pick below")
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundColor(PreferencesView.textGrey)
+            }
+            Spacer()
+            Toggle("", isOn: $avatarStore.followPersona)
+                .toggleStyle(.switch)
+                .tint(PreferencesView.phosphorGreen)
+                .labelsHidden()
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 14)
+        .background(PreferencesView.bgPanel)
+    }
+
+    private func avatarPackRow(_ pack: AvatarPack, disabled: Bool) -> some View {
+        let isActive = !disabled && pack.id == avatarStore.activePackID
+        return Button(action: {
+            if !disabled { avatarStore.activePackID = pack.id }
+        }) {
+            HStack(alignment: .center, spacing: 12) {
+                // Thumbnail preview
+                ZStack {
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(PreferencesView.bgBlack)
+                        .frame(width: 56, height: 56)
+                    if let nsImage = pack.image(for: .idle) {
+                        let tint: Color = pack.id == AvatarPacks.classicRobot.id
+                            ? PreferencesView.phosphorGreen
+                            : Color.white
+                        Image(nsImage: nsImage)
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 50, height: 50)
+                            .colorMultiply(tint)
+                    } else {
+                        Text("?")
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundColor(PreferencesView.textGrey)
+                    }
+                }
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(isActive ? PreferencesView.phosphorGreen : Color.white.opacity(0.08),
+                                lineWidth: isActive ? 1.5 : 0.5)
+                )
+
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 6) {
+                        Text(pack.name)
+                            .font(.system(.caption, design: .monospaced).weight(.medium))
+                            .foregroundColor(isActive ? .white : PreferencesView.textGrey)
+                        if isActive {
+                            Text("ACTIVE")
+                                .font(.system(size: 8, weight: .bold, design: .monospaced))
+                                .foregroundColor(PreferencesView.bgBlack)
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 1)
+                                .background(PreferencesView.phosphorGreen)
+                                .cornerRadius(2)
+                        }
+                    }
+                    Text(pack.summary)
+                        .font(.system(.caption2, design: .monospaced))
+                        .foregroundColor(PreferencesView.textGrey.opacity(0.8))
+                        .lineLimit(2)
+                }
+
+                Spacer()
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 8)
+            .background(isActive ? PreferencesView.phosphorGreen.opacity(0.06) : PreferencesView.bgPanel)
+        }
+        .buttonStyle(.plain)
+        .disabled(disabled)
+        .opacity(disabled ? 0.45 : 1.0)
     }
 
     // MARK: - Help Tab
