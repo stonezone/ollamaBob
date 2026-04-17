@@ -303,6 +303,17 @@ final class AgentLoop: ObservableObject {
         case "list_facts":
             return executeListFacts(args: args)
 
+        case "clipboard_read":
+            return await ClipboardTool.read()
+
+        case "clipboard_write":
+            let content = args["content"] as? String ?? ""
+            return await ClipboardTool.write(content: content)
+
+        case "applescript":
+            let script = args["script"] as? String ?? ""
+            return await AppleScriptTool.execute(script: script)
+
         default:
             return .failure(tool: name, error: "Tool not implemented", durationMs: 0)
         }
@@ -595,6 +606,16 @@ final class AgentLoop: ObservableObject {
             return "Forget fact: \(args["id"] as? String ?? "?")"
         case "list_facts":
             return "List facts\(args["category"].map { " (\($0))" } ?? "")"
+        case "clipboard_read":
+            return "Read clipboard"
+        case "clipboard_write":
+            let content = args["content"] as? String ?? ""
+            let preview = content.prefix(60)
+            return "Copy to clipboard (\(content.count) chars): \(preview)\(content.count > 60 ? "…" : "")"
+        case "applescript":
+            let script = (args["script"] as? String ?? "").replacingOccurrences(of: "\n", with: " ")
+            let preview = script.prefix(120)
+            return "Run AppleScript: \(preview)\(script.count > 120 ? "…" : "")"
         default:
             return "\(name): \(args)"
         }

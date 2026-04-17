@@ -172,6 +172,37 @@ struct ToolRegistry {
         )
         reqs["forget"] = ["id"]
 
+        // clipboard_read — pull the current pasteboard contents.
+        defs["clipboard_read"] = .tool(
+            name: "clipboard_read",
+            description: "Read the current macOS clipboard (pasteboard) as text. Use when the user says things like 'summarize what I just copied' or 'what's on my clipboard'.",
+            properties: [:],
+            required: []
+        )
+        reqs["clipboard_read"] = []
+
+        // clipboard_write — put text onto the pasteboard (modal-gated).
+        defs["clipboard_write"] = .tool(
+            name: "clipboard_write",
+            description: "Replace the macOS clipboard contents with the given text. Overwrites whatever was there, so requires user approval.",
+            properties: [
+                "content": ("string", "Text to copy to the clipboard.")
+            ],
+            required: ["content"]
+        )
+        reqs["clipboard_write"] = ["content"]
+
+        // applescript — run an AppleScript through NSAppleScript (modal).
+        defs["applescript"] = .tool(
+            name: "applescript",
+            description: "Run an AppleScript to drive scriptable macOS apps (Messages, Mail, Calendar, Reminders, Notes, Finder, Safari tabs, Music, etc.). No shell escape, no keystrokes, no admin privileges. Each call requires user approval.",
+            properties: [
+                "script": ("string", "The AppleScript source to execute.")
+            ],
+            required: ["script"]
+        )
+        reqs["applescript"] = ["script"]
+
         // list_facts — list all remembered facts, optionally filtered.
         defs["list_facts"] = .tool(
             name: "list_facts",

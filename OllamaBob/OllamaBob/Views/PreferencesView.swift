@@ -725,6 +725,10 @@ struct PreferencesView: View {
                     • Run commands — "which version of ffmpeg do I have?"
                     • Write files — "save this snippet to \
                     ~/Desktop/note.md" (asks for approval first)
+                    • Use your clipboard — "summarize what I just copied" \
+                    or "put this command on my clipboard"
+                    • Drive Mac apps via AppleScript — "add 'milk' to my \
+                    Reminders" or "create a note titled 'meeting' in Notes"
                     • Remember things — tell Bob to "remember I prefer tabs \
                     over spaces" and he will carry that across sessions
                     """)
@@ -735,6 +739,11 @@ struct PreferencesView: View {
                     • "Find every Swift file that imports SwiftUI."
                     • "What's the current version of Ollama?"
                     • "Save a README stub to ~/Desktop/readme.md."
+                    • "Summarize what I just copied." (reads clipboard)
+                    • "Copy a sample curl command to my clipboard."
+                    • "Add 'call dentist' to my Reminders." (AppleScript)
+                    • "What songs are in my Music library right now?" \
+                    (AppleScript)
                     • "Remember that my GitHub is @zackjordan."
                     • "What did we talk about last Tuesday?" (searches past \
                     conversations)
@@ -769,13 +778,15 @@ struct PreferencesView: View {
                 helpSection(title: "Approvals", body: """
                     Bob never auto-approves writes. Anytime he asks to run \
                     a command that modifies your system — rm, mv, brew \
-                    install, write_file, chmod, etc. — a native approval \
-                    dialog blocks until you OK it. Reads in your home, \
-                    Downloads, Desktop, and Documents don't need approval.
+                    install, write_file, chmod, clipboard_write, \
+                    applescript, etc. — a native approval dialog blocks \
+                    until you OK it. Reads in your home, Downloads, \
+                    Desktop, and Documents don't need approval.
 
                     Some commands are always forbidden (sudo, rm -rf /, \
-                    mkfs, curl | sh). Bob tells the model those aren't \
-                    allowed and moves on.
+                    mkfs, curl | sh, AppleScript with shell-escape or \
+                    synthetic keystrokes). Bob tells the model those \
+                    aren't allowed and moves on.
                     """)
 
                 helpSection(title: "Sounds & voice", body: """

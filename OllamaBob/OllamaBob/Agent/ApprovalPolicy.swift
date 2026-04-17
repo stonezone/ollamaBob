@@ -67,6 +67,19 @@ enum ApprovalPolicy {
             // user can see what Bob is about to delete.
             return .modal
 
+        case "clipboard_read":
+            // Reading what the user already put there themselves.
+            return .none
+
+        case "clipboard_write":
+            // Silently replaces whatever the user had copied — always ask.
+            return .modal
+
+        case "applescript":
+            // Can touch any scriptable app. Always ask, even for read-only
+            // scripts — the user should see the source before it runs.
+            return .modal
+
         case "shell":
             return shellApproval(arguments)
 
