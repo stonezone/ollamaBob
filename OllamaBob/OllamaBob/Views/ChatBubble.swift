@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ChatBubble: View {
     let message: ChatMessage
+    @ObservedObject private var settings = AppSettings.shared
 
     var body: some View {
         HStack {
@@ -19,7 +20,7 @@ struct ChatBubble: View {
 
                 Text(timeString)
                     .font(.caption2)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(.secondary.opacity(textOpacity))
             }
 
             if message.role != .user { Spacer(minLength: 40) }
@@ -32,7 +33,7 @@ struct ChatBubble: View {
         Text(message.content)
             .padding(10)
             .background(bubbleColor)
-            .foregroundColor(message.role == .user ? .white : .primary)
+            .foregroundColor(message.role == .user ? .white.opacity(textOpacity) : .primary.opacity(textOpacity))
             .cornerRadius(12)
             .textSelection(.enabled)
     }
@@ -53,14 +54,18 @@ struct ChatBubble: View {
                         .foregroundColor(.accentColor)
                     Text(toolCallSummary(call))
                         .font(.system(.caption, design: .monospaced))
-                        .foregroundColor(.secondary)
+                        .foregroundColor(.secondary.opacity(textOpacity))
                         .lineLimit(1)
                         .truncationMode(.middle)
                 }
             }
+
+            if let thinking = sanitizedThinking, thinking.isEmpty == false {
+                transcriptPanel(title: "thinking", content: thinking)
+            }
         }
         .padding(8)
-        .background(Color(.controlBackgroundColor).opacity(0.6))
+        .background(Color(.controlBackgroundColor).opacity(surfaceOpacity * 0.75))
         .cornerRadius(8)
     }
 
@@ -69,8 +74,17 @@ struct ChatBubble: View {
         switch call.function.name {
         case "shell":     return (args["command"] as? String) ?? ""
         case "read_file": return (args["path"] as? String) ?? ""
+        case "write_file": return (args["path"] as? String) ?? ""
+        case "list_directory": return (args["path"] as? String) ?? ""
+        case "move_file":
+            return [args["source"] as? String, args["destination"] as? String]
+                .compactMap { $0 }
+                .joined(separator: " -> ")
         case "search_files": return (args["pattern"] as? String) ?? ""
         case "web_search":   return (args["query"] as? String) ?? ""
+        case "git_status": return "repo status"
+        case "git_diff":
+            return ((args["path"] as? String).flatMap { $0.isEmpty ? nil : $0 }) ?? "repo diff"
         default: return ""
         }
     }
@@ -83,24 +97,60 @@ struct ChatBubble: View {
                 Text(message.toolName ?? "tool")
                     .font(.caption.bold())
             }
-            .foregroundColor(.secondary)
+            .foregroundColor(.secondary.opacity(textOpacity))
 
-            Text(message.content)
-                .font(.system(.caption, design: .monospaced))
-                .lineLimit(8)
-                .padding(8)
-                .background(Color(.controlBackgroundColor))
-                .cornerRadius(8)
-                .textSelection(.enabled)
+            transcriptPanel(title: nil, content: sanitizedToolContent)
         }
     }
 
     private var bubbleColor: Color {
         switch message.role {
-        case .user: return .accentColor
-        case .assistant: return Color(.controlBackgroundColor)
-        case .tool: return Color(.controlBackgroundColor)
+        case .user: return .accentColor.opacity(surfaceOpacity)
+        case .assistant: return Color(.controlBackgroundColor).opacity(surfaceOpacity)
+        case .tool: return Color(.controlBackgroundColor).opacity(surfaceOpacity)
         case .system: return .clear
+        }
+    }
+
+    private var surfaceOpacity: Double {
+        settings.chatWindowOpacity
+    }
+
+    private var textOpacity: Double {
+        min(1.0, settings.chatWindowOpacity + 0.1)
+    }
+
+    private var sanitizedThinking: String? {
+        let trimmed = message.thinking?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed?.isEmpty == false ? trimmed : nil
+    }
+
+    private var sanitizedToolContent: String {
+        message.content
+            .replacingOccurrences(of: "<untrusted>", with: "")
+            .replacingOccurrences(of: "</untrusted>", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func transcriptPanel(title: String?, content: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if let title {
+                Text(title)
+                    .font(.caption2.bold())
+                    .foregroundColor(.secondary.opacity(textOpacity))
+            }
+
+            ScrollView(.vertical, showsIndicators: true) {
+                Text(content)
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundColor(.primary.opacity(textOpacity))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .textSelection(.enabled)
+            }
+            .frame(maxHeight: 180)
+            .padding(8)
+            .background(Color(.controlBackgroundColor).opacity(surfaceOpacity * 0.9))
+            .cornerRadius(8)
         }
     }
 

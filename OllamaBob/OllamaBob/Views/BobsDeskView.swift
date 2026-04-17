@@ -15,18 +15,42 @@ private struct WindowTransparencyConfigurator: NSViewRepresentable {
             guard let window = view.window else { return }
             window.isOpaque = false
             window.backgroundColor = .clear
-            window.hasShadow = false
+            // Keep the macOS-drawn shadow — it's the only visual cue for
+            // the resize edges now that we've removed every other chrome.
+            window.hasShadow = true
             window.titlebarAppearsTransparent = true
             window.titleVisibility = .hidden
             window.styleMask.insert(.fullSizeContentView)
+            // Resizable mask must be present for edge-drag resizing to work.
+            window.styleMask.insert(.resizable)
             window.standardWindowButton(.closeButton)?.isHidden = true
             window.standardWindowButton(.miniaturizeButton)?.isHidden = true
             window.standardWindowButton(.zoomButton)?.isHidden = true
             window.isMovableByWindowBackground = true
+            window.minSize = NSSize(width: 420, height: 520)
         }
         return view
     }
 
+    func updateNSView(_ nsView: NSView, context: Context) {}
+}
+
+// MARK: - Drag Handle
+
+/// Transparent strip at the top of the chat window. Mouse-down initiates
+/// `window.performDrag(with:)` so the user can move the chromeless window
+/// by grabbing this area — without it, SwiftUI content covers every pixel
+/// and `isMovableByWindowBackground` has no empty region to activate on.
+private struct WindowDragHandle: NSViewRepresentable {
+    final class DragView: NSView {
+        override func mouseDown(with event: NSEvent) {
+            window?.performDrag(with: event)
+        }
+        override func resetCursorRects() {
+            addCursorRect(bounds, cursor: .openHand)
+        }
+    }
+    func makeNSView(context: Context) -> NSView { DragView() }
     func updateNSView(_ nsView: NSView, context: Context) {}
 }
 
@@ -106,6 +130,8 @@ struct BobsDeskView: View {
     // F3 — memory count
     @State private var factCount = 0
     @State private var memoryRefreshTimer: Timer?
+    @State private var totalMemoryLabel = "--"
+    @State private var processMemoryTimer: Timer?
 
     // F4 — compaction notices (and greeting) rendered inline
     @State private var systemNotices: [SystemNotice] = []
@@ -116,6 +142,7 @@ struct BobsDeskView: View {
 
     // F6 — real-time tool feedback
     @State private var currentToolName: String? = nil
+    @State private var autoScrollEnabled = true
 
     // F8 — sound: true once the user has dispatched at least one message
     @State private var hasProcessed = false
@@ -163,6 +190,14 @@ struct BobsDeskView: View {
         agentLoop.isProcessing ? agentLoop.bobMood.rawValue : "idle"
     }
 
+    private var surfaceOpacity: Double {
+        settings.chatWindowOpacity
+    }
+
+    private var textOpacity: Double {
+        min(1.0, settings.chatWindowOpacity + 0.1)
+    }
+
     // F7 — persona sprite tint
     private var spriteAccent: Color {
         let rgb = GreetingLines.accentColor(for: personaStore.activePersonaID)
@@ -202,15 +237,21 @@ struct BobsDeskView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // Invisible top strip — grab anywhere up here to drag the window.
+            // Needed because the chromeless NSWindow has no titlebar handle
+            // and every other row is interactive SwiftUI that swallows clicks.
+            WindowDragHandle()
+                .frame(height: 18)
+
             if settings.showBob {
                 portraitSection
                     .frame(height: 240)
-                    .padding(.top, 8)
+                    .padding(.top, 4)
             }
 
             chatContainer
         }
-        .frame(width: 520, height: 760)
+        .frame(minWidth: 420, idealWidth: 520, minHeight: 520, idealHeight: 760)
         .background(WindowTransparencyConfigurator())
         .task { session.loadExistingConversationIfNeeded() }
         // Sync bubble visibility whenever messages change
@@ -282,6 +323,8 @@ struct BobsDeskView: View {
         .onAppear {
             refreshFactCount()
             startMemoryRefreshTimer()
+            refreshProcessMemory()
+            startProcessMemoryTimer()
             // Delay greeting slightly so loadExistingConversationIfNeeded() can run first
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                 maybeGreet()
@@ -303,6 +346,8 @@ struct BobsDeskView: View {
         .onDisappear {
             memoryRefreshTimer?.invalidate()
             memoryRefreshTimer = nil
+            processMemoryTimer?.invalidate()
+            processMemoryTimer = nil
             Heartbeat.shared.stop()
         }
         // Heartbeat: append inline notice whenever the controller publishes a new one.
@@ -325,31 +370,40 @@ struct BobsDeskView: View {
                 .frame(maxHeight: .infinity)
 
             Divider()
-                .background(Self.phosphorGreen.opacity(0.15))
+                .background(Self.phosphorGreen.opacity(0.15 * surfaceOpacity))
 
             inputRow
                 .frame(height: 48)
         }
         .background(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Self.bgBlack.opacity(settings.chatWindowOpacity))
-                .shadow(color: .black.opacity(0.4), radius: 12, x: 0, y: 4)
+                .fill(Self.bgBlack.opacity(surfaceOpacity))
+                .shadow(color: .black.opacity(0.4 * surfaceOpacity), radius: 12, x: 0, y: 4)
         )
     }
 
     // MARK: - Portrait Section
 
     private var portraitSection: some View {
-        ZStack(alignment: .bottom) {
-            VStack(spacing: 0) {
-                speechBubbleView
-                    .padding(.bottom, 6)
-                    .opacity(bubbleVisible ? 1 : 0)
-                    .animation(.easeInOut(duration: 0.3), value: bubbleVisible)
+        VStack(spacing: 0) {
+            // Above-Bob slot: speech bubble when idle (final answer),
+            // transparent "invisible thoughts" while he's working. They
+            // share this real estate so the UI never feels cluttered —
+            // only the one that's relevant right now is visible.
+            ZStack(alignment: .bottom) {
+                thoughtsOverlay
+                    .allowsHitTesting(false)
 
-                bobPortrait
-                    .padding(.bottom, 8)
+                speechBubbleView
+                    .opacity(bubbleVisible && !agentLoop.isProcessing ? 1 : 0)
+                    .animation(.easeInOut(duration: 0.3), value: bubbleVisible)
+                    .animation(.easeInOut(duration: 0.2), value: agentLoop.isProcessing)
             }
+            .frame(maxWidth: 360, minHeight: 56)
+            .padding(.bottom, 6)
+
+            bobPortrait
+                .padding(.bottom, 8)
         }
         .frame(maxWidth: .infinity)
         .onAppear {
@@ -377,14 +431,15 @@ struct BobsDeskView: View {
                     .aspectRatio(contentMode: .fit)
                     .frame(maxHeight: 140)
                     .colorMultiply(tint)
+                    .opacity(surfaceOpacity)
             } else {
                 RoundedRectangle(cornerRadius: 12)
-                    .fill(Self.bgPanel)
+                    .fill(Self.bgPanel.opacity(surfaceOpacity))
                     .frame(width: 140, height: 200)
                     .overlay(
                         Text("\(pack.filePrefix)\(mood.rawValue)")
                             .font(.caption2)
-                            .foregroundColor(Self.phosphorGreen.opacity(0.6))
+                            .foregroundColor(Self.phosphorGreen.opacity(0.6 * textOpacity))
                     )
             }
         }
@@ -405,6 +460,57 @@ struct BobsDeskView: View {
         return breathPhase ? 1.015 : 1.0
     }
 
+    // MARK: - Thoughts Overlay
+
+    /// Up to three of the most recent tool activity lines rendered as
+    /// transparent floating text. No background, no border — just the words.
+    /// Oldest fades to near-zero, newest is brightest. Empty while idle.
+    private var thoughtsOverlay: some View {
+        let lines = currentThoughtLines
+        return VStack(alignment: .leading, spacing: 3) {
+            ForEach(Array(lines.enumerated()), id: \.offset) { idx, line in
+                // Newest line = index (count-1); oldest = 0. Fade older lines.
+                let ageRatio = Double(idx) / Double(max(lines.count - 1, 1))
+                let opacity = 0.25 + 0.55 * ageRatio
+                Text(line)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundColor(Self.phosphorGreen.opacity(opacity * textOpacity))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .shadow(color: .black.opacity(0.5), radius: 1, x: 0, y: 0)
+            }
+        }
+        .padding(.horizontal, 14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .opacity(agentLoop.isProcessing ? 1 : 0)
+        .animation(.easeInOut(duration: 0.25), value: agentLoop.isProcessing)
+        .animation(.easeInOut(duration: 0.25), value: lines)
+    }
+
+    /// Flatten recent tool activity into display-ready one-liners. Skips
+    /// synthetic entries (compaction, prompt_compose) so the user only sees
+    /// real reasoning/tool traffic. If a tool is currently running (set from
+    /// `onChange(toolActivity.count)`), prepend an in-progress marker so the
+    /// overlay has something to show even before the first entry settles.
+    private var currentThoughtLines: [String] {
+        let recent = agentLoop.toolActivity
+            .filter { $0.toolName != "compaction" && $0.toolName != "prompt_compose" }
+            .suffix(3)
+        var lines = recent.map { entry in
+            let input = entry.input.replacingOccurrences(of: "\n", with: " ")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let summary = input.isEmpty ? "" : " \(input)"
+            let line = "⚡ \(entry.toolName)\(summary)"
+            return line.count > 80 ? String(line.prefix(80)) + "…" : line
+        }
+        // While Bob is processing but hasn't logged activity yet, show that
+        // he's working so the overlay isn't blank for the opening beat.
+        if agentLoop.isProcessing && lines.isEmpty {
+            lines = ["⚡ thinking…"]
+        }
+        return lines
+    }
+
     // MARK: - Speech Bubble
 
     private var speechBubbleView: some View {
@@ -415,12 +521,12 @@ struct BobsDeskView: View {
 
         return ZStack {
             SpeechBubbleShape()
-                .fill(Color.white)
+                .fill(Color.white.opacity(surfaceOpacity))
             SpeechBubbleShape()
-                .stroke(Color.black, lineWidth: 1.5)
+                .stroke(Color.black.opacity(surfaceOpacity), lineWidth: 1.5)
             Text(display)
                 .font(.system(size: 11))
-                .foregroundColor(.black)
+                .foregroundColor(.black.opacity(textOpacity))
                 .multilineTextAlignment(.leading)
                 .lineLimit(5)
                 .padding(.horizontal, 14)
@@ -437,27 +543,34 @@ struct BobsDeskView: View {
         HStack(spacing: 0) {
             Text(">_ ")
                 .font(.system(size: 11, design: .monospaced))
-                .foregroundColor(Self.phosphorGreen)
+                .foregroundColor(Self.phosphorGreen.opacity(textOpacity))
             Text(agentLoop.currentModel)
                 .font(.system(size: 11, design: .monospaced))
-                .foregroundColor(Self.phosphorGreen)
+                .foregroundColor(Self.phosphorGreen.opacity(textOpacity))
             Text("  \u{2022}  ")
                 .font(.system(size: 11, design: .monospaced))
-                .foregroundColor(Self.phosphorGreen)
+                .foregroundColor(Self.phosphorGreen.opacity(textOpacity))
+            Text("ram \(totalMemoryLabel)")
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundColor(Self.phosphorGreen.opacity(textOpacity))
+                .help("Combined resident memory of the Bob app and the Ollama server")
+            Text("  \u{2022}  ")
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundColor(Self.phosphorGreen.opacity(textOpacity))
             Text(statusWord)
                 .font(.system(size: 11, design: .monospaced))
-                .foregroundColor(Self.phosphorGreen)
+                .foregroundColor(Self.phosphorGreen.opacity(textOpacity))
 
             // F3 — memory count badge (clickable, opens preferences)
             Text("  \u{2022}  ")
                 .font(.system(size: 11, design: .monospaced))
-                .foregroundColor(Self.phosphorGreen)
+                .foregroundColor(Self.phosphorGreen.opacity(textOpacity))
             Button {
                 openWindow(id: "preferences")
             } label: {
                 Text("\u{1F9E0} \(factCount) facts")
                     .font(.system(size: 11, design: .monospaced))
-                    .foregroundColor(Self.phosphorGreen)
+                    .foregroundColor(Self.phosphorGreen.opacity(textOpacity))
             }
             .buttonStyle(.plain)
 
@@ -465,16 +578,18 @@ struct BobsDeskView: View {
 
             // F12 — persona quick-swap badge
             PersonaQuickSwapMenu()
+                .opacity(textOpacity)
                 .padding(.trailing, 6)
 
             ConversationManagerView(session: session)
                 .foregroundColor(Self.phosphorGreen)
+                .opacity(textOpacity)
                 .padding(.trailing, 10)
 
             // Context meter
             Text("ctx \(Int(contextFraction * 100))%")
                 .font(.system(size: 11, design: .monospaced))
-                .foregroundColor(contextColor)
+                .foregroundColor(contextColor.opacity(textOpacity))
                 .padding(.trailing, 10)
         }
     }
@@ -488,7 +603,7 @@ struct BobsDeskView: View {
                     ForEach(interleavedItems) { item in
                         switch item.content {
                         case .message(let msg):
-                            if msg.role != .system {
+                            if Self.shouldShowInTranscript(msg) {
                                 ChatBubble(message: msg)
                                     .id(msg.id)
                             }
@@ -497,36 +612,21 @@ struct BobsDeskView: View {
                                 .id(notice.id.uuidString)
                         }
                     }
-
-                    // F6 — real-time tool feedback chip
-                    if agentLoop.isProcessing {
-                        HStack {
-                            ProgressView()
-                                .scaleEffect(0.7)
-                                .tint(Self.phosphorGreen)
-                            if let toolName = currentToolName, !toolName.isEmpty {
-                                Text("\u{2699} \(toolName)\u{2026}")
-                                    .font(.caption)
-                                    .foregroundColor(Self.phosphorGreen.opacity(0.8))
-                            } else {
-                                Text("Bob is thinking...")
-                                    .font(.caption)
-                                    .foregroundColor(Self.phosphorGreen.opacity(0.8))
-                            }
-                            Spacer()
-                        }
-                        .padding(.horizontal, 12)
-                        .id("thinking")
-                    }
                 }
                 .padding(.vertical, 8)
             }
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 6)
+                    .onChanged { _ in autoScrollEnabled = false }
+            )
             .onChange(of: session.messages.count) {
+                guard autoScrollEnabled else { return }
                 withAnimation {
                     proxy.scrollTo(session.messages.last?.id ?? "thinking", anchor: .bottom)
                 }
             }
             .onChange(of: systemNotices.count) {
+                guard autoScrollEnabled else { return }
                 withAnimation {
                     if let last = systemNotices.last {
                         proxy.scrollTo(last.id.uuidString, anchor: .bottom)
@@ -540,6 +640,26 @@ struct BobsDeskView: View {
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             errorBanner
+        }
+    }
+
+    // MARK: - Transcript Filter
+
+    /// Pure tool-invocation wrappers (assistant turn with only tool_calls, no
+    /// visible body) live in the thoughts overlay. Everything else — user
+    /// messages, tool output blocks like `df -h` results, and Bob's final
+    /// replies — stays in the transcript so the chat reads like a terminal.
+    private static func shouldShowInTranscript(_ msg: ChatMessage) -> Bool {
+        switch msg.role {
+        case .system: return false
+        case .tool:   return true
+        case .user:   return true
+        case .assistant:
+            let body = msg.content.trimmingCharacters(in: .whitespacesAndNewlines)
+            if body.isEmpty, let calls = msg.toolCalls, !calls.isEmpty {
+                return false
+            }
+            return true
         }
     }
 
@@ -575,12 +695,12 @@ struct BobsDeskView: View {
                 Spacer()
                 Text(notice.text)
                     .font(.system(size: 13))
-                    .foregroundColor(.white.opacity(0.85))
+                    .foregroundColor(.white.opacity(0.85 * textOpacity))
                     .padding(.horizontal, 14)
                     .padding(.vertical, 8)
                     .background(
                         RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .fill(Self.bgPanel)
+                            .fill(Self.bgPanel.opacity(surfaceOpacity))
                     )
                     .padding(.trailing, 8)
             }
@@ -591,7 +711,7 @@ struct BobsDeskView: View {
                 Text(notice.text)
                     .font(.system(size: 11))
                     .italic()
-                    .foregroundColor(Color.white.opacity(0.30))
+                    .foregroundColor(Color.white.opacity(0.30 * textOpacity))
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 3)
@@ -605,16 +725,16 @@ struct BobsDeskView: View {
         if let notice = agentLoop.modelSwitchNotice {
             HStack {
                 Image(systemName: "arrow.triangle.2.circlepath")
-                    .foregroundColor(.blue)
+                    .foregroundColor(.blue.opacity(textOpacity))
                 Text("Switched model: \(notice.from) \u{2192} \(notice.to)")
                     .font(.caption)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(.secondary.opacity(textOpacity))
                 Spacer()
                 Button("Dismiss") { agentLoop.modelSwitchNotice = nil }
                     .font(.caption)
             }
             .padding(8)
-            .background(Self.bgPanel)
+            .background(Self.bgPanel.opacity(surfaceOpacity))
         }
     }
 
@@ -623,16 +743,16 @@ struct BobsDeskView: View {
         if let error = session.errorMessage {
             HStack {
                 Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundColor(.orange)
+                    .foregroundColor(.orange.opacity(textOpacity))
                 Text(error)
                     .font(.caption)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(.secondary.opacity(textOpacity))
                 Spacer()
                 Button("Dismiss") { session.dismissError() }
                     .font(.caption)
             }
             .padding(8)
-            .background(Self.bgPanel)
+            .background(Self.bgPanel.opacity(surfaceOpacity))
         }
     }
 
@@ -642,7 +762,7 @@ struct BobsDeskView: View {
         HStack(spacing: 8) {
             TextField("Ask Bob\u{2026}", text: $session.inputText)
                 .textFieldStyle(.plain)
-                .foregroundColor(.white)
+                .foregroundColor(.white.opacity(textOpacity))
                 .font(.system(size: 13))
                 .onSubmit { sendWithSound() }
                 .padding(.horizontal, 4)
@@ -652,7 +772,7 @@ struct BobsDeskView: View {
             Button(action: { sendWithSound() }) {
                 Image(systemName: "arrow.up.circle.fill")
                     .font(.title2)
-                    .foregroundColor(Self.phosphorGreen)
+                    .foregroundColor(Self.phosphorGreen.opacity(textOpacity))
             }
             .buttonStyle(.plain)
             .disabled(session.inputText.trimmingCharacters(in: .whitespaces).isEmpty || agentLoop.isProcessing)
@@ -671,6 +791,7 @@ struct BobsDeskView: View {
     private func sendWithSound() {
         let text = session.inputText.trimmingCharacters(in: .whitespaces)
         guard !text.isEmpty else { return }
+        autoScrollEnabled = true
         // /clear and /new don't involve the agent loop, skip sounds for them
         let isLocalCommand = text == "/clear" || text == "/new"
         if !isLocalCommand {
@@ -729,6 +850,32 @@ struct BobsDeskView: View {
         }
         RunLoop.main.add(t, forMode: .common)
         memoryRefreshTimer = t
+    }
+
+    private func refreshProcessMemory() {
+        Task {
+            let snapshot = await ProcessMemorySampler.sample()
+            await MainActor.run {
+                let total: Int64? = {
+                    switch (snapshot.bobBytes, snapshot.ollamaBytes) {
+                    case let (b?, o?): return b + o
+                    case let (b?, nil): return b
+                    case let (nil, o?): return o
+                    case (nil, nil):   return nil
+                    }
+                }()
+                totalMemoryLabel = ProcessMemorySampler.format(total)
+            }
+        }
+    }
+
+    private func startProcessMemoryTimer() {
+        processMemoryTimer?.invalidate()
+        let timer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { _ in
+            self.refreshProcessMemory()
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        processMemoryTimer = timer
     }
 
     // MARK: - F4 Compaction detection

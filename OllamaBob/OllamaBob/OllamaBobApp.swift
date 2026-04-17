@@ -59,6 +59,7 @@ struct OllamaBobApp: App {
         }
         .defaultSize(width: 520, height: 760)
         .windowStyle(.hiddenTitleBar)
+        .windowResizability(.contentMinSize)
         .commands {
             // F5 — keyboard shortcuts for chat actions and persona switching
             CommandMenu("Chat") {
@@ -109,8 +110,8 @@ struct OllamaBobApp: App {
         Window("Preferences", id: "preferences") {
             PreferencesView()
         }
-        .defaultSize(width: 480, height: 340)
-        .windowResizability(.contentSize)
+        .defaultSize(width: 520, height: 640)
+        .windowResizability(.contentMinSize)
 
         Window("Welcome to OllamaBob", id: "onboarding") {
             OnboardingView()

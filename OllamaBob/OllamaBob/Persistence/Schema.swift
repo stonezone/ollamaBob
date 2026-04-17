@@ -17,6 +17,7 @@ enum AppDatabase {
                 .references("conversations", onDelete: .cascade)
             t.column("role", .text).notNull()
             t.column("content", .text)
+            t.column("thinking", .text)
             t.column("toolCallsJson", .text)
             t.column("toolName", .text)
             t.column("createdAt", .datetime).defaults(sql: "CURRENT_TIMESTAMP")

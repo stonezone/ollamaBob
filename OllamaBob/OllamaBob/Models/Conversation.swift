@@ -21,6 +21,7 @@ struct ChatMessage: Identifiable, Sendable {
     let id: String
     let role: MessageRole
     let content: String
+    let thinking: String?
     let toolCalls: [OllamaToolCall]?
     let toolName: String?
     let timestamp: Date
@@ -29,6 +30,7 @@ struct ChatMessage: Identifiable, Sendable {
         id: String = UUID().uuidString,
         role: MessageRole,
         content: String,
+        thinking: String? = nil,
         toolCalls: [OllamaToolCall]? = nil,
         toolName: String? = nil,
         timestamp: Date = Date()
@@ -36,6 +38,7 @@ struct ChatMessage: Identifiable, Sendable {
         self.id = id
         self.role = role
         self.content = content
+        self.thinking = thinking
         self.toolCalls = toolCalls
         self.toolName = toolName
         self.timestamp = timestamp

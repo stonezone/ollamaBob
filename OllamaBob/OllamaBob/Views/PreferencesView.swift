@@ -29,37 +29,42 @@ struct PreferencesView: View {
             Divider().background(PreferencesView.phosphorGreen.opacity(0.3))
             tabBar
             Divider().background(PreferencesView.phosphorGreen.opacity(0.15))
-            Group {
-                switch selectedTab {
-                case 0:  generalTab
-                case 1:  toolsTab
-                case 2:  personasTab
-                case 3:  memoryTab
-                case 4:  shortcutsTab
-                case 5:  appearanceTab
-                case 6:  helpTab
-                default: generalTab
+            // Wrap every tab in a scroll view so the window can't clip the
+            // last row even at minimum height. Individual tabs that already
+            // had internal ScrollViews are fine — nested scrolls still work.
+            ScrollView {
+                Group {
+                    switch selectedTab {
+                    case 0:  generalTab
+                    case 1:  toolsTab
+                    case 2:  personasTab
+                    case 3:  memoryTab
+                    case 4:  shortcutsTab
+                    case 5:  appearanceTab
+                    case 6:  helpTab
+                    default: generalTab
+                    }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            Spacer(minLength: 0)
             footer
         }
-        .frame(width: 480, height: 460)
+        .frame(minWidth: 520, idealWidth: 520, minHeight: 520, idealHeight: 640)
         .background(PreferencesView.bgBlack)
     }
 
     private var tabBar: some View {
-        HStack(spacing: 0) {
+        HStack(spacing: 2) {
             tabButton("General", index: 0)
             tabButton("Tools", index: 1)
             tabButton("Persona", index: 2)
             tabButton("Memory", index: 3)
-            tabButton("Shortcuts", index: 4)
+            tabButton("Keys", index: 4)
             tabButton("Look", index: 5)
             tabButton("Help", index: 6)
             Spacer()
         }
-        .padding(.horizontal, 24)
+        .padding(.horizontal, 16)
         .padding(.vertical, 6)
     }
 

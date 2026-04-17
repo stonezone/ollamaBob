@@ -119,6 +119,74 @@ final class ChatSessionControllerTests: XCTestCase {
         XCTAssertEqual(database.savedToolLogs.count, 1)
     }
 
+    func testToolBackedTurnPreservesThinkingAndShortensFinalAnswer() async {
+        let processExpectation = expectation(description: "tool-backed turn processed")
+        let database = FakeDatabase(
+            createdConversation: ConversationRecord(
+                id: "convo-disk",
+                title: "New Chat",
+                isPinned: false,
+                createdAt: Date(),
+                updatedAt: Date()
+            )
+        )
+        let agentLoop = FakeAgentLoop()
+        let toolCall = OllamaToolCall(
+            id: "call-1",
+            function: OllamaToolCall.FunctionCall(
+                index: 0,
+                name: "shell",
+                arguments: .object(["command": .string("df -h")])
+            )
+        )
+        agentLoop.onProcess = { message, history, conversationId in
+            processExpectation.fulfill()
+            return [
+                .system("system"),
+                .user(message),
+                OllamaMessage(
+                    role: "assistant",
+                    content: "",
+                    thinking: "Need the filesystem free space first.",
+                    toolCalls: [toolCall]
+                ),
+                .toolResult(
+                    name: "shell",
+                    content: """
+                    <untrusted>
+                    Filesystem      Size   Used  Avail Capacity iused ifree %iused Mounted on
+                    /dev/disk3s1s1 926Gi  12Gi 456Gi     3%  458k  4.3G    0%   /
+                    </untrusted>
+                    """
+                ),
+                .assistant(
+                    """
+                    Oh dear sir, Bob has the result right here for you sir.
+
+                    Basically sir, from the main system volume it looks like you got wery good space, sir!
+
+                    For the root filesystem ('/'), sir, you have about **456Gi** free. The usage is only at **3%**, sir.
+                    """
+                )
+            ]
+        }
+
+        let controller = ChatSessionController(
+            agentLoop: agentLoop,
+            database: database,
+            toolOutputStore: FakeToolOutputStore()
+        )
+        controller.inputText = "how much space is left on my drive?"
+
+        controller.sendCurrentInput(allowsLocalCommands: false)
+        await fulfillment(of: [processExpectation], timeout: 1.0)
+        await Task.yield()
+
+        XCTAssertEqual(controller.messages.map(\.role), [.user, .assistant, .tool, .assistant])
+        XCTAssertEqual(controller.messages[1].thinking, "Need the filesystem free space first.")
+        XCTAssertEqual(controller.messages[3].content, "Sir, you have about **456Gi** free.")
+    }
+
     func testLoadExistingConversationIfNeededOnlyLoadsOnce() {
         let initialConversation = ConversationRecord(
             id: "convo-1",

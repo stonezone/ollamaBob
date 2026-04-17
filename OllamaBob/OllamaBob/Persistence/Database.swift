@@ -28,6 +28,7 @@ struct MessageRecord: Codable, FetchableRecord, PersistableRecord {
     var conversationId: String
     var role: String
     var content: String?
+    var thinking: String?
     var toolCallsJson: String?
     var toolName: String?
     var createdAt: Date
@@ -80,6 +81,7 @@ final class DatabaseManager {
         try queue.write { db in
             try AppDatabase.createTables(db)
             try Self.ensureConversationColumns(in: db)
+            try Self.ensureMessageColumns(in: db)
         }
         dbQueue = queue
     }
@@ -260,6 +262,7 @@ final class DatabaseManager {
             conversationId: conversationId,
             role: msg.role.rawValue,
             content: msg.content,
+            thinking: msg.thinking,
             toolCallsJson: toolCallsJson,
             toolName: msg.toolName,
             createdAt: msg.timestamp
@@ -395,6 +398,13 @@ final class DatabaseManager {
         }
     }
 
+    private static func ensureMessageColumns(in db: Database) throws {
+        let columns = try db.columns(in: "messages").map(\.name)
+        if columns.contains("thinking") == false {
+            try db.execute(sql: "ALTER TABLE messages ADD COLUMN thinking TEXT")
+        }
+    }
+
     private func loadMessageRecords(in db: Database, conversationId: String) throws -> [MessageRecord] {
         try MessageRecord
             .filter(Column("conversationId") == conversationId)
@@ -414,6 +424,7 @@ final class DatabaseManager {
                 id: record.id,
                 role: role,
                 content: record.content ?? "",
+                thinking: record.thinking,
                 toolCalls: toolCalls,
                 toolName: record.toolName,
                 timestamp: record.createdAt

@@ -10,6 +10,7 @@ final class DatabaseManagerTests: XCTestCase {
     func testSaveMessageUpdatesCurrentConversationOrdering() throws {
         try withTemporaryDatabase { manager in
             let older = try manager.createConversation(title: "Older")
+            usleep(20_000)
             let newer = try manager.createConversation(title: "Newer")
 
             XCTAssertEqual(try manager.currentConversation()?.id, newer.id)
