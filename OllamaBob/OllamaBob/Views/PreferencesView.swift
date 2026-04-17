@@ -34,6 +34,7 @@ struct PreferencesView: View {
                 case 1:  toolsTab
                 case 2:  personasTab
                 case 3:  memoryTab
+                case 4:  shortcutsTab
                 default: generalTab
                 }
             }
@@ -50,6 +51,7 @@ struct PreferencesView: View {
             tabButton("Tools", index: 1)
             tabButton("Persona", index: 2)
             tabButton("Memory", index: 3)
+            tabButton("Shortcuts", index: 4)
             Spacer()
         }
         .padding(.horizontal, 24)
@@ -111,6 +113,12 @@ struct PreferencesView: View {
                 subtitle: "Play pre-recorded voice lines on greetings and completions (Mumbai Bob only)",
                 isOn: $settings.bobVoiceEnabled,
                 dimmed: !settings.soundsEnabled
+            )
+            toggleRow(
+                title: "Heartbeat",
+                subtitle: "Bob pipes up every 10–20 minutes when idle so he feels alive (Mumbai Bob only)",
+                isOn: $settings.heartbeatEnabled,
+                dimmed: !settings.soundsEnabled || !settings.bobVoiceEnabled
             )
             sliderRow(
                 title: "Chat window transparency",
@@ -602,5 +610,92 @@ struct PreferencesView: View {
         .padding(.horizontal, 24)
         .padding(.vertical, 14)
         .background(PreferencesView.bgPanel)
+    }
+
+    // MARK: - Shortcuts Tab
+
+    private var shortcutsTab: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                shortcutSection(
+                    title: "Chat",
+                    items: [
+                        ("⌘N", "New conversation"),
+                        ("⌘L", "Focus the input field"),
+                        ("⌘K", "Focus the input field (same as ⌘L)"),
+                        ("⏎",  "Send message"),
+                        ("⇧⏎", "New line in message"),
+                    ]
+                )
+                shortcutSection(
+                    title: "Persona",
+                    items: [
+                        ("⌘1", "Switch to Mumbai Bob"),
+                        ("⌘2", "Switch to Terse Engineer"),
+                        ("⌘3", "Switch to Grumpy Linus"),
+                        ("⌘4", "Switch to Helpful Assistant"),
+                        ("⌘5", "Switch to Blank"),
+                    ]
+                )
+                shortcutSection(
+                    title: "App",
+                    items: [
+                        ("⌘,", "Open Preferences"),
+                        ("⌘W", "Close window"),
+                        ("⌘Q", "Quit OllamaBob"),
+                    ]
+                )
+                Text("Tip: Bob responds to ⌘-shortcuts anywhere in the app, even with the sprite visible but no message focused.")
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundColor(PreferencesView.textGrey)
+                    .padding(.horizontal, 24)
+                    .padding(.top, 4)
+                    .padding(.bottom, 12)
+            }
+            .padding(.top, 8)
+        }
+    }
+
+    private func shortcutSection(title: String, items: [(String, String)]) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(title)
+                .font(.system(.caption, design: .monospaced).weight(.bold))
+                .foregroundColor(PreferencesView.phosphorGreen)
+                .padding(.horizontal, 24)
+                .padding(.top, 10)
+                .padding(.bottom, 6)
+
+            VStack(spacing: 1) {
+                ForEach(items, id: \.0) { key, label in
+                    HStack(spacing: 12) {
+                        shortcutKey(key)
+                        Text(label)
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundColor(.white.opacity(0.85))
+                        Spacer()
+                    }
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 8)
+                    .background(PreferencesView.bgPanel)
+                }
+            }
+        }
+    }
+
+    private func shortcutKey(_ key: String) -> some View {
+        Text(key)
+            .font(.system(.caption, design: .monospaced).weight(.bold))
+            .foregroundColor(PreferencesView.phosphorGreen)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .frame(minWidth: 44)
+            .background(
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .fill(PreferencesView.phosphorGreen.opacity(0.12))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .stroke(PreferencesView.phosphorGreen.opacity(0.5), lineWidth: 0.5)
+            )
     }
 }

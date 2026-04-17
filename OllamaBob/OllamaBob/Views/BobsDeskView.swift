@@ -286,10 +286,21 @@ struct BobsDeskView: View {
                 maybeGreet()
                 updateBubbleForGreeting()
             }
+            // Heartbeat: ticks every minute, fires at most once per 10–20 min
+            // when Bob is idle and the app is frontmost.
+            Heartbeat.shared.start(agentIsProcessing: { [agentLoop] in
+                agentLoop.isProcessing
+            })
         }
         .onDisappear {
             memoryRefreshTimer?.invalidate()
             memoryRefreshTimer = nil
+            Heartbeat.shared.stop()
+        }
+        // Heartbeat: append inline notice whenever the controller publishes a new one.
+        .onReceive(Heartbeat.shared.$lastNoticeAt) { at in
+            guard let at, let text = Heartbeat.shared.lastNoticeText else { return }
+            systemNotices.append(SystemNotice(text: text, at: at))
         }
     }
 
@@ -663,6 +674,7 @@ struct BobsDeskView: View {
                 BobSayings.play(.idleReturn)
             }
             lastSendAt = Date()
+            Heartbeat.shared.registerActivity()
         }
         session.sendCurrentInput(allowsLocalCommands: true)
     }

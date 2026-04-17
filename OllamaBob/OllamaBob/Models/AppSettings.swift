@@ -43,6 +43,14 @@ final class AppSettings: ObservableObject {
         didSet { UserDefaults.standard.set(bobVoiceEnabled, forKey: Keys.bobVoiceEnabled) }
     }
 
+    /// Occasional "heartbeat" pings: when Bob has been idle for a while and the
+    /// app is frontmost, he plays a filler/boast clip and appends a one-line
+    /// system notice — so he feels alive even when the user isn't actively
+    /// chatting. Defaults OFF because it's the most intrusive auto-behavior.
+    @Published var heartbeatEnabled: Bool {
+        didSet { UserDefaults.standard.set(heartbeatEnabled, forKey: Keys.heartbeatEnabled) }
+    }
+
     private enum Keys {
         static let showBob           = "showBob"
         static let chatWindowOpacity = "chatWindowOpacity"
@@ -50,6 +58,7 @@ final class AppSettings: ObservableObject {
         static let betaToolsEnabled  = "betaToolsEnabled"
         static let soundsEnabled     = "soundsEnabled"
         static let bobVoiceEnabled   = "bobVoiceEnabled"
+        static let heartbeatEnabled  = "heartbeatEnabled"
     }
 
     private init() {
@@ -75,12 +84,16 @@ final class AppSettings: ObservableObject {
         if defaults.object(forKey: Keys.bobVoiceEnabled) == nil {
             defaults.set(true, forKey: Keys.bobVoiceEnabled)
         }
+        if defaults.object(forKey: Keys.heartbeatEnabled) == nil {
+            defaults.set(false, forKey: Keys.heartbeatEnabled)
+        }
 
         self.showBob           = defaults.bool(forKey: Keys.showBob)
         self.chatWindowOpacity = defaults.double(forKey: Keys.chatWindowOpacity)
         self.betaToolsEnabled  = defaults.bool(forKey: Keys.betaToolsEnabled)
         self.soundsEnabled     = defaults.bool(forKey: Keys.soundsEnabled)
         self.bobVoiceEnabled   = defaults.bool(forKey: Keys.bobVoiceEnabled)
+        self.heartbeatEnabled  = defaults.bool(forKey: Keys.heartbeatEnabled)
 
         let storedCtx = defaults.integer(forKey: Keys.numCtx)
         self.numCtx = AppConfig.numCtxAllowed.contains(storedCtx) ? storedCtx : AppConfig.numCtx

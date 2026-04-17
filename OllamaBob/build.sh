@@ -71,6 +71,13 @@ if [[ -d "$RESOURCE_BUNDLE" ]]; then
     cp -R "$RESOURCE_BUNDLE" "$CONTENTS/Resources/OllamaBob_OllamaBob.bundle"
 fi
 
+# Ad-hoc re-sign so macOS launchd spawns the app after new framework imports.
+# Without this, `open` can fail with "Launchd job spawn failed" (error 162)
+# when a freshly-rebuilt binary gains a new linked framework (AVFoundation,
+# EventKit, etc.) — the cached signature becomes invalid. See
+# .learnings/ERRORS.md (ERR-20260417-001).
+codesign --force --deep --sign - "$APP_BUNDLE" > /dev/null 2>&1 || true
+
 echo "Build complete: $APP_BUNDLE"
 
 if [[ "$1" == "--run" || "$1" == "-r" ]]; then
