@@ -35,6 +35,7 @@ struct PreferencesView: View {
                 case 2:  personasTab
                 case 3:  memoryTab
                 case 4:  shortcutsTab
+                case 5:  helpTab
                 default: generalTab
                 }
             }
@@ -52,6 +53,7 @@ struct PreferencesView: View {
             tabButton("Persona", index: 2)
             tabButton("Memory", index: 3)
             tabButton("Shortcuts", index: 4)
+            tabButton("Help", index: 5)
             Spacer()
         }
         .padding(.horizontal, 24)
@@ -697,5 +699,136 @@ struct PreferencesView: View {
                 RoundedRectangle(cornerRadius: 4, style: .continuous)
                     .stroke(PreferencesView.phosphorGreen.opacity(0.5), lineWidth: 0.5)
             )
+    }
+
+    // MARK: - Help Tab
+
+    private var helpTab: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                helpSection(title: "What is Bob?", body: """
+                    Bob is a local-first AI assistant that runs entirely on your \
+                    Mac. He talks to Ollama at localhost:11434, owns his own \
+                    agent loop, and executes tools (shell, file read, file \
+                    search, web search, file write) with native approval \
+                    dialogs before any risky action. No cloud, no data leaves \
+                    your machine (except web searches, which use Brave).
+                    """)
+
+                helpSection(title: "What can Bob do?", body: """
+                    Everyday things you can ask:
+                    • Inspect your filesystem — "what's in ~/Downloads sorted \
+                    by size?"
+                    • Read a file — "show me my .zshrc"
+                    • Search across files — "find every TODO in this repo"
+                    • Search the web — "what's new with Swift 6 concurrency?"
+                    • Run commands — "which version of ffmpeg do I have?"
+                    • Write files — "save this snippet to \
+                    ~/Desktop/note.md" (asks for approval first)
+                    • Remember things — tell Bob to "remember I prefer tabs \
+                    over spaces" and he will carry that across sessions
+                    """)
+
+                helpSection(title: "Example prompts", body: """
+                    • "List the 10 largest files in my Downloads."
+                    • "Read ~/.gitconfig and explain my aliases."
+                    • "Find every Swift file that imports SwiftUI."
+                    • "What's the current version of Ollama?"
+                    • "Save a README stub to ~/Desktop/readme.md."
+                    • "Remember that my GitHub is @zackjordan."
+                    • "What did we talk about last Tuesday?" (searches past \
+                    conversations)
+                    """)
+
+                helpSection(title: "Personas", body: """
+                    Bob has five voices. Switch with ⌘1–5 or from the \
+                    persona menu in the status line:
+                    • Mumbai Bob — earnest, eager, "sir" everywhere (default, \
+                    the only persona with voice lines)
+                    • Terse Engineer — short, technical, no fluff
+                    • Grumpy Linus — prickly, opinionated, direct
+                    • Helpful Assistant — cheerful, balanced, neutral
+                    • Blank — no persona voice, pure tool-use
+
+                    Switching persona changes the system prompt and Bob's \
+                    tone; the underlying capabilities stay the same.
+                    """)
+
+                helpSection(title: "Memory", body: """
+                    Bob remembers facts you tell him across sessions. \
+                    Anything like "remember X" or "my name is Y" is saved \
+                    as a fact and re-injected into future prompts.
+
+                    • Max ~400 chars per fact.
+                    • Oldest facts get trimmed after 30 days, except \
+                    identity facts (name, role, preferences).
+                    • View, edit, delete, export, or import facts in the \
+                    Memory tab.
+                    """)
+
+                helpSection(title: "Approvals", body: """
+                    Bob never auto-approves writes. Anytime he asks to run \
+                    a command that modifies your system — rm, mv, brew \
+                    install, write_file, chmod, etc. — a native approval \
+                    dialog blocks until you OK it. Reads in your home, \
+                    Downloads, Desktop, and Documents don't need approval.
+
+                    Some commands are always forbidden (sudo, rm -rf /, \
+                    mkfs, curl | sh). Bob tells the model those aren't \
+                    allowed and moves on.
+                    """)
+
+                helpSection(title: "Sounds & voice", body: """
+                    Three audio features, each with its own toggle:
+                    • Play sounds — subtle Tink/Pop on send & receive
+                    • Bob speaks — pre-recorded Mumbai Bob lines on \
+                    greetings, completions, and idle-returns (50 clips \
+                    bundled, zero API calls at runtime)
+                    • Heartbeat — Bob pipes up every 10–20 minutes when \
+                    idle so he feels alive (off by default)
+
+                    All three are Mumbai-Bob-only — other personas stay \
+                    silent so the voice doesn't clash.
+                    """)
+
+                helpSection(title: "Troubleshooting", body: """
+                    • "Ollama not running" — start it with `ollama serve` \
+                    or run `brew services start ollama`.
+                    • "Tool failing repeatedly" — Bob falls back from \
+                    gemma4:e4b to qwen3:14b after 3 parse failures. Check \
+                    the bubble for a model-switch notification.
+                    • "Chat feels sluggish" — reduce the num_ctx slider in \
+                    General; smaller context means faster turns on lower \
+                    memory.
+                    • "I don't hear Bob's voice" — check General → "Bob \
+                    speaks" is on, and you're on Mumbai Bob persona.
+                    """)
+
+                helpSection(title: "Learn more", body: """
+                    • Project plan: docs/OLLAMABOB_V1.1_PLAN.md
+                    • V2 status: OLLAMA_CLAUDE.md
+                    • Your memory is in ~/Library/Application \
+                    Support/OllamaBob/ollamabob.sqlite
+                    • Issues or feedback? Drop a note in the repo.
+                    """)
+            }
+            .padding(.top, 4)
+            .padding(.bottom, 12)
+        }
+    }
+
+    private func helpSection(title: String, body: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.system(.caption, design: .monospaced).weight(.bold))
+                .foregroundColor(PreferencesView.phosphorGreen)
+            Text(body)
+                .font(.system(.caption, design: .monospaced))
+                .foregroundColor(.white.opacity(0.85))
+                .fixedSize(horizontal: false, vertical: true)
+                .lineSpacing(2)
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 10)
     }
 }

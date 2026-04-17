@@ -291,6 +291,13 @@ struct BobsDeskView: View {
             Heartbeat.shared.start(agentIsProcessing: { [agentLoop] in
                 agentLoop.isProcessing
             })
+            // First-launch onboarding — opens once, then never again
+            // unless the user picks "Welcome / Tour…" from the menu bar.
+            if !UserDefaults.standard.bool(forKey: OnboardingView.completionKey) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                    openWindow(id: "onboarding")
+                }
+            }
         }
         .onDisappear {
             memoryRefreshTimer?.invalidate()

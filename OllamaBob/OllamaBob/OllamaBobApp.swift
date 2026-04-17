@@ -23,6 +23,10 @@ struct OllamaBobApp: App {
             }
             .keyboardShortcut(",")
 
+            Button("Welcome / Tour…") {
+                openWindow(id: "onboarding")
+            }
+
             Divider()
 
             HStack {
@@ -106,6 +110,12 @@ struct OllamaBobApp: App {
             PreferencesView()
         }
         .defaultSize(width: 480, height: 340)
+        .windowResizability(.contentSize)
+
+        Window("Welcome to OllamaBob", id: "onboarding") {
+            OnboardingView()
+        }
+        .defaultSize(width: 520, height: 520)
         .windowResizability(.contentSize)
     }
 }
