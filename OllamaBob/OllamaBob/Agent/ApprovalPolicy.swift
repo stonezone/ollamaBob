@@ -80,6 +80,27 @@ enum ApprovalPolicy {
             // scripts — the user should see the source before it runs.
             return .modal
 
+        case "speak":
+            return .none
+
+        case "weather":
+            return .none
+
+        case "unit_convert":
+            return .none
+
+        case "ocr":
+            return .none
+
+        case "image_convert":
+            return .modal
+
+        case "youtube_search":
+            return .none
+
+        case "youtube_download":
+            return .modal
+
         case "shell":
             return shellApproval(arguments)
 

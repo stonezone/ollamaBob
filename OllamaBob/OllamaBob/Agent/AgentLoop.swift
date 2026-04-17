@@ -314,6 +314,47 @@ final class AgentLoop: ObservableObject {
             let script = args["script"] as? String ?? ""
             return await AppleScriptTool.execute(script: script)
 
+        case "ocr":
+            let path = args["path"] as? String
+            return await OCRTool.execute(path: path)
+
+        case "speak":
+            let text = args["text"] as? String ?? ""
+            let voice = args["voice"] as? String
+            return await SayTool.execute(text: text, voice: voice)
+
+        case "weather":
+            let location = args["location"] as? String ?? ""
+            return await WeatherTool.execute(location: location)
+
+        case "unit_convert":
+            let from = args["from"] as? String ?? ""
+            let to = args["to"] as? String ?? ""
+            return await UnitsTool.execute(from: from, to: to)
+
+        case "image_convert":
+            let inputPath = args["input_path"] as? String ?? ""
+            let outputPath = args["output_path"] as? String ?? ""
+            let format = args["format"] as? String ?? ""
+            let maxDimension = Self.parseInt(args["max_dimension"])
+            return await SipsTool.execute(
+                inputPath: inputPath,
+                outputPath: outputPath,
+                format: format,
+                maxDimension: maxDimension
+            )
+
+        case "youtube_search":
+            let query = args["query"] as? String ?? ""
+            let limit = Self.parseInt(args["limit"])
+            return await YouTubeTool.search(query: query, limit: limit)
+
+        case "youtube_download":
+            let url = args["url"] as? String ?? ""
+            let format = args["format"] as? String ?? ""
+            let outputDir = args["output_dir"] as? String
+            return await YouTubeTool.download(url: url, format: format, outputDir: outputDir)
+
         default:
             return .failure(tool: name, error: "Tool not implemented", durationMs: 0)
         }
@@ -616,6 +657,20 @@ final class AgentLoop: ObservableObject {
             let script = (args["script"] as? String ?? "").replacingOccurrences(of: "\n", with: " ")
             let preview = script.prefix(120)
             return "Run AppleScript: \(preview)\(script.count > 120 ? "…" : "")"
+        case "ocr":
+            return args["path"].map { "OCR file: \($0)" } ?? "OCR clipboard image"
+        case "speak":
+            return "Speak: \(String((args["text"] as? String ?? "").prefix(60)))"
+        case "weather":
+            return "Weather: \(args["location"] as? String ?? "?")"
+        case "unit_convert":
+            return "Convert \(args["from"] as? String ?? "?") → \(args["to"] as? String ?? "?")"
+        case "image_convert":
+            return "Convert image: \(args["input_path"] as? String ?? "?") → \(args["output_path"] as? String ?? "?")"
+        case "youtube_search":
+            return "YouTube search: \(args["query"] as? String ?? "?")"
+        case "youtube_download":
+            return "YouTube download: \(args["url"] as? String ?? "?")"
         default:
             return "\(name): \(args)"
         }

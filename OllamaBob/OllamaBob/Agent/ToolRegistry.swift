@@ -214,6 +214,85 @@ struct ToolRegistry {
         )
         reqs["list_facts"] = []
 
+        // ocr — extract text from image path or clipboard image.
+        defs["ocr"] = .tool(
+            name: "ocr",
+            description: "Extract text from an image using Apple's Vision framework. If `path` is provided, OCR that file. If omitted, OCR the current clipboard image (works with screenshots). Returns the recognized text.",
+            properties: [
+                "path": ("string", "Optional absolute path to a local image file. If omitted, reads clipboard image.")
+            ],
+            required: []
+        )
+        reqs["ocr"] = []
+
+        defs["speak"] = .tool(
+            name: "speak",
+            description: "Speak the given text aloud using macOS built-in text-to-speech. Optional `voice` parameter picks a named macOS voice (e.g. 'Samantha'). Returns immediately once playback starts.",
+            properties: [
+                "text": ("string", "Text to speak aloud."),
+                "voice": ("string", "Optional macOS voice name.")
+            ],
+            required: ["text"]
+        )
+        reqs["speak"] = ["text"]
+
+        defs["weather"] = .tool(
+            name: "weather",
+            description: "Get the current weather for a location. Pass a city ('Honolulu'), airport code ('HNL'), postal code, or 'lat,lon'. Returns a one-line summary.",
+            properties: [
+                "location": ("string", "City, airport code, postal code, or lat,lon pair.")
+            ],
+            required: ["location"]
+        )
+        reqs["weather"] = ["location"]
+
+        defs["unit_convert"] = .tool(
+            name: "unit_convert",
+            description: "Convert between units using the macOS `units` tool. Works for length, mass, temperature, volume, currency (with stale rates), and many more. Pass `from` as a value+unit ('5 miles') and `to` as a unit name ('kilometers').",
+            properties: [
+                "from": ("string", "Value plus source unit (for example '5 miles')."),
+                "to": ("string", "Target unit (for example 'kilometers').")
+            ],
+            required: ["from", "to"]
+        )
+        reqs["unit_convert"] = ["from", "to"]
+
+        defs["image_convert"] = .tool(
+            name: "image_convert",
+            description: "Convert or resize an image using the native macOS `sips` tool. `format` is jpeg/png/tiff/heic/gif/bmp. Optional `max_dimension` proportionally shrinks so neither side exceeds that many pixels. Requires approval (writes a file).",
+            properties: [
+                "input_path": ("string", "Absolute source image path."),
+                "output_path": ("string", "Absolute destination image path."),
+                "format": ("string", "Output format: jpeg/png/tiff/heic/gif/bmp."),
+                "max_dimension": ("integer", "Optional max dimension in pixels.")
+            ],
+            required: ["input_path", "output_path", "format"]
+        )
+        reqs["image_convert"] = ["input_path", "output_path", "format"]
+
+        defs["youtube_search"] = .tool(
+            name: "youtube_search",
+            description: "Search YouTube and return up to 10 candidate videos with title, uploader, duration, and URL. Use this before `youtube_download` to let the user pick the right result. Requires yt-dlp to be installed (brew install yt-dlp).",
+            properties: [
+                "query": ("string", "Free-text YouTube search query."),
+                "limit": ("integer", "Optional result count from 1 to 10 (default 5).")
+            ],
+            required: ["query"]
+        )
+        reqs["youtube_search"] = ["query"]
+
+        defs["youtube_download"] = .tool(
+            name: "youtube_download",
+            description: "Download audio or video from a YouTube URL using yt-dlp. `format` is mp3/m4a/mp4/bestaudio/bestvideo. Default output dirs: ~/Music/Bob/ for audio, ~/Downloads/Bob/ for video. Requires approval.",
+            properties: [
+                "url": ("string", "Full YouTube URL."),
+                "format": ("string", "One of: mp3, m4a, mp4, bestaudio, bestvideo."),
+                "output_dir": ("string", "Optional absolute output directory.")
+            ],
+            required: ["url", "format"]
+        )
+        reqs["youtube_download"] = ["url", "format"]
+
         self.tools = defs
         self.requiredArgs = reqs
     }
