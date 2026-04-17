@@ -106,6 +106,12 @@ struct PreferencesView: View {
                 isOn: $settings.soundsEnabled,
                 dimmed: false
             )
+            toggleRow(
+                title: "Bob speaks",
+                subtitle: "Play pre-recorded voice lines on greetings and completions (Mumbai Bob only)",
+                isOn: $settings.bobVoiceEnabled,
+                dimmed: !settings.soundsEnabled
+            )
             sliderRow(
                 title: "Chat window transparency",
                 subtitle: "Lower values let your desktop show through",

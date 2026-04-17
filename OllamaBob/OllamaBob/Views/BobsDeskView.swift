@@ -125,6 +125,10 @@ struct BobsDeskView: View {
     @State private var turnStartedAt: Date? = nil
     @State private var turnStartingToolCount: Int = 0
 
+    // Bob-voice idle-return: last time the user sent something. If >5min,
+    // the next send plays an "idle_return" clip.
+    @State private var lastSendAt: Date? = nil
+
     // F12 — preferences window access
     @Environment(\.openWindow) private var openWindow
 
@@ -248,6 +252,8 @@ struct BobsDeskView: View {
                         if !text.isEmpty {
                             systemNotices.append(SystemNotice(text: text, at: Date()))
                         }
+                        // 60% boast / 40% celebration mix so Bob sounds less repetitive.
+                        BobSayings.play(Double.random(in: 0...1) < 0.6 ? .boast : .celebration)
                     }
                 }
                 turnStartedAt = nil
@@ -653,6 +659,10 @@ struct BobsDeskView: View {
         if !isLocalCommand {
             BobSounds.playSend()
             hasProcessed = true
+            if let last = lastSendAt, Date().timeIntervalSince(last) > 300 {
+                BobSayings.play(.idleReturn)
+            }
+            lastSendAt = Date()
         }
         session.sendCurrentInput(allowsLocalCommands: true)
     }
@@ -674,6 +684,7 @@ struct BobsDeskView: View {
         let notice = SystemNotice(text: text, at: Date(), isGreeting: true)
         systemNotices.append(notice)
         hasGreeted = true
+        BobSayings.play(.greeting)
         withAnimation(.easeInOut(duration: 0.3)) {
             bubbleVisible = true
         }

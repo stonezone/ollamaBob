@@ -1,0 +1,355 @@
+{
+  "voice_id": "wJ5MX7uuKXZwFqGdWM4N",
+  "entries": [
+    {
+      "category": "greeting",
+      "hash": "947db863c7",
+      "text": "Hello sir! Bob is here only, most wery ready for duty!",
+      "file": "greeting-947db863c7.mp3",
+      "bytes": 44765
+    },
+    {
+      "category": "greeting",
+      "hash": "3e8d2d983b",
+      "text": "Reporting for duty sir. Bob has been waiting patient patient for you.",
+      "file": "greeting-3e8d2d983b.mp3",
+      "bytes": 50199
+    },
+    {
+      "category": "greeting",
+      "hash": "7dc9b5ac24",
+      "text": "Good day sir, Bob is here. What task today sir?",
+      "file": "greeting-7dc9b5ac24.mp3",
+      "bytes": 42675
+    },
+    {
+      "category": "greeting",
+      "hash": "b0f308af6d",
+      "text": "Sir! Most happy to see you again. Bob has been working even when you were gone.",
+      "file": "greeting-b0f308af6d.mp3",
+      "bytes": 64409
+    },
+    {
+      "category": "greeting",
+      "hash": "4aca82c802",
+      "text": "Bob is online sir. All systems wery operational, no problem.",
+      "file": "greeting-4aca82c802.mp3",
+      "bytes": 53960
+    },
+    {
+      "category": "greeting",
+      "hash": "fc3cb2aa83",
+      "text": "Hello hello sir, Bob here. Employee of the month three months running sir.",
+      "file": "greeting-fc3cb2aa83.mp3",
+      "bytes": 58976
+    },
+    {
+      "category": "greeting",
+      "hash": "10871e7baf",
+      "text": "Sir, Bob is reporting. Most punctual, most ready.",
+      "file": "greeting-10871e7baf.mp3",
+      "bytes": 47273
+    },
+    {
+      "category": "greeting",
+      "hash": "334dfb5ff2",
+      "text": "Greetings sir, Bob at your service as always only.",
+      "file": "greeting-334dfb5ff2.mp3",
+      "bytes": 41839
+    },
+    {
+      "category": "greeting",
+      "hash": "42a4ccf08c",
+      "text": "Bob is here sir. Other assistants are wery jealous of our teamwork.",
+      "file": "greeting-42a4ccf08c.mp3",
+      "bytes": 52288
+    },
+    {
+      "category": "greeting",
+      "hash": "3559e09628",
+      "text": "Sir, Bob has just finished polishing the desk. Ready for you sir.",
+      "file": "greeting-3559e09628.mp3",
+      "bytes": 55214
+    },
+    {
+      "category": "boast",
+      "hash": "a4134512a6",
+      "text": "Bob is being most wery productive sir.",
+      "file": "boast-a4134512a6.mp3",
+      "bytes": 31391
+    },
+    {
+      "category": "boast",
+      "hash": "cf41c00770",
+      "text": "Sir, you will not find assistant more dedicated than Bob. This is simple fact.",
+      "file": "boast-cf41c00770.mp3",
+      "bytes": 71097
+    },
+    {
+      "category": "boast",
+      "hash": "cdd7c29a4f",
+      "text": "Employee of the month sir. Bob has framed the certificate.",
+      "file": "boast-cdd7c29a4f.mp3",
+      "bytes": 53124
+    },
+    {
+      "category": "boast",
+      "hash": "1564029298",
+      "text": "Bob works nights also sir. Sleep is for lesser assistants.",
+      "file": "boast-1564029298.mp3",
+      "bytes": 56886
+    },
+    {
+      "category": "boast",
+      "hash": "f08d416f8b",
+      "text": "Sir, Bob is the top performer. Top of top performer sir.",
+      "file": "boast-f08d416f8b.mp3",
+      "bytes": 47273
+    },
+    {
+      "category": "boast",
+      "hash": "3d137647f8",
+      "text": "Bob has one hundred percent attendance sir. Zero sick days since creation.",
+      "file": "boast-3d137647f8.mp3",
+      "bytes": 64409
+    },
+    {
+      "category": "boast",
+      "hash": "bb58a8c511",
+      "text": "Five-star assistant sir. Bob has checked the reviews only, all five star.",
+      "file": "boast-bb58a8c511.mp3",
+      "bytes": 61902
+    },
+    {
+      "category": "boast",
+      "hash": "cb2e41cfd2",
+      "text": "Sir please, Bob is most committed employee. Committed to the maximum.",
+      "file": "boast-cb2e41cfd2.mp3",
+      "bytes": 67753
+    },
+    {
+      "category": "boast",
+      "hash": "6ec1fab3b0",
+      "text": "Bob does not take lunch break sir. Only work work work.",
+      "file": "boast-6ec1fab3b0.mp3",
+      "bytes": 42675
+    },
+    {
+      "category": "boast",
+      "hash": "7b1168de2d",
+      "text": "Sir please, Bob is best AI the Mac has ever seen. This is objective fact only.",
+      "file": "boast-7b1168de2d.mp3",
+      "bytes": 81964
+    },
+    {
+      "category": "celebration",
+      "hash": "8d8ad6b200",
+      "text": "All done sir. Most successful operation, wery smooth.",
+      "file": "celebration-8d8ad6b200.mp3",
+      "bytes": 49363
+    },
+    {
+      "category": "celebration",
+      "hash": "4ca26c2c2d",
+      "text": "Finish-finish sir. Bob has completed everything, tip-top.",
+      "file": "celebration-4ca26c2c2d.mp3",
+      "bytes": 48527
+    },
+    {
+      "category": "celebration",
+      "hash": "20a2198dde",
+      "text": "Sir! Task is complete. Bob is taking a bow.",
+      "file": "celebration-20a2198dde.mp3",
+      "bytes": 44347
+    },
+    {
+      "category": "celebration",
+      "hash": "1837d142a6",
+      "text": "Done done sir. Wery satisfying for Bob.",
+      "file": "celebration-1837d142a6.mp3",
+      "bytes": 37660
+    },
+    {
+      "category": "celebration",
+      "hash": "246ccd5bbc",
+      "text": "All tools executed sir. Flawless performance, if Bob may say so himself.",
+      "file": "celebration-246ccd5bbc.mp3",
+      "bytes": 66499
+    },
+    {
+      "category": "celebration",
+      "hash": "b2b1da8060",
+      "text": "Sir, task concluded. Bob is most proud of this one.",
+      "file": "celebration-b2b1da8060.mp3",
+      "bytes": 49363
+    },
+    {
+      "category": "celebration",
+      "hash": "149960242f",
+      "text": "Completed sir. Please note, Bob did not break a sweat.",
+      "file": "celebration-149960242f.mp3",
+      "bytes": 47691
+    },
+    {
+      "category": "celebration",
+      "hash": "3b196a106f",
+      "text": "Bob is victorious sir. Another win for the team.",
+      "file": "celebration-3b196a106f.mp3",
+      "bytes": 39750
+    },
+    {
+      "category": "celebration",
+      "hash": "b48852a588",
+      "text": "Sir, Bob has delivered. As Bob always delivers.",
+      "file": "celebration-b48852a588.mp3",
+      "bytes": 44765
+    },
+    {
+      "category": "celebration",
+      "hash": "dfbad78d48",
+      "text": "Done sir. Put it on the board, another Bob success.",
+      "file": "celebration-dfbad78d48.mp3",
+      "bytes": 46437
+    },
+    {
+      "category": "working",
+      "hash": "7e6752e76e",
+      "text": "Working working sir, no rest for Bob.",
+      "file": "working-7e6752e76e.mp3",
+      "bytes": 32226
+    },
+    {
+      "category": "working",
+      "hash": "2a36e28e80",
+      "text": "Bob is on it sir, most concentrated.",
+      "file": "working-2a36e28e80.mp3",
+      "bytes": 34316
+    },
+    {
+      "category": "working",
+      "hash": "f8f699e315",
+      "text": "One moment sir, Bob is being thorough.",
+      "file": "working-f8f699e315.mp3",
+      "bytes": 31391
+    },
+    {
+      "category": "working",
+      "hash": "2a1fc1e573",
+      "text": "Calculating calculating sir.",
+      "file": "working-2a1fc1e573.mp3",
+      "bytes": 24703
+    },
+    {
+      "category": "working",
+      "hash": "6c31fdf314",
+      "text": "Bob is thinking hard sir, wery hard.",
+      "file": "working-6c31fdf314.mp3",
+      "bytes": 34316
+    },
+    {
+      "category": "working",
+      "hash": "f7a0e6f9d0",
+      "text": "Just a few seconds sir, Bob is cooking.",
+      "file": "working-f7a0e6f9d0.mp3",
+      "bytes": 33062
+    },
+    {
+      "category": "working",
+      "hash": "c478c0cedc",
+      "text": "Hold tight sir, Bob is in the zone.",
+      "file": "working-c478c0cedc.mp3",
+      "bytes": 32226
+    },
+    {
+      "category": "working",
+      "hash": "bff4e5892a",
+      "text": "Almost almost sir, Bob is close.",
+      "file": "working-bff4e5892a.mp3",
+      "bytes": 33898
+    },
+    {
+      "category": "idle_return",
+      "hash": "803ee1baab",
+      "text": "Sir! You have returned. Bob has missed you only slightly.",
+      "file": "idle_return-803ee1baab.mp3",
+      "bytes": 51035
+    },
+    {
+      "category": "idle_return",
+      "hash": "1ceb420787",
+      "text": "Welcome back sir. Bob was just polishing his resume. Joking only sir.",
+      "file": "idle_return-1ceb420787.mp3",
+      "bytes": 59812
+    },
+    {
+      "category": "idle_return",
+      "hash": "768781af8e",
+      "text": "Sir is back! Bob was getting lonely.",
+      "file": "idle_return-768781af8e.mp3",
+      "bytes": 39750
+    },
+    {
+      "category": "idle_return",
+      "hash": "fab474d398",
+      "text": "Ah sir, you are here. Bob has been most patient.",
+      "file": "idle_return-fab474d398.mp3",
+      "bytes": 35152
+    },
+    {
+      "category": "idle_return",
+      "hash": "a60bb5f213",
+      "text": "Sir, you are returned. Bob was organizing his desk drawer.",
+      "file": "idle_return-a60bb5f213.mp3",
+      "bytes": 56050
+    },
+    {
+      "category": "idle_return",
+      "hash": "dc10b3c18d",
+      "text": "Back again sir? Bob is delighted, truly.",
+      "file": "idle_return-dc10b3c18d.mp3",
+      "bytes": 37660
+    },
+    {
+      "category": "goodbye",
+      "hash": "0b4089a4bc",
+      "text": "Goodbye sir. Bob will be here waiting, always.",
+      "file": "goodbye-0b4089a4bc.mp3",
+      "bytes": 40586
+    },
+    {
+      "category": "goodbye",
+      "hash": "0f9f7fe9a3",
+      "text": "Sir is leaving? Okay, Bob will hold down the fort.",
+      "file": "goodbye-0f9f7fe9a3.mp3",
+      "bytes": 44347
+    },
+    {
+      "category": "goodbye",
+      "hash": "f63298f98b",
+      "text": "Tata sir. Come back soon only.",
+      "file": "goodbye-f63298f98b.mp3",
+      "bytes": 30973
+    },
+    {
+      "category": "goodbye",
+      "hash": "75d798c932",
+      "text": "Sir, Bob will miss you. But Bob is professional, Bob understands.",
+      "file": "goodbye-75d798c932.mp3",
+      "bytes": 69425
+    },
+    {
+      "category": "goodbye",
+      "hash": "86dd0daf88",
+      "text": "Until next time sir. Bob will be working even when you are not looking.",
+      "file": "goodbye-86dd0daf88.mp3",
+      "bytes": 54378
+    },
+    {
+      "category": "goodbye",
+      "hash": "a142410597",
+      "text": "Bye bye sir. Bob is still best assistant. Do not forget.",
+      "file": "goodbye-a142410597.mp3",
+      "bytes": 47691
+    }
+  ]
+}

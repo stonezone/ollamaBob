@@ -13,3 +13,8 @@ xcuserdata/
 *.sqlite
 *.sqlite-journal
 *.db
+
+# Secrets
+.env
+.env.*
+!.env.example

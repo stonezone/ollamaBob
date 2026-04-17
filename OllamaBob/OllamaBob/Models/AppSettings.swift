@@ -35,12 +35,21 @@ final class AppSettings: ObservableObject {
         didSet { UserDefaults.standard.set(soundsEnabled, forKey: Keys.soundsEnabled) }
     }
 
+    /// Play pre-rendered ElevenLabs Bob voice lines on greetings, celebrations,
+    /// and idle-returns. Mumbai Bob persona only (the voice doesn't match the
+    /// others). Separate from soundsEnabled because voice is more obtrusive
+    /// than a Tink; some users will want UI sounds on but voice off.
+    @Published var bobVoiceEnabled: Bool {
+        didSet { UserDefaults.standard.set(bobVoiceEnabled, forKey: Keys.bobVoiceEnabled) }
+    }
+
     private enum Keys {
         static let showBob           = "showBob"
         static let chatWindowOpacity = "chatWindowOpacity"
         static let numCtx            = "numCtx"
         static let betaToolsEnabled  = "betaToolsEnabled"
         static let soundsEnabled     = "soundsEnabled"
+        static let bobVoiceEnabled   = "bobVoiceEnabled"
     }
 
     private init() {
@@ -63,11 +72,15 @@ final class AppSettings: ObservableObject {
         if defaults.object(forKey: Keys.soundsEnabled) == nil {
             defaults.set(true, forKey: Keys.soundsEnabled)
         }
+        if defaults.object(forKey: Keys.bobVoiceEnabled) == nil {
+            defaults.set(true, forKey: Keys.bobVoiceEnabled)
+        }
 
         self.showBob           = defaults.bool(forKey: Keys.showBob)
         self.chatWindowOpacity = defaults.double(forKey: Keys.chatWindowOpacity)
         self.betaToolsEnabled  = defaults.bool(forKey: Keys.betaToolsEnabled)
         self.soundsEnabled     = defaults.bool(forKey: Keys.soundsEnabled)
+        self.bobVoiceEnabled   = defaults.bool(forKey: Keys.bobVoiceEnabled)
 
         let storedCtx = defaults.integer(forKey: Keys.numCtx)
         self.numCtx = AppConfig.numCtxAllowed.contains(storedCtx) ? storedCtx : AppConfig.numCtx
