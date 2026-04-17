@@ -274,6 +274,16 @@ struct BobsDeskView: View {
             } else {
                 // F6 — clear tool chip when processing finishes
                 currentToolName = nil
+                // Re-sync the bubble a beat after processing ends. The
+                // session controller appends the turn's messages AFTER
+                // the agent loop returns, so at this instant the bubble
+                // might still be stale; a short delay lets messages
+                // settle, then shouldShowBubble reflects the final answer.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        bubbleVisible = shouldShowBubble
+                    }
+                }
                 // F8 — play receive sound only after a user-initiated round-trip
                 if hasProcessed {
                     BobSounds.playReceive()
