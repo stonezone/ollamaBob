@@ -1,0 +1,9 @@
+Investigation A2 — short-prompt baseline TTFT
+
+model             ctx    wall   total  prompt_eval   eval    ttft
+gemma4:e4b       8192     282     281           82     18     263
+gemma4:e4b      16384     272     271           80     18     253
+gemma4:e4b      32768     272     271           82     18     253
+qwen3:14b        8192     516     513          160    284     229
+qwen3:14b       16384     534     529          166    291     238
+qwen3:14b       32768     524     523          166    287     236

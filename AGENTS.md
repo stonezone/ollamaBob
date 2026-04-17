@@ -14,6 +14,8 @@ Run commands from `OllamaBob/`.
 
 The app expects a local Ollama server at `http://localhost:11434`. `BRAVE_API_KEY` is optional and only affects web search.
 
+Secrets live in a gitignored `.env` at the repo root. Use `.env.example` as the template when onboarding a new clone. `ELEVENLABS_API_KEY` + `OLLAMABOB_VOICE_ID` are only needed if you re-render the voice clips in `tools/render-bob-sayings.py`; the shipping app reads the pre-rendered audio from `Resources/Audio/`.
+
 ## Coding Style & Naming Conventions
 Follow the existing Swift style: 4-space indentation, `UpperCamelCase` for types, `lowerCamelCase` for properties and methods, and one primary type per file. Keep files focused and grouped by feature folder. Prefer clear Swift over clever abstractions, avoid force unwraps in production paths, and use `// MARK:` sections where they improve navigation. No formatter or linter is configured in this repo, so match surrounding code before introducing new patterns.
 

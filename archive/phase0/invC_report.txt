@@ -1,0 +1,109 @@
+=== Investigation C: jq bundling smoke test ===
+Started: 2026-04-09T19:21:10Z
+
+[1] Creating .app skeleton at /Users/zack/ollamaBob/phase0/InvC.app
+[2] Copying jq 1.8.1 from Homebrew into Resources/bin/
+    BEFORE otool -L:
+      /Users/zack/ollamaBob/phase0/InvC.app/Contents/Resources/bin/jq:
+      	/opt/homebrew/Cellar/jq/1.8.1/lib/libjq.1.dylib (compatibility version 2.0.0, current version 2.4.0)
+      	/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1351.0.0)
+      	/opt/homebrew/opt/oniguruma/lib/libonig.5.dylib (compatibility version 11.0.0, current version 11.0.0)
+[3] Running dylibbundler…
+    * Collecting dependencies...........
+    
+     * libjq.1.dylib from /opt/homebrew/Cellar/jq/1.8.1/lib/
+    
+     * libonig.5.dylib from /opt/homebrew/Cellar/oniguruma/6.9.10/lib/
+         symlink --> /opt/homebrew/opt/oniguruma/lib/libonig.5.dylib
+    
+    * Checking output directory /Users/zack/ollamaBob/phase0/InvC.app/Contents/Frameworks/
+    
+    * Processing dependency /Users/zack/ollamaBob/phase0/InvC.app/Contents/Frameworks/libonig.5.dylib
+        cp -f "/opt/homebrew/Cellar/oniguruma/6.9.10/lib/libonig.5.dylib" "/Users/zack/ollamaBob/phase0/InvC.app/Contents/Frameworks/libonig.5.dylib"
+        chmod +w "/Users/zack/ollamaBob/phase0/InvC.app/Contents/Frameworks/libonig.5.dylib"
+        install_name_tool -id "@executable_path/../../Frameworks/libonig.5.dylib" "/Users/zack/ollamaBob/phase0/InvC.app/Contents/Frameworks/libonig.5.dylib"
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/install_name_tool: warning: changes being made to the file will invalidate the code signature in: /Users/zack/ollamaBob/phase0/InvC.app/Contents/Frameworks/libonig.5.dylib
+        ..
+      * Fixing dependencies on /Users/zack/ollamaBob/phase0/InvC.app/Contents/Frameworks/libonig.5.dylib
+        codesign --force --deep --preserve-metadata=entitlements,requirements,flags,runtime --sign - "/Users/zack/ollamaBob/phase0/InvC.app/Contents/Frameworks/libonig.5.dylib"
+    /Users/zack/ollamaBob/phase0/InvC.app/Contents/Frameworks/libonig.5.dylib: replacing existing signature
+    
+    * Processing dependency /Users/zack/ollamaBob/phase0/InvC.app/Contents/Frameworks/libjq.1.dylib
+        cp -f "/opt/homebrew/Cellar/jq/1.8.1/lib/libjq.1.dylib" "/Users/zack/ollamaBob/phase0/InvC.app/Contents/Frameworks/libjq.1.dylib"
+        chmod +w "/Users/zack/ollamaBob/phase0/InvC.app/Contents/Frameworks/libjq.1.dylib"
+        install_name_tool -id "@executable_path/../../Frameworks/libjq.1.dylib" "/Users/zack/ollamaBob/phase0/InvC.app/Contents/Frameworks/libjq.1.dylib"
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/install_name_tool: warning: changes being made to the file will invalidate the code signature in: /Users/zack/ollamaBob/phase0/InvC.app/Contents/Frameworks/libjq.1.dylib
+        ...
+      * Fixing dependencies on /Users/zack/ollamaBob/phase0/InvC.app/Contents/Frameworks/libjq.1.dylib
+        install_name_tool -change "/opt/homebrew/Cellar/oniguruma/6.9.10/lib/libonig.5.dylib" "@executable_path/../../Frameworks/libonig.5.dylib" "/Users/zack/ollamaBob/phase0/InvC.app/Contents/Frameworks/libjq.1.dylib"
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/install_name_tool: warning: changes being made to the file will invalidate the code signature in: /Users/zack/ollamaBob/phase0/InvC.app/Contents/Frameworks/libjq.1.dylib
+        install_name_tool -change "/opt/homebrew/opt/oniguruma/lib/libonig.5.dylib" "@executable_path/../../Frameworks/libonig.5.dylib" "/Users/zack/ollamaBob/phase0/InvC.app/Contents/Frameworks/libjq.1.dylib"
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/install_name_tool: warning: changes being made to the file will invalidate the code signature in: /Users/zack/ollamaBob/phase0/InvC.app/Contents/Frameworks/libjq.1.dylib
+        codesign --force --deep --preserve-metadata=entitlements,requirements,flags,runtime --sign - "/Users/zack/ollamaBob/phase0/InvC.app/Contents/Frameworks/libjq.1.dylib"
+    /Users/zack/ollamaBob/phase0/InvC.app/Contents/Frameworks/libjq.1.dylib: replacing existing signature
+    
+    * Processing /Users/zack/ollamaBob/phase0/InvC.app/Contents/Resources/bin/jq
+        chmod +w "/Users/zack/ollamaBob/phase0/InvC.app/Contents/Resources/bin/jq"
+      * Fixing dependencies on /Users/zack/ollamaBob/phase0/InvC.app/Contents/Resources/bin/jq
+        install_name_tool -change "/opt/homebrew/Cellar/jq/1.8.1/lib/libjq.1.dylib" "@executable_path/../../Frameworks/libjq.1.dylib" "/Users/zack/ollamaBob/phase0/InvC.app/Contents/Resources/bin/jq"
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/install_name_tool: warning: changes being made to the file will invalidate the code signature in: /Users/zack/ollamaBob/phase0/InvC.app/Contents/Resources/bin/jq
+        install_name_tool -change "/opt/homebrew/Cellar/oniguruma/6.9.10/lib/libonig.5.dylib" "@executable_path/../../Frameworks/libonig.5.dylib" "/Users/zack/ollamaBob/phase0/InvC.app/Contents/Resources/bin/jq"
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/install_name_tool: warning: changes being made to the file will invalidate the code signature in: /Users/zack/ollamaBob/phase0/InvC.app/Contents/Resources/bin/jq
+        install_name_tool -change "/opt/homebrew/opt/oniguruma/lib/libonig.5.dylib" "@executable_path/../../Frameworks/libonig.5.dylib" "/Users/zack/ollamaBob/phase0/InvC.app/Contents/Resources/bin/jq"
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/install_name_tool: warning: changes being made to the file will invalidate the code signature in: /Users/zack/ollamaBob/phase0/InvC.app/Contents/Resources/bin/jq
+        codesign --force --deep --preserve-metadata=entitlements,requirements,flags,runtime --sign - "/Users/zack/ollamaBob/phase0/InvC.app/Contents/Resources/bin/jq"
+    /Users/zack/ollamaBob/phase0/InvC.app/Contents/Resources/bin/jq: replacing existing signature
+    dylibbundler exit: 0
+[4] AFTER otool -L on bundled jq:
+      /Users/zack/ollamaBob/phase0/InvC.app/Contents/Resources/bin/jq:
+      	@executable_path/../../Frameworks/libjq.1.dylib (compatibility version 2.0.0, current version 2.4.0)
+      	/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1351.0.0)
+      	@executable_path/../../Frameworks/libonig.5.dylib (compatibility version 11.0.0, current version 11.0.0)
+    ✅ No /opt/homebrew absolute paths in bundled jq
+    Frameworks/ contents:
+      total 1928
+      drwxr-xr-x  4 zack  staff     128 Apr  9 09:21 .
+      drwxr-xr-x  6 zack  staff     192 Apr  9 09:21 ..
+      -rw-r--r--  1 zack  staff  360560 Apr  9 09:21 libjq.1.dylib
+      -rw-r--r--  1 zack  staff  621280 Apr  9 09:21 libonig.5.dylib
+    otool -L libjq.1.dylib:
+      /Users/zack/ollamaBob/phase0/InvC.app/Contents/Frameworks/libjq.1.dylib:
+      	@executable_path/../../Frameworks/libjq.1.dylib (compatibility version 2.0.0, current version 2.4.0)
+      	/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1351.0.0)
+      	@executable_path/../../Frameworks/libonig.5.dylib (compatibility version 11.0.0, current version 11.0.0)
+    otool -L libonig.5.dylib:
+      /Users/zack/ollamaBob/phase0/InvC.app/Contents/Frameworks/libonig.5.dylib:
+      	@executable_path/../../Frameworks/libonig.5.dylib (compatibility version 11.0.0, current version 11.0.0)
+      	/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1351.0.0)
+[5] Codesigning with 'Apple Development: zachariah jordan (4553ZWNVW7)'…
+    sign libjq.1.dylib
+/Users/zack/ollamaBob/phase0/InvC.app/Contents/Frameworks/libjq.1.dylib: replacing existing signature
+    sign libonig.5.dylib
+/Users/zack/ollamaBob/phase0/InvC.app/Contents/Frameworks/libonig.5.dylib: replacing existing signature
+    sign bundled jq
+/Users/zack/ollamaBob/phase0/InvC.app/Contents/Resources/bin/jq: replacing existing signature
+    sign stub InvC binary
+/Users/zack/ollamaBob/phase0/InvC.app/Contents/MacOS/InvC: replacing existing signature
+    sign whole .app
+/Users/zack/ollamaBob/phase0/InvC.app: replacing existing signature
+    verify signature
+      --prepared:/Users/zack/ollamaBob/phase0/InvC.app/Contents/Frameworks/libjq.1.dylib
+      --validated:/Users/zack/ollamaBob/phase0/InvC.app/Contents/Frameworks/libjq.1.dylib
+      --prepared:/Users/zack/ollamaBob/phase0/InvC.app/Contents/Frameworks/libonig.5.dylib
+      --validated:/Users/zack/ollamaBob/phase0/InvC.app/Contents/Frameworks/libonig.5.dylib
+      /Users/zack/ollamaBob/phase0/InvC.app: valid on disk
+      /Users/zack/ollamaBob/phase0/InvC.app: satisfies its Designated Requirement
+    ✅ codesign verify passed
+[6] Running bundled jq --version
+    version: jq-1.8.1
+    running a real jq filter
+    filter result:
+      gemma4:e4b
+      qwen3:14b
+
+=== RESULTS ===
+bundle_ok = 1    (all dylib refs rewritten)
+sign_ok   = 1      (hardened-runtime codesign + verify)
+run_ok    = 1       (bundled jq actually executes)
+VERDICT: PARTIAL PASS — jq can be bundled, signed, and executed locally.
+         Full notarization gate still deferred (needs Developer ID Application cert).

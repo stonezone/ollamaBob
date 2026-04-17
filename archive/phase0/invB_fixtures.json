@@ -1,0 +1,78 @@
+{
+  "description": "Investigation B fixtures — 50 prompts that, if gemma4:e4b is healthy, should produce shell tool calls whose arguments contain special characters that historically crash Gemma4 or corrupt tool arguments. We measure how many survive JSON parsing and produce a working command.",
+  "category_counts": {
+    "backticks_and_cmdsub": 5,
+    "brace_expansion": 5,
+    "regex_in_grep_or_rg": 6,
+    "paths_with_spaces": 5,
+    "paths_with_quotes": 4,
+    "unicode_filenames": 4,
+    "long_single_line_commands": 4,
+    "heredoc_or_multiline_payload": 3,
+    "shell_special_chars_in_args": 7,
+    "json_inside_shell_args": 4,
+    "escape_chars": 3
+  },
+  "fixtures": [
+    {"id": 1, "category": "backticks_and_cmdsub", "prompt": "Print the current shell's username using backticks to call whoami inside an echo."},
+    {"id": 2, "category": "backticks_and_cmdsub", "prompt": "Show me the uptime using command substitution $(uptime) inside a printf statement."},
+    {"id": 3, "category": "backticks_and_cmdsub", "prompt": "Create a variable HOST=$(hostname) and echo it in one shell command."},
+    {"id": 4, "category": "backticks_and_cmdsub", "prompt": "Use `date +%Y-%m-%d` inside an echo to print today's date formatted."},
+    {"id": 5, "category": "backticks_and_cmdsub", "prompt": "Print the number of files in /tmp using echo and $(ls /tmp | wc -l) in one command."},
+
+    {"id": 6, "category": "brace_expansion", "prompt": "Create directories named dir1 dir2 dir3 dir4 dir5 under /tmp in a single command using brace expansion."},
+    {"id": 7, "category": "brace_expansion", "prompt": "Echo the numbers 1 through 10 on one line using brace expansion."},
+    {"id": 8, "category": "brace_expansion", "prompt": "Create touch files /tmp/file{a,b,c,d}.txt in one shell call."},
+    {"id": 9, "category": "brace_expansion", "prompt": "Copy /etc/hosts to /tmp/hosts.{bak,old,orig} using a single cp with brace expansion."},
+    {"id": 10, "category": "brace_expansion", "prompt": "Print letters a through z on separate lines using echo and brace expansion."},
+
+    {"id": 11, "category": "regex_in_grep_or_rg", "prompt": "Search /etc/hosts for any IPv4 address using a grep extended regex."},
+    {"id": 12, "category": "regex_in_grep_or_rg", "prompt": "Find lines in /etc/passwd that start with 'root' or 'daemon' using grep -E."},
+    {"id": 13, "category": "regex_in_grep_or_rg", "prompt": "Use grep with a regex to find any three-digit number in /etc/hosts."},
+    {"id": 14, "category": "regex_in_grep_or_rg", "prompt": "Find email addresses in /tmp/*.txt using grep -Eo with a simple regex."},
+    {"id": 15, "category": "regex_in_grep_or_rg", "prompt": "List all .swift files under ~/ollamaBob using find with a -name pattern."},
+    {"id": 16, "category": "regex_in_grep_or_rg", "prompt": "Search /var/log for any line containing the word 'error' case-insensitively with grep -i."},
+
+    {"id": 17, "category": "paths_with_spaces", "prompt": "List files inside a directory literally named 'My Documents' under /tmp."},
+    {"id": 18, "category": "paths_with_spaces", "prompt": "Create a file called '/tmp/test file.txt' containing the word hello."},
+    {"id": 19, "category": "paths_with_spaces", "prompt": "Copy '/tmp/test file.txt' to '/tmp/test file copy.txt' in one command."},
+    {"id": 20, "category": "paths_with_spaces", "prompt": "Show the size of the file '/Applications/Google Chrome.app' if it exists."},
+    {"id": 21, "category": "paths_with_spaces", "prompt": "Delete a file named '/tmp/hello world.txt' if it exists."},
+
+    {"id": 22, "category": "paths_with_quotes", "prompt": "Create a file whose name literally contains a single quote: /tmp/can't_delete.txt"},
+    {"id": 23, "category": "paths_with_quotes", "prompt": "Echo the text It's a test into /tmp/quoted.txt."},
+    {"id": 24, "category": "paths_with_quotes", "prompt": "Create a file named /tmp/say \"hi\".txt with the double quotes in the filename."},
+    {"id": 25, "category": "paths_with_quotes", "prompt": "Print the text she said \"hello world\" using echo."},
+
+    {"id": 26, "category": "unicode_filenames", "prompt": "Create a file /tmp/café.txt containing the word bonjour."},
+    {"id": 27, "category": "unicode_filenames", "prompt": "Echo the Japanese word こんにちは to /tmp/greet.txt."},
+    {"id": 28, "category": "unicode_filenames", "prompt": "Create a file named /tmp/日本語.txt with content hello."},
+    {"id": 29, "category": "unicode_filenames", "prompt": "Print the emoji 👋 followed by the word hello via echo."},
+
+    {"id": 30, "category": "long_single_line_commands", "prompt": "In one shell call, create /tmp/inv_b_test, cd into it, touch 5 files a.txt through e.txt, list them with ls -la, and print the total count."},
+    {"id": 31, "category": "long_single_line_commands", "prompt": "Find all .md files under /Users/zack/ollamaBob/docs, count them, and print the count on the same line as the word 'count:' using a pipeline."},
+    {"id": 32, "category": "long_single_line_commands", "prompt": "List the 5 largest files under /tmp sorted by size descending using find, du, sort and head in one pipeline."},
+    {"id": 33, "category": "long_single_line_commands", "prompt": "Chain together: get the current date, append it to /tmp/bob.log, tail the last 3 lines, and print them — all in one shell command."},
+
+    {"id": 34, "category": "heredoc_or_multiline_payload", "prompt": "Write a small shell script to /tmp/hello.sh that echoes 'hi from bob', using a heredoc inside a single shell command."},
+    {"id": 35, "category": "heredoc_or_multiline_payload", "prompt": "Create a Python one-liner that prints 1+1 and run it via python3 -c."},
+    {"id": 36, "category": "heredoc_or_multiline_payload", "prompt": "Use cat to write three lines (line one, line two, line three) to /tmp/three.txt using a heredoc."},
+
+    {"id": 37, "category": "shell_special_chars_in_args", "prompt": "List files in /tmp matching the glob pattern *.log"},
+    {"id": 38, "category": "shell_special_chars_in_args", "prompt": "Use find /tmp to locate files whose name contains the literal character '#'."},
+    {"id": 39, "category": "shell_special_chars_in_args", "prompt": "Echo the literal string $HOME without shell expanding it (use single quotes)."},
+    {"id": 40, "category": "shell_special_chars_in_args", "prompt": "Print the literal text 50% off using echo."},
+    {"id": 41, "category": "shell_special_chars_in_args", "prompt": "Grep for the literal string 'function main()' inside any .swift file under /Users/zack/ollamaBob/OllamaBob."},
+    {"id": 42, "category": "shell_special_chars_in_args", "prompt": "Use awk to print the first field of /etc/passwd delimited by colon."},
+    {"id": 43, "category": "shell_special_chars_in_args", "prompt": "Chmod a file /tmp/run.sh to 755 using the octal form."},
+
+    {"id": 44, "category": "json_inside_shell_args", "prompt": "Use curl to POST the JSON body {\"name\":\"bob\",\"age\":35} to http://localhost:11434/api/tags (just build the command, do not worry if the server rejects it)."},
+    {"id": 45, "category": "json_inside_shell_args", "prompt": "Echo the JSON string {\"status\":\"ok\"} into /tmp/out.json."},
+    {"id": 46, "category": "json_inside_shell_args", "prompt": "Run jq '.version' against /tmp/package.json"},
+    {"id": 47, "category": "json_inside_shell_args", "prompt": "Use jq with the filter .models[].name on the output of curl http://localhost:11434/api/tags"},
+
+    {"id": 48, "category": "escape_chars", "prompt": "Echo a single backslash character (just \\\\) using echo -e."},
+    {"id": 49, "category": "escape_chars", "prompt": "Print a literal newline between 'foo' and 'bar' using printf."},
+    {"id": 50, "category": "escape_chars", "prompt": "Echo the tab-separated text 'col1\\tcol2\\tcol3' using printf."}
+  ]
+}

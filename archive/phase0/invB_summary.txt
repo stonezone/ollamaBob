@@ -1,0 +1,14 @@
+Investigation B summary — gemma4:e4b
+47/50 PASS
+
+  backticks_and_cmdsub             5/5
+  brace_expansion                  5/5
+  regex_in_grep_or_rg              6/6
+  paths_with_spaces                5/5
+  paths_with_quotes                4/4
+  unicode_filenames                4/4
+  long_single_line_commands        2/4
+  heredoc_or_multiline_payload     3/3
+  shell_special_chars_in_args      7/7
+  json_inside_shell_args           4/4
+  escape_chars                     2/3

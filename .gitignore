@@ -1,5 +1,7 @@
 # macOS
 .DS_Store
+*.swp
+*~
 
 # Xcode / SPM build artifacts
 OllamaBob/.build/
@@ -8,13 +10,39 @@ OllamaBob/.swiftpm/
 DerivedData/
 xcuserdata/
 *.xcuserstate
+*.xcworkspace/xcshareddata/
 
 # Databases (runtime only)
 *.sqlite
 *.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
 *.db
 
 # Secrets
 .env
 .env.*
 !.env.example
+
+# Logs and temp artifacts
+*.log
+logs/
+bob_mockups/
+
+# Python tooling (for tools/)
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Editor
+.idea/
+.vscode/
+*.code-workspace
+
+# Archived compiled artifacts — sources tracked, binaries ignored
+archive/**/*.app/
+archive/**/*.dylib
+archive/**/Contents/MacOS/
+archive/**/Contents/Frameworks/

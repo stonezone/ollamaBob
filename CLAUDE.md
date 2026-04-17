@@ -6,21 +6,24 @@ OllamaBob is a native macOS menu bar AI assistant that runs entirely locally on 
 
 ## Current State
 
-- **Phase:** Pre-implementation. Architecture finalized, plan reviewed and revised.
-- **No code written yet.** The Xcode project does not exist.
-- **The V1.1 plan is the source of truth:** `docs/OLLAMABOB_V1.1_PLAN.md`
-- **The kickoff prompt for implementation:** `OLAMMABOB_PROMPT.md` — NOTE: this references `/v1/chat/completions` but V1.1 plan corrected this to `/api/chat` (native endpoint). The CLAUDE.md rules below take precedence over any stale references in the prompt.
+- **Phase:** Shipping incremental V2.x releases. V1 feature set is complete; V2.0–V2.8 layered on voice, personas, tools, onboarding, and UI polish.
+- **Latest shipped:** V2.8 — transparent Mumbai Bob sprites, chromeless draggable/resizable chat window, Preferences scroll+resize, thinking/answer split (tool traces float above Bob, chat stays clean), merged bob+ollama memory readout.
+- **V1.1 plan** (`docs/OLLAMABOB_V1.1_PLAN.md`) remains the architectural source of truth for the core agent loop and wire format. Features layered on top live in the V2 plan docs.
+- **V2 plans:** `docs/OLLAMABOB_V2_PLAN_FINAL.md` (committed V2 scope), `docs/OLLAMABOB_V2_PLAN_DRAFT.md` (earlier draft, kept for context).
+- **Historical docs** (original V1 kickoff prompt, V2.5 orchestration plan, phase-0 investigations) are preserved under `archive/`.
 
 ## Key Files
 
 | File | Purpose |
 |------|---------|
-| `docs/OLLAMABOB_V1.1_PLAN.md` | **Authoritative implementation plan.** All architecture, API contracts, schemas, build order, acceptance tests. Read this FIRST. |
-| `OLAMMABOB_PROMPT.md` | Kickoff prompt for the implementation agent. Good structure but has one stale API endpoint reference (see above). |
-| `docs/personas.txt` | 14 voice personas for Bob's personality. These are for v2 voice features — do NOT implement voice in v1. |
-| `images/image_prompts.txt` | AI image generation prompts for Bob's avatar/icon. Assets in `images/`. |
-| `images/ollaaBob_icons.png` | Generated icon concepts. |
-| `images/ollamaBob_avatars.png` | Generated avatar concepts. |
+| `CLAUDE.md` | **This file** — operating rules and current state for Claude Code sessions. |
+| `AGENTS.md` | Repo layout, commands, style conventions — keep this in sync with structure changes. |
+| `docs/OLLAMABOB_V1.1_PLAN.md` | Core architecture, wire format, schema, acceptance tests. Still authoritative for the agent loop. |
+| `docs/OLLAMABOB_V2_PLAN_FINAL.md` | V2 scope that shipped on top of V1 (voice, personas, tools, memory, onboarding). |
+| `docs/ARCHITECTURE_NOTES.md` | Running notes on architectural decisions as they're made. |
+| `docs/personas.txt` | 14 voice personas for Bob's personality. |
+| `images/` | Avatar/icon assets and source prompts. |
+| `archive/` | Historical artifacts (V1 kickoff prompt, V2.5 plan, phase-0 investigations). See `archive/README.md`. |
 
 ---
 
@@ -38,24 +41,21 @@ These are final. Do not change without explicit user approval AND documented evi
 - **`stream: false`** for all Ollama requests
 - **Flat tool parameter schemas only** (single-level properties)
 
-### What We Do NOT Build in v1
-- No Python subprocess, no IPC protocol
+### What's Still Out Of Scope (as of V2.8)
+The original V1 "do not build" list has partially dissolved — voice clips, structured write tools, multi-conversation UI, and cartoon avatars all shipped in V2.x. These remain out of scope:
+
+- No Python subprocess or external IPC (the Swift agent loop owns everything)
 - No Hermes Agent, Open Interpreter, LangChain, LangGraph
-- No MCP servers or MCP client
-- No Electron, web views, Node.js, Docker
-- No streaming responses
-- No `write_file` tool (add in v2 after approvals are proven)
-- No voice input/output (whisper.cpp, AVSpeechSynthesizer)
-- No screenshot/vision analysis
-- No browser automation
-- No scheduled background tasks
-- No multi-conversation UI
-- No plugin/extension system
-- No App Store distribution work
-- No nested/complex tool parameter schemas
+- No MCP servers or MCP client (direct tool implementations only)
+- No Electron, web views, Node.js, Docker in the runtime
+- No streaming responses (Gemma 4 + streaming + tool calls is still broken)
+- No screenshot/vision analysis, no browser automation
+- No plugin/extension system (all tools are first-party)
+- No App Store distribution (user-run builds only, signed via build.sh)
+- No nested/complex tool parameter schemas (all flat, single-level)
 
 ### If You're Tempted to Add Something Not Listed Above
-**Don't.** If it's not in the v1 tool set or the v1 feature list in V1.1_PLAN.md, it does not ship in v1. No exceptions unless the user explicitly asks for it in this session.
+Check the Decision Log and the current V2 plan first. If it's not covered and the user hasn't asked for it in the current session, ask before building.
 
 ---
 
@@ -216,26 +216,32 @@ The `docs/personas.txt` file has 14 voice personas for future voice features. Th
 
 ## Project Structure
 
-See V1.1 plan for the full file tree. Key directories:
-
 ```
-OllamaBob/
-├── CLAUDE.md                 # This file
-├── OLAMMABOB_PROMPT.md       # Kickoff prompt (stale on API endpoint — CLAUDE.md overrides)
-├── docs/
-│   ├── OLLAMABOB_V1.1_PLAN.md  # Authoritative plan
-│   └── personas.txt            # Voice personas (v2)
-├── images/                     # Avatar/icon assets and prompts
-└── OllamaBob/                  # Xcode project (to be created)
-    ├── OllamaBobApp.swift
-    ├── AppConfig.swift
-    ├── Models/
-    ├── Agent/
-    ├── Tools/
-    ├── Views/
-    ├── Persistence/
-    ├── Personality/
-    └── Assets.xcassets/
+ollamaBob/                        # repo root
+├── CLAUDE.md                     # This file (operating rules)
+├── AGENTS.md                     # Repo layout + commands (keep in sync)
+├── MEMORY.md                     # Long-running notes across sessions
+├── LICENSE
+├── .env                          # local secrets (gitignored)
+├── .env.example                  # public template for new clones
+├── archive/                      # historical docs + phase-0 artifacts
+├── docs/                         # plans, architecture notes, persona text
+├── images/                       # avatar/icon source assets
+├── samples/                      # real Ollama wire-format samples
+├── tools/                        # helper scripts (voice render, etc.)
+└── OllamaBob/                    # Swift Package / Xcode project
+    ├── Package.swift
+    ├── build.sh                  # assembles build/OllamaBob.app
+    └── OllamaBob/                # Swift sources
+        ├── OllamaBobApp.swift
+        ├── AppConfig.swift
+        ├── Agent/                # loop, approvals, prompt budgeting
+        ├── Tools/                # structured tools + shell
+        ├── Views/                # SwiftUI screens
+        ├── Models/               # state + controllers
+        ├── Personality/          # persona prompts + operating rules
+        ├── Persistence/          # GRDB schema + database
+        └── Resources/            # avatars, audio, tool catalog
 ```
 
 ---
@@ -255,6 +261,14 @@ OllamaBob/
 | 2026-04-06 | SearchProvider protocol for web search | Allows SearXNG swap in v2 without touching agent loop |
 | 2026-04-06 | NonnaClaw does not exist | Verified — it's a blog post, not a repo |
 | 2026-04-06 | Fallback model is `qwen3:14b`, not `qwen2.5:14b` | `qwen2.5:14b` not present locally; `qwen3:14b` already pulled. Same `/api/chat` contract, same flat-schema tool calling — drop-in. AppConfig.fallbackModel reflects this. |
+| 2026-04-09 | V2 scope finalized (plans in `docs/OLLAMABOB_V2_PLAN_FINAL.md`) | Covers personas, persistent memory, onboarding, extended tool set, voice. Shipped in phases V2.0 → V2.8. |
+| 2026-04-16 | V2.5 — Bob speaks (50 ElevenLabs voice clips bundled as resources) | Offline playback; no runtime TTS call. `tools/render-bob-sayings.py` regenerates clips from `.env` key. |
+| 2026-04-16 | V2.6 — clipboard + AppleScript tools added | Keeps "executor of small tasks on this Mac" posture while respecting the approval policy. |
+| 2026-04-16 | V2.7 — swappable avatar packs (classic robot + Mumbai cartoon) | Pack-prefix naming under `Resources/Avatars/`. Avatar store chooses per persona. |
+| 2026-04-17 | V2.8 — chromeless chat window + thinking/answer split | Tool traces stream as transparent "invisible thoughts" above Bob; chat transcript keeps user messages, tool output (df -h), and final reply only. |
+| 2026-04-17 | Transparent sprites via `rembg[cpu,cli]`, not a gen model | Gen models (nano-banana / Gemini 2.5 Flash Image) can't output true alpha — they paint a background. Generate art, then mask with rembg. |
+| 2026-04-17 | Chromeless SwiftUI windows need three pieces | Explicit `WindowDragHandle` NSView for dragging, `.resizable` styleMask + `hasShadow=true` for discoverable edges, `.windowResizability(.contentMinSize)` with min/ideal frame (no fixed `.frame`). |
+| 2026-04-17 | Ollama memory must use `ps -axo rss=,command=` | The `comm=` field truncates to 16 chars on macOS, so `/Applications/Ollama.app/Contents/Resources/ollama` never matches a `== "ollama"` test. Use `command=` (full argv) and match the executable basename. |
 
 ---
 
@@ -262,23 +276,19 @@ OllamaBob/
 
 | Document | Issue | Correction |
 |----------|-------|------------|
-| `OLAMMABOB_PROMPT.md` line 279 | Says "Use /v1/chat/completions" | **Use /api/chat instead.** V1.1 plan corrected this. |
-| `OLAMMABOB_PROMPT.md` line 18 | Mission says `/v1/chat/completions` | **Use /api/chat.** |
 | Any doc saying "free 2,000 queries/month" for Brave | Stale pricing | **$5/month credit (~1,000 requests) for new signups** |
 | Any doc/plan saying fallback is `qwen2.5:14b` | Model not installed locally | **Use `qwen3:14b`** — see Decision Log 2026-04-06. AppConfig.fallbackModel is the source of truth. |
+| Archived `OLAMMABOB_PROMPT.md` | References `/v1/chat/completions` | Codebase uses `/api/chat` (native endpoint). The prompt is kept in `archive/` for historical context only. |
 
 When CLAUDE.md and other docs conflict, **CLAUDE.md wins.**
 
 ---
 
-## For the Implementation Agent
+## For Future Sessions
 
-When you start building:
+The V1 implementation is complete and V2.x features have been layering on top. When picking up a new task:
 
-1. **Read `docs/OLLAMABOB_V1.1_PLAN.md` first.** It has the complete architecture, wire format, schema, file tree, build order, and acceptance tests.
-2. **Read `OLAMMABOB_PROMPT.md` second** for the execution strategy, subagent plan, enforcement checks, and coding standards. But remember the `/api/chat` correction above.
-3. **Capture real Ollama JSON samples before writing any Codable models.** Save to `samples/`. This is non-negotiable.
-4. **Test Gemma 4 E4B tool calling with curl before writing Swift.** If it fails 3+ times on flat schemas, switch to `qwen2.5:14b`.
-5. **Follow the build order and gates.** Core before UI. Prove the loop before polishing the avatar.
-6. **Run all 10 acceptance tests before declaring v1 done.**
-7. **Do not add deferred features.** If it's in the "Do Not Build Yet" list, it stays deferred.
+1. Read **AGENTS.md** for the current repo layout, build/test commands, and style conventions.
+2. Read the **Decision Log** below — decisions are sticky and should not be revisited without documented cause.
+3. Check `archive/` if you need to understand why something is the way it is.
+4. Always follow the build order: `swift build` first, then `./build.sh --run` to verify changes live in the actual menu-bar app.

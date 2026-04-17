@@ -1,0 +1,15 @@
+Investigation A — num_ctx ceiling
+
+model             ctx  wall_ms  total_ms  eval_ms  ttft_ms  rss_gb  pass
+gemma4:e4b       8192     8725      8721     1723     6998    5.84    no
+gemma4:e4b      12288     9059      9056     1797     7259     3.3    no
+gemma4:e4b      16384     8707      8705     1713     6992    5.63    no
+gemma4:e4b      24576     8660      8658     1686     6972    2.26    no
+gemma4:e4b      32768     8667      8664     1686     6978    3.21    no
+qwen3:14b        8192    24297     24293     2864    21429   10.06    no
+qwen3:14b       12288    24245     24242     2859    21383    10.7    no
+qwen3:14b       16384    26320     26317     2925    23392   11.33    no
+qwen3:14b       24576    29966     29963     3181    26782   12.61    no
+qwen3:14b       32768    31008     31002     3238    27764   11.39    no
+
+GATE (16K on gemma4:e4b, ttft<4s, rss<22GB): FAIL

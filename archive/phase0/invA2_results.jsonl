@@ -1,0 +1,6 @@
+{"model": "gemma4:e4b", "num_ctx": 8192, "wall_ms": 282, "total_ms": 281, "load_ms": 178, "prompt_eval_ms": 82, "eval_ms": 18, "ok": true}
+{"model": "gemma4:e4b", "num_ctx": 16384, "wall_ms": 272, "total_ms": 271, "load_ms": 171, "prompt_eval_ms": 80, "eval_ms": 18, "ok": true}
+{"model": "gemma4:e4b", "num_ctx": 32768, "wall_ms": 272, "total_ms": 271, "load_ms": 168, "prompt_eval_ms": 82, "eval_ms": 18, "ok": true}
+{"model": "qwen3:14b", "num_ctx": 8192, "wall_ms": 516, "total_ms": 513, "load_ms": 63, "prompt_eval_ms": 160, "eval_ms": 284, "ok": true}
+{"model": "qwen3:14b", "num_ctx": 16384, "wall_ms": 534, "total_ms": 529, "load_ms": 69, "prompt_eval_ms": 166, "eval_ms": 291, "ok": true}
+{"model": "qwen3:14b", "num_ctx": 32768, "wall_ms": 524, "total_ms": 523, "load_ms": 66, "prompt_eval_ms": 166, "eval_ms": 287, "ok": true}
