@@ -6,6 +6,9 @@ struct ConversationManagerView: View {
     @State private var isPresented = false
     @State private var renameDraft = ""
     @State private var pendingDelete: ConversationSummary?
+    @State private var searchQuery: String = ""
+    @State private var searchHits: [DatabaseManager.MessageSearchHit] = []
+    @State private var searchError: String? = nil
 
     var body: some View {
         Button(action: presentConversationManager) {
@@ -57,13 +60,57 @@ struct ConversationManagerView: View {
                     .foregroundColor(.orange)
             }
 
-            TextField("Search titles", text: $conversationStore.searchQuery)
-                .textFieldStyle(.roundedBorder)
+            if let searchError {
+                Text(searchError)
+                    .font(.caption)
+                    .foregroundColor(.orange)
+            }
+
+            ConversationSearchBar(query: $searchQuery)
+                .onChange(of: searchQuery) { newValue in
+                    let token = newValue
+                    Task {
+                        try? await Task.sleep(nanoseconds: 200_000_000)
+                        guard searchQuery == token else { return }
+                        let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if trimmed.isEmpty {
+                            await MainActor.run {
+                                searchHits = []
+                                searchError = nil
+                            }
+                        } else {
+                            do {
+                                let hits = try DatabaseManager.shared.searchMessages(query: trimmed, limit: 50)
+                                await MainActor.run {
+                                    searchHits = hits
+                                    searchError = nil
+                                }
+                            } catch {
+                                await MainActor.run {
+                                    searchError = "Search error: \(error.localizedDescription)"
+                                }
+                            }
+                        }
+                    }
+                }
 
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 6) {
-                    ForEach(conversationStore.conversations) { conversation in
-                        conversationRow(conversation)
+                    if searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        ForEach(conversationStore.conversations) { conversation in
+                            conversationRow(conversation)
+                        }
+                    } else {
+                        if searchHits.isEmpty {
+                            Text("No results")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .padding(.top, 8)
+                        } else {
+                            ForEach(searchHits) { hit in
+                                searchResultRow(hit)
+                            }
+                        }
                     }
                 }
             }
@@ -141,11 +188,58 @@ struct ConversationManagerView: View {
         .onTapGesture { selectConversation(conversation.id) }
     }
 
+    @ViewBuilder
+    private func searchResultRow(_ hit: DatabaseManager.MessageSearchHit) -> some View {
+        let formatter: RelativeDateTimeFormatter = {
+            let f = RelativeDateTimeFormatter()
+            f.unitsStyle = .short
+            return f
+        }()
+        HStack(alignment: .top, spacing: 8) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(hit.conversationTitle)
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(.primary)
+                    .lineLimit(1)
+                HStack(spacing: 4) {
+                    Text(hit.role)
+                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(Color.accentColor.opacity(0.15))
+                        .cornerRadius(3)
+                    Text(formatter.localizedString(for: hit.createdAt, relativeTo: Date()))
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+                Text(hit.snippet)
+                    .font(.system(size: 11).italic())
+                    .foregroundColor(.secondary)
+                    .lineLimit(2)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color(.controlBackgroundColor))
+        )
+        .contentShape(Rectangle())
+        .onTapGesture {
+            selectConversation(hit.conversationId)
+            searchQuery = ""
+        }
+    }
+
     private func presentConversationManager() {
         conversationStore.refreshConversations()
         conversationStore.searchQuery = ""
         conversationStore.selectConversation(id: session.conversationId)
         renameDraft = conversationStore.loadedConversation?.title ?? session.conversationTitle
+        searchQuery = ""
+        searchHits = []
+        searchError = nil
         isPresented = true
     }
 

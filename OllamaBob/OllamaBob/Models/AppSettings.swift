@@ -31,11 +31,16 @@ final class AppSettings: ObservableObject {
         didSet { UserDefaults.standard.set(betaToolsEnabled, forKey: Keys.betaToolsEnabled) }
     }
 
+    @Published var soundsEnabled: Bool {
+        didSet { UserDefaults.standard.set(soundsEnabled, forKey: Keys.soundsEnabled) }
+    }
+
     private enum Keys {
         static let showBob           = "showBob"
         static let chatWindowOpacity = "chatWindowOpacity"
         static let numCtx            = "numCtx"
         static let betaToolsEnabled  = "betaToolsEnabled"
+        static let soundsEnabled     = "soundsEnabled"
     }
 
     private init() {
@@ -55,10 +60,14 @@ final class AppSettings: ObservableObject {
         if defaults.object(forKey: Keys.betaToolsEnabled) == nil {
             defaults.set(false, forKey: Keys.betaToolsEnabled)
         }
+        if defaults.object(forKey: Keys.soundsEnabled) == nil {
+            defaults.set(true, forKey: Keys.soundsEnabled)
+        }
 
         self.showBob           = defaults.bool(forKey: Keys.showBob)
         self.chatWindowOpacity = defaults.double(forKey: Keys.chatWindowOpacity)
         self.betaToolsEnabled  = defaults.bool(forKey: Keys.betaToolsEnabled)
+        self.soundsEnabled     = defaults.bool(forKey: Keys.soundsEnabled)
 
         let storedCtx = defaults.integer(forKey: Keys.numCtx)
         self.numCtx = AppConfig.numCtxAllowed.contains(storedCtx) ? storedCtx : AppConfig.numCtx

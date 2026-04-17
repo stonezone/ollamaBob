@@ -420,4 +420,112 @@ final class DatabaseManager {
             )
         }
     }
+
+    // MARK: - V2.5 search & memory I/O
+
+    /// One hit in a full-text search. conversationId + title locate the thread;
+    /// snippet is the matching message content trimmed to 160 chars.
+    struct MessageSearchHit: Identifiable {
+        let id: String
+        let conversationId: String
+        let conversationTitle: String
+        let role: String
+        let snippet: String
+        let createdAt: Date
+    }
+
+    /// Cheap LIKE search across every message body. Good enough for a few
+    /// thousand chats; swap to FTS5 later if it gets slow.
+    func searchMessages(query: String, limit: Int = 50) throws -> [MessageSearchHit] {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return [] }
+        let queue = try requireQueue()
+        let pattern = "%\(trimmed)%"
+        return try queue.read { db in
+            let sql = """
+                SELECT m.id, m.conversationId, c.title, m.role, m.content, m.createdAt
+                FROM messages m
+                JOIN conversations c ON c.id = m.conversationId
+                WHERE m.content LIKE ? COLLATE NOCASE
+                ORDER BY m.createdAt DESC
+                LIMIT ?
+                """
+            let rows = try Row.fetchAll(db, sql: sql, arguments: [pattern, limit])
+            return rows.map { row -> MessageSearchHit in
+                let raw: String = row["content"] ?? ""
+                let snippet = String(raw.prefix(160))
+                return MessageSearchHit(
+                    id: row["id"],
+                    conversationId: row["conversationId"],
+                    conversationTitle: row["title"] ?? "Untitled",
+                    role: row["role"] ?? "assistant",
+                    snippet: snippet,
+                    createdAt: row["createdAt"]
+                )
+            }
+        }
+    }
+
+    /// Replace the content of an existing fact. Bumps updatedAt + lastUsedAt
+    /// so the edit doesn't get immediately LRU-trimmed.
+    func updateFact(id: String, content: String) throws -> Bool {
+        let queue = try requireQueue()
+        let now = Date()
+        let capped = String(content.prefix(400))
+        let changed = try queue.write { db -> Int in
+            try db.execute(
+                sql: "UPDATE facts SET content = ?, updatedAt = ?, lastUsedAt = ? WHERE id = ?",
+                arguments: [capped, now, now, id]
+            )
+            return db.changesCount
+        }
+        return changed > 0
+    }
+
+    /// Serialize every fact to a portable markdown document. Categories become
+    /// H2 headers; each fact is a bullet. Round-trip stable with importFactsMarkdown.
+    func exportFactsMarkdown() throws -> String {
+        let facts = try fetchFacts()
+        guard !facts.isEmpty else {
+            return "# OllamaBob memory export\n\n_(empty)_\n"
+        }
+        let grouped = Dictionary(grouping: facts, by: { $0.category })
+        let categories = grouped.keys.sorted()
+        var out = "# OllamaBob memory export\n\n"
+        let formatter = ISO8601DateFormatter()
+        out += "_exported \(formatter.string(from: Date()))_\n\n"
+        for cat in categories {
+            out += "## \(cat)\n\n"
+            for fact in grouped[cat, default: []] {
+                let content = fact.content.replacingOccurrences(of: "\n", with: " ")
+                out += "- \(content)\n"
+            }
+            out += "\n"
+        }
+        return out
+    }
+
+    /// Parse a markdown document in the exportFactsMarkdown format and insert
+    /// new facts. Existing facts are left alone (import is additive). Returns
+    /// the count of newly-inserted rows.
+    @discardableResult
+    func importFactsMarkdown(_ text: String) throws -> Int {
+        var currentCategory = "general"
+        var inserted = 0
+        for rawLine in text.split(separator: "\n", omittingEmptySubsequences: false) {
+            let line = rawLine.trimmingCharacters(in: .whitespaces)
+            if line.hasPrefix("## ") {
+                currentCategory = String(line.dropFirst(3)).trimmingCharacters(in: .whitespaces)
+                if currentCategory.isEmpty { currentCategory = "general" }
+                continue
+            }
+            if line.hasPrefix("- ") {
+                let body = String(line.dropFirst(2)).trimmingCharacters(in: .whitespaces)
+                guard !body.isEmpty else { continue }
+                _ = try saveFact(category: currentCategory, content: body, source: "import")
+                inserted += 1
+            }
+        }
+        return inserted
+    }
 }

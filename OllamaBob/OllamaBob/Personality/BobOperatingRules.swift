@@ -12,6 +12,7 @@ enum BobOperatingRules {
         You have access to these tools:
         - shell: Run shell commands on macOS
         - read_file: Read file contents
+        - write_file: Write text to a file (requires approval, max 100KB)
         - search_files: Find files by name or size
         - web_search: Search the web
         - tool_help: Look up how to use an external CLI tool (pass name='list' to see everything available this session, or name='<tool>' for details)

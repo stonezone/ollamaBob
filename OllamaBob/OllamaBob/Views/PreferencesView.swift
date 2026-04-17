@@ -17,6 +17,8 @@ struct PreferencesView: View {
     @State private var selectedTab = 0
     @State private var facts: [FactRecord] = []
     @State private var factsError: String?
+    @State private var editingFactID: String?
+    @State private var editingContent: String = ""
 
     // MARK: Body
 
@@ -96,6 +98,12 @@ struct PreferencesView: View {
                 title: "Show Bob",
                 subtitle: "Display Bob and his speech bubbles at the top of the chat",
                 isOn: $settings.showBob,
+                dimmed: false
+            )
+            toggleRow(
+                title: "Play sounds",
+                subtitle: "Subtle sound effects when you send a message and when Bob replies",
+                isOn: $settings.soundsEnabled,
                 dimmed: false
             )
             sliderRow(
@@ -363,6 +371,8 @@ struct PreferencesView: View {
     private var memoryTab: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 2) {
+                MemoryIOPanel(onImportComplete: loadFacts)
+
                 HStack {
                     Text("Facts Bob remembers about you")
                         .font(.system(.caption, design: .monospaced).weight(.medium))
@@ -417,25 +427,87 @@ struct PreferencesView: View {
     }
 
     private func factRow(_ fact: FactRecord) -> some View {
-        HStack(alignment: .top, spacing: 8) {
-            Text(fact.content)
-                .font(.system(.caption, design: .monospaced))
-                .foregroundColor(.white)
-                .lineLimit(3)
+        let isEditing = editingFactID == fact.id
+        return VStack(alignment: .leading, spacing: 4) {
+            if isEditing {
+                TextEditor(text: $editingContent)
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundColor(.white)
+                    .frame(minHeight: 56)
+                    .scrollContentBackground(.hidden)
+                    .background(PreferencesView.bgBlack)
+                    .cornerRadius(4)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 4)
+                            .stroke(PreferencesView.phosphorGreen.opacity(0.4), lineWidth: 1)
+                    )
 
-            Spacer()
+                HStack(spacing: 8) {
+                    Button("Save") {
+                        saveFact(id: fact.id)
+                    }
+                    .font(.system(.caption2, design: .monospaced).weight(.bold))
+                    .foregroundColor(PreferencesView.bgBlack)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(PreferencesView.phosphorGreen)
+                    .cornerRadius(3)
+                    .buttonStyle(.plain)
 
-            Button(action: { deleteFact(fact) }) {
-                Image(systemName: "trash")
-                    .font(.caption2)
-                    .foregroundColor(PreferencesView.textGrey.opacity(0.6))
+                    Button("Cancel") {
+                        editingFactID = nil
+                        editingContent = ""
+                    }
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundColor(PreferencesView.textGrey)
+                    .buttonStyle(.plain)
+                }
+            } else {
+                HStack(alignment: .top, spacing: 8) {
+                    Text(fact.content)
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundColor(.white)
+                        .lineLimit(3)
+
+                    Spacer()
+
+                    Button(action: {
+                        editingFactID = fact.id
+                        editingContent = fact.content
+                    }) {
+                        Image(systemName: "pencil")
+                            .font(.caption2)
+                            .foregroundColor(PreferencesView.textGrey.opacity(0.6))
+                    }
+                    .buttonStyle(.plain)
+                    .help("Edit this fact")
+
+                    Button(action: { deleteFact(fact) }) {
+                        Image(systemName: "trash")
+                            .font(.caption2)
+                            .foregroundColor(PreferencesView.textGrey.opacity(0.6))
+                    }
+                    .buttonStyle(.plain)
+                    .help("Delete this fact")
+                }
             }
-            .buttonStyle(.plain)
-            .help("Delete this fact")
         }
         .padding(.horizontal, 24)
         .padding(.vertical, 6)
         .background(PreferencesView.bgPanel)
+    }
+
+    private func saveFact(id: String) {
+        let trimmed = editingContent.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        do {
+            _ = try DatabaseManager.shared.updateFact(id: id, content: trimmed)
+            editingFactID = nil
+            editingContent = ""
+            loadFacts()
+        } catch {
+            factsError = error.localizedDescription
+        }
     }
 
     private func loadFacts() {

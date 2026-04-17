@@ -55,6 +55,47 @@ struct OllamaBobApp: App {
         }
         .defaultSize(width: 520, height: 760)
         .windowStyle(.hiddenTitleBar)
+        .commands {
+            // F5 — keyboard shortcuts for chat actions and persona switching
+            CommandMenu("Chat") {
+                Button("New Chat") {
+                    NotificationCenter.default.post(name: .bobNewChat, object: nil)
+                }
+                .keyboardShortcut("n", modifiers: .command)
+
+                Button("Clear Chat") {
+                    NotificationCenter.default.post(name: .bobNewChat, object: nil)
+                }
+                .keyboardShortcut("l", modifiers: .command)
+
+                Divider()
+
+                Button("Switch to Mumbai Bob") {
+                    PersonaStore.shared.activePersonaID = BuiltinPersonas.mumbaiBobID
+                }
+                .keyboardShortcut("1", modifiers: .command)
+
+                Button("Switch to Terse Engineer") {
+                    PersonaStore.shared.activePersonaID = BuiltinPersonas.terseEngineerID
+                }
+                .keyboardShortcut("2", modifiers: .command)
+
+                Button("Switch to Grumpy Linus") {
+                    PersonaStore.shared.activePersonaID = BuiltinPersonas.grumpyLinusID
+                }
+                .keyboardShortcut("3", modifiers: .command)
+
+                Button("Switch to Helpful Assistant") {
+                    PersonaStore.shared.activePersonaID = BuiltinPersonas.helpfulAssistID
+                }
+                .keyboardShortcut("4", modifiers: .command)
+
+                Button("Switch to Blank") {
+                    PersonaStore.shared.activePersonaID = BuiltinPersonas.blankID
+                }
+                .keyboardShortcut("5", modifiers: .command)
+            }
+        }
 
         Window("Tool Activity", id: "tool-activity") {
             ToolActivityView(agentLoop: appState.agentLoop)
