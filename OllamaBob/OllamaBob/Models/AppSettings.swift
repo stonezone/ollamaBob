@@ -51,14 +51,38 @@ final class AppSettings: ObservableObject {
         didSet { UserDefaults.standard.set(heartbeatEnabled, forKey: Keys.heartbeatEnabled) }
     }
 
+    /// When true, Bob's Desk renders only the avatar + an input bubble +
+    /// Bob's speech bubble — the transcript, status line, and tool trace
+    /// are all hidden. The user still drives a real conversation; the only
+    /// thing removed is the "terminal" surface.
+    @Published var avatarOnlyMode: Bool {
+        didSet { UserDefaults.standard.set(avatarOnlyMode, forKey: Keys.avatarOnlyMode) }
+    }
+
+    /// Last-seen window frame in full mode. Restored when the user flips
+    /// back from avatar-only. Stored as `NSStringFromRect` so NSWindow can
+    /// round-trip it.
+    @Published var fullModeWindowFrame: String {
+        didSet { UserDefaults.standard.set(fullModeWindowFrame, forKey: Keys.fullModeWindowFrame) }
+    }
+
+    /// Last-seen window frame in avatar-only mode. Separate from full mode
+    /// so the user can park each layout in its own spot on the screen.
+    @Published var avatarModeWindowFrame: String {
+        didSet { UserDefaults.standard.set(avatarModeWindowFrame, forKey: Keys.avatarModeWindowFrame) }
+    }
+
     private enum Keys {
-        static let showBob           = "showBob"
-        static let chatWindowOpacity = "chatWindowOpacity"
-        static let numCtx            = "numCtx"
-        static let betaToolsEnabled  = "betaToolsEnabled"
-        static let soundsEnabled     = "soundsEnabled"
-        static let bobVoiceEnabled   = "bobVoiceEnabled"
-        static let heartbeatEnabled  = "heartbeatEnabled"
+        static let showBob               = "showBob"
+        static let chatWindowOpacity     = "chatWindowOpacity"
+        static let numCtx                = "numCtx"
+        static let betaToolsEnabled      = "betaToolsEnabled"
+        static let soundsEnabled         = "soundsEnabled"
+        static let bobVoiceEnabled       = "bobVoiceEnabled"
+        static let heartbeatEnabled      = "heartbeatEnabled"
+        static let avatarOnlyMode        = "avatarOnlyMode"
+        static let fullModeWindowFrame   = "fullModeWindowFrame"
+        static let avatarModeWindowFrame = "avatarModeWindowFrame"
     }
 
     private init() {
@@ -87,13 +111,19 @@ final class AppSettings: ObservableObject {
         if defaults.object(forKey: Keys.heartbeatEnabled) == nil {
             defaults.set(false, forKey: Keys.heartbeatEnabled)
         }
+        if defaults.object(forKey: Keys.avatarOnlyMode) == nil {
+            defaults.set(false, forKey: Keys.avatarOnlyMode)
+        }
 
-        self.showBob           = defaults.bool(forKey: Keys.showBob)
-        self.chatWindowOpacity = defaults.double(forKey: Keys.chatWindowOpacity)
-        self.betaToolsEnabled  = defaults.bool(forKey: Keys.betaToolsEnabled)
-        self.soundsEnabled     = defaults.bool(forKey: Keys.soundsEnabled)
-        self.bobVoiceEnabled   = defaults.bool(forKey: Keys.bobVoiceEnabled)
-        self.heartbeatEnabled  = defaults.bool(forKey: Keys.heartbeatEnabled)
+        self.showBob               = defaults.bool(forKey: Keys.showBob)
+        self.chatWindowOpacity     = defaults.double(forKey: Keys.chatWindowOpacity)
+        self.betaToolsEnabled      = defaults.bool(forKey: Keys.betaToolsEnabled)
+        self.soundsEnabled         = defaults.bool(forKey: Keys.soundsEnabled)
+        self.bobVoiceEnabled       = defaults.bool(forKey: Keys.bobVoiceEnabled)
+        self.heartbeatEnabled      = defaults.bool(forKey: Keys.heartbeatEnabled)
+        self.avatarOnlyMode        = defaults.bool(forKey: Keys.avatarOnlyMode)
+        self.fullModeWindowFrame   = defaults.string(forKey: Keys.fullModeWindowFrame) ?? ""
+        self.avatarModeWindowFrame = defaults.string(forKey: Keys.avatarModeWindowFrame) ?? ""
 
         let storedCtx = defaults.integer(forKey: Keys.numCtx)
         self.numCtx = AppConfig.numCtxAllowed.contains(storedCtx) ? storedCtx : AppConfig.numCtx

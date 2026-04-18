@@ -15,6 +15,7 @@ struct PreferencesView: View {
     @ObservedObject var toolRuntime = ToolRuntime.shared
     @ObservedObject var personaStore = PersonaStore.shared
     @ObservedObject var avatarStore = AvatarStore.shared
+    @ObservedObject var automationProbe = AutomationProbe.shared
     @State private var selectedTab = 0
     @State private var facts: [FactRecord] = []
     @State private var factsError: String?
@@ -203,6 +204,15 @@ struct PreferencesView: View {
                     .padding(.horizontal, 24)
                     .padding(.top, 12)
 
+                // Mac app automation (TCC) — controls whether Bob can drive
+                // Mail / Calendar / Finder / etc. via AppleScript.
+                macAppPermissionsSection
+
+                Divider()
+                    .background(PreferencesView.phosphorGreen.opacity(0.2))
+                    .padding(.horizontal, 24)
+                    .padding(.top, 12)
+
                 // External CLI tools (jq, rg, yt-dlp, ffmpeg, …) probed at launch.
                 externalToolsHeader
 
@@ -254,6 +264,107 @@ struct PreferencesView: View {
         .padding(.horizontal, 24)
         .padding(.top, 12)
         .padding(.bottom, 4)
+    }
+
+    private var macAppPermissionsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("MAC APP PERMISSIONS")
+                    .font(.system(.caption, design: .monospaced).weight(.bold))
+                    .foregroundColor(PreferencesView.phosphorGreen)
+                Text("macOS Automation (TCC) grants for apps Bob can drive via AppleScript. If \"denied\" appears, open System Settings → Privacy & Security → Automation and toggle OllamaBob back on.")
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundColor(PreferencesView.textGrey)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .lineSpacing(2)
+            }
+            .padding(.horizontal, 24)
+            .padding(.top, 12)
+
+            HStack(spacing: 8) {
+                Button(automationProbe.isProbing ? "Prompting…" : "Re-run prompts") {
+                    Task { await automationProbe.probeAll() }
+                }
+                .buttonStyle(.plain)
+                .font(.system(.caption, design: .monospaced).weight(.bold))
+                .foregroundColor(.black)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 5)
+                .background(
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(PreferencesView.phosphorGreen.opacity(automationProbe.isProbing ? 0.5 : 0.95))
+                )
+                .disabled(automationProbe.isProbing)
+
+                Button("Open System Settings") {
+                    AutomationProbe.openSystemSettings()
+                }
+                .buttonStyle(.plain)
+                .font(.system(.caption, design: .monospaced))
+                .foregroundColor(PreferencesView.phosphorGreen)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 5)
+                .background(
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .stroke(PreferencesView.phosphorGreen.opacity(0.5), lineWidth: 1)
+                )
+            }
+            .padding(.horizontal, 24)
+
+            VStack(spacing: 4) {
+                ForEach(AutomationProbe.targets) { target in
+                    macAppPermissionRow(target: target)
+                }
+            }
+            .padding(.horizontal, 24)
+            .padding(.top, 4)
+        }
+    }
+
+    private func macAppPermissionRow(target: AutomationTarget) -> some View {
+        let status = automationProbe.statuses[target.id] ?? .unknown
+        let isCurrent = automationProbe.currentTargetID == target.id
+        let (label, color): (String, Color) = {
+            switch status {
+            case .unknown: return ("not asked", PreferencesView.textGrey)
+            case .granted: return ("granted",   PreferencesView.phosphorGreen)
+            case .denied:  return ("denied",    Color(red: 1.0, green: 0.45, blue: 0.35))
+            case .missing: return ("not installed", PreferencesView.textGrey.opacity(0.7))
+            case .error:   return ("error",     Color(red: 1.0, green: 0.45, blue: 0.35))
+            }
+        }()
+        return HStack(spacing: 10) {
+            Text(target.emoji)
+            Text(target.displayName)
+                .font(.system(.caption, design: .monospaced))
+                .foregroundColor(.white)
+            Spacer()
+            if isCurrent {
+                ProgressView().controlSize(.mini).tint(PreferencesView.phosphorGreen)
+            }
+            Text(label.uppercased())
+                .font(.system(size: 9, design: .monospaced).weight(.bold))
+                .foregroundColor(color)
+            Button("check") {
+                Task { _ = await automationProbe.probe(target) }
+            }
+            .buttonStyle(.plain)
+            .font(.system(size: 10, design: .monospaced))
+            .foregroundColor(PreferencesView.phosphorGreen)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    .stroke(PreferencesView.phosphorGreen.opacity(0.4), lineWidth: 1)
+            )
+            .disabled(automationProbe.isProbing)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                .fill(PreferencesView.bgPanel)
+        )
     }
 
     private func builtinToolCategorySection(_ category: String) -> some View {
@@ -757,9 +868,10 @@ struct PreferencesView: View {
                 shortcutSection(
                     title: "App",
                     items: [
-                        ("⌘,", "Open Preferences"),
-                        ("⌘W", "Close window"),
-                        ("⌘Q", "Quit OllamaBob"),
+                        ("⌘⇧A", "Toggle avatar-only mode"),
+                        ("⌘,",  "Open Preferences"),
+                        ("⌘W",  "Close window"),
+                        ("⌘Q",  "Quit OllamaBob"),
                     ]
                 )
                 Text("Tip: Bob responds to ⌘-shortcuts anywhere in the app, even with the sprite visible but no message focused.")
@@ -830,6 +942,8 @@ struct PreferencesView: View {
                     .padding(.top, 10)
                     .padding(.bottom, 6)
 
+                avatarOnlyToggle
+
                 followPersonaToggle(currentPack: personaPack)
 
                 Text("AVATAR PACKS")
@@ -845,6 +959,27 @@ struct PreferencesView: View {
             }
             .padding(.bottom, 12)
         }
+    }
+
+    private var avatarOnlyToggle: some View {
+        HStack(alignment: .center, spacing: 16) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Avatar-only mode")
+                    .font(.system(.body, design: .monospaced))
+                    .foregroundColor(.white)
+                Text("Hide the terminal and type into a small bubble below Bob. Toggle with ⌘⇧A or the menu bar item.")
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundColor(PreferencesView.textGrey)
+            }
+            Spacer()
+            Toggle("", isOn: $settings.avatarOnlyMode)
+                .toggleStyle(.switch)
+                .tint(PreferencesView.phosphorGreen)
+                .labelsHidden()
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 14)
+        .background(PreferencesView.bgPanel)
     }
 
     private func followPersonaToggle(currentPack: AvatarPack) -> some View {

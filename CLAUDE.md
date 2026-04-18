@@ -6,10 +6,11 @@ OllamaBob is a native macOS menu bar AI assistant that runs entirely locally on 
 
 ## Current State
 
-- **Phase:** Shipping incremental V2.x releases. V1 feature set is complete; V2.0–V2.8 layered on voice, personas, tools, onboarding, and UI polish.
-- **Latest shipped:** V2.8 — transparent Mumbai Bob sprites, chromeless draggable/resizable chat window, Preferences scroll+resize, thinking/answer split (tool traces float above Bob, chat stays clean), merged bob+ollama memory readout.
+- **Phase:** Shipping incremental V2.x releases. V1 feature set is complete; V2.0–V2.9.1 layered on voice, personas, tools, onboarding, UI polish, and native tool expansion.
+- **Latest shipped:** V2.9.1 (`fc67ca1`) — Built-in Tools section in Preferences + landing-page refresh, on top of V2.9 Phase A (OCR, speak, weather, unit_convert, image_convert, youtube_search, youtube_download).
+- **In-flight (uncommitted):** V2.9.2 — AppleScript/TCC fix: `NSAppleEventsUsageDescription` added to Info.plist, new `AutomationProbe` service, Permissions step added to onboarding, Mac App Permissions section added to Preferences → Tools. See `docs/OLLAMABOB_V2.9.2_HANDOFF.md`.
 - **V1.1 plan** (`docs/OLLAMABOB_V1.1_PLAN.md`) remains the architectural source of truth for the core agent loop and wire format. Features layered on top live in the V2 plan docs.
-- **V2 plans:** `docs/OLLAMABOB_V2_PLAN_FINAL.md` (committed V2 scope), `docs/OLLAMABOB_V2_PLAN_DRAFT.md` (earlier draft, kept for context).
+- **V2 plans:** `docs/OLLAMABOB_V2_PLAN_FINAL.md` (committed V2 scope). The earlier V2 draft, Phase-0 results write-up, and V2.9 Phase A plan are archived under `archive/`.
 - **Historical docs** (original V1 kickoff prompt, V2.5 orchestration plan, phase-0 investigations) are preserved under `archive/`.
 
 ## Key Files
@@ -20,10 +21,11 @@ OllamaBob is a native macOS menu bar AI assistant that runs entirely locally on 
 | `AGENTS.md` | Repo layout, commands, style conventions — keep this in sync with structure changes. |
 | `docs/OLLAMABOB_V1.1_PLAN.md` | Core architecture, wire format, schema, acceptance tests. Still authoritative for the agent loop. |
 | `docs/OLLAMABOB_V2_PLAN_FINAL.md` | V2 scope that shipped on top of V1 (voice, personas, tools, memory, onboarding). |
+| `docs/OLLAMABOB_V2.9.2_HANDOFF.md` | **Most recent handoff brief** — current state, uncommitted V2.9.2 diff, backlog, build/test. Read first in a fresh session. |
 | `docs/ARCHITECTURE_NOTES.md` | Running notes on architectural decisions as they're made. |
 | `docs/personas.txt` | 14 voice personas for Bob's personality. |
 | `images/` | Avatar/icon assets and source prompts. |
-| `archive/` | Historical artifacts (V1 kickoff prompt, V2.5 plan, phase-0 investigations). See `archive/README.md`. |
+| `archive/` | Historical artifacts (V1 kickoff prompt, V2.5 plan, V2 draft, V2.9 Phase A plan, phase-0 investigations). See `archive/README.md`. |
 
 ---
 
@@ -41,7 +43,7 @@ These are final. Do not change without explicit user approval AND documented evi
 - **`stream: false`** for all Ollama requests
 - **Flat tool parameter schemas only** (single-level properties)
 
-### What's Still Out Of Scope (as of V2.8)
+### What's Still Out Of Scope (as of V2.9.2)
 The original V1 "do not build" list has partially dissolved — voice clips, structured write tools, multi-conversation UI, and cartoon avatars all shipped in V2.x. These remain out of scope:
 
 - No Python subprocess or external IPC (the Swift agent loop owns everything)
@@ -269,6 +271,10 @@ ollamaBob/                        # repo root
 | 2026-04-17 | Transparent sprites via `rembg[cpu,cli]`, not a gen model | Gen models (nano-banana / Gemini 2.5 Flash Image) can't output true alpha — they paint a background. Generate art, then mask with rembg. |
 | 2026-04-17 | Chromeless SwiftUI windows need three pieces | Explicit `WindowDragHandle` NSView for dragging, `.resizable` styleMask + `hasShadow=true` for discoverable edges, `.windowResizability(.contentMinSize)` with min/ideal frame (no fixed `.frame`). |
 | 2026-04-17 | Ollama memory must use `ps -axo rss=,command=` | The `comm=` field truncates to 16 chars on macOS, so `/Applications/Ollama.app/Contents/Resources/ollama` never matches a `== "ollama"` test. Use `command=` (full argv) and match the executable basename. |
+| 2026-04-17 | V2.9 Phase A — seven native tools (OCR, speak, weather, unit_convert, image_convert, youtube_search, youtube_download) | Each is its own `enum`-namespaced `Tools/*.swift` file following the established pattern. No new SPM dependencies — Vision / CoreImage / sips / wttr.in / yt-dlp all satisfy the need without them. |
+| 2026-04-17 | V2.9.1 — built-in tools promoted above external CLI tools in Preferences | The built-in set is the core product; the external CLI list is opt-in depth. Surface ordering now reflects that. |
+| 2026-04-18 | V2.9.2 — `NSAppleEventsUsageDescription` is required for AppleScript to honor TCC grants | Without it, macOS accepts the user's "Allow" on the Automation prompt but the subsequent Apple-event send still fails with `-1743`. `build.sh` now inlines the Apple-events, Contacts, Calendar, and Reminders usage strings. |
+| 2026-04-18 | V2.9.2 — Permissions are a dedicated onboarding step + a Preferences section | Discovery pattern for first-launch users: fire every TCC prompt up front via `AutomationProbe.probeAll()` rather than letting Bob stumble into each one mid-conversation. `AutomationProbe` lives in `Services/` (it's app infrastructure, not a model-callable tool). |
 
 ---
 
@@ -288,7 +294,8 @@ When CLAUDE.md and other docs conflict, **CLAUDE.md wins.**
 
 The V1 implementation is complete and V2.x features have been layering on top. When picking up a new task:
 
-1. Read **AGENTS.md** for the current repo layout, build/test commands, and style conventions.
-2. Read the **Decision Log** below — decisions are sticky and should not be revisited without documented cause.
-3. Check `archive/` if you need to understand why something is the way it is.
-4. Always follow the build order: `swift build` first, then `./build.sh --run` to verify changes live in the actual menu-bar app.
+1. Read **`docs/OLLAMABOB_V2.9.2_HANDOFF.md`** first — it's the most recent snapshot (current state, uncommitted work, backlog).
+2. Read **AGENTS.md** for the current repo layout, build/test commands, and style conventions.
+3. Read the **Decision Log** above — decisions are sticky and should not be revisited without documented cause.
+4. Check `archive/` if you need to understand why something is the way it is.
+5. Always follow the build order: `swift build` first, then `./build.sh --run` to verify changes live in the actual menu-bar app.

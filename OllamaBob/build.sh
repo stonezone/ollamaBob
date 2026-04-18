@@ -58,6 +58,14 @@ cat > "$CONTENTS/Info.plist" <<'PLIST'
     <string>OllamaBob reads and writes files in your Downloads folder when you ask Bob to — for example, "what did I download today?" or "move this zip to Downloads".</string>
     <key>NSRemovableVolumesUsageDescription</key>
     <string>OllamaBob reads and writes files on external drives (USB sticks, SD cards) when you ask Bob to work with files stored there.</string>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>OllamaBob drives other Mac apps (Mail, Calendar, Reminders, Contacts, Music, Finder, System Events) via AppleScript when you ask Bob to — for example, "do I have new mail?" or "add a reminder to call mom". Every AppleScript run requires your approval in Bob first.</string>
+    <key>NSContactsUsageDescription</key>
+    <string>OllamaBob reads your Contacts when you ask Bob to look up a person's phone, email, or address.</string>
+    <key>NSCalendarsUsageDescription</key>
+    <string>OllamaBob reads and writes events in Calendar when you ask Bob to check your schedule or add an event.</string>
+    <key>NSRemindersUsageDescription</key>
+    <string>OllamaBob reads and writes Reminders when you ask Bob to check your to-dos or add a new reminder.</string>
 </dict>
 </plist>
 PLIST

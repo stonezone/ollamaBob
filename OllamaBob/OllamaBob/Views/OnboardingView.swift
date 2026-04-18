@@ -1,10 +1,11 @@
 import SwiftUI
 
 /// First-launch wizard. Shown once, dismissable at any step. Persists a
-/// `hasCompletedOnboarding` flag so it never re-appears. Three steps:
+/// `hasCompletedOnboarding` flag so it never re-appears. Four steps:
 ///   1. Welcome
 ///   2. Pick persona
-///   3. Quick tour (shortcuts + example prompts)
+///   3. Grant Mac app permissions (Mail, Calendar, etc.)
+///   4. Quick tour (shortcuts + example prompts)
 struct OnboardingView: View {
 
     // Style constants — match Preferences/Bob's Desk for consistency.
@@ -13,8 +14,11 @@ struct OnboardingView: View {
     private static let bgPanel       = Color(red: 0.10, green: 0.11, blue: 0.10)
     private static let textGrey      = Color(white: 0.60)
 
+    private static let stepCount = 4
+
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var personaStore = PersonaStore.shared
+    @ObservedObject private var automationProbe = AutomationProbe.shared
     @State private var step = 0
 
     static let completionKey = "hasCompletedOnboarding"
@@ -27,7 +31,8 @@ struct OnboardingView: View {
                 switch step {
                 case 0: welcomeStep
                 case 1: personaStep
-                case 2: tourStep
+                case 2: permissionsStep
+                case 3: tourStep
                 default: welcomeStep
                 }
             }
@@ -35,7 +40,7 @@ struct OnboardingView: View {
             Divider().background(Self.phosphorGreen.opacity(0.15))
             footer
         }
-        .frame(width: 520, height: 520)
+        .frame(width: 520, height: 560)
         .background(Self.bgBlack)
     }
 
@@ -61,7 +66,7 @@ struct OnboardingView: View {
 
     private var stepDots: some View {
         HStack(spacing: 6) {
-            ForEach(0..<3) { i in
+            ForEach(0..<Self.stepCount, id: \.self) { i in
                 Circle()
                     .fill(i == step ? Self.phosphorGreen : Self.phosphorGreen.opacity(0.2))
                     .frame(width: 6, height: 6)
@@ -82,8 +87,8 @@ struct OnboardingView: View {
                 Button("Back") { step -= 1 }
                     .buttonStyle(phosphorSecondaryStyle())
             }
-            Button(step == 2 ? "Get started" : "Next") {
-                if step == 2 { finish() } else { step += 1 }
+            Button(step == Self.stepCount - 1 ? "Get started" : "Next") {
+                if step == Self.stepCount - 1 { finish() } else { step += 1 }
             }
             .buttonStyle(phosphorPrimaryStyle())
         }
@@ -137,6 +142,104 @@ struct OnboardingView: View {
             }
             .padding(.horizontal, 28)
             .padding(.vertical, 18)
+        }
+    }
+
+    private var permissionsStep: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Let Bob drive your Mac apps")
+                    .font(.system(.body, design: .monospaced).weight(.bold))
+                    .foregroundColor(Self.phosphorGreen)
+
+                Text("macOS requires your permission before Bob can talk to apps like Mail or Calendar. Click \"Grant all\" to get the prompts out of the way now — you can approve or skip each one.")
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundColor(Self.textGrey)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .lineSpacing(2)
+                    .padding(.bottom, 4)
+
+                HStack(spacing: 8) {
+                    Button(automationProbe.isProbing ? "Prompting…" : "Grant all") {
+                        Task { await automationProbe.probeAll() }
+                    }
+                    .buttonStyle(phosphorPrimaryStyle())
+                    .disabled(automationProbe.isProbing)
+
+                    Button("Open System Settings") {
+                        AutomationProbe.openSystemSettings()
+                    }
+                    .buttonStyle(phosphorSecondaryStyle())
+                }
+                .padding(.bottom, 6)
+
+                ForEach(AutomationProbe.targets) { target in
+                    permissionRow(target: target)
+                }
+
+                Text("Denied one by accident? Open System Settings → Privacy & Security → Automation and toggle \"OllamaBob\" back on.")
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundColor(Self.textGrey.opacity(0.8))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .lineSpacing(2)
+                    .padding(.top, 6)
+            }
+            .padding(.horizontal, 28)
+            .padding(.vertical, 18)
+        }
+    }
+
+    private func permissionRow(target: AutomationTarget) -> some View {
+        let status = automationProbe.statuses[target.id] ?? .unknown
+        let isCurrent = automationProbe.currentTargetID == target.id
+        return HStack(spacing: 12) {
+            Text(target.emoji).font(.title3)
+            Text(target.displayName)
+                .font(.system(.caption, design: .monospaced).weight(.bold))
+                .foregroundColor(.white)
+            Spacer()
+            statusBadge(status: status, isCurrent: isCurrent)
+            Button(buttonLabel(for: status)) {
+                Task { _ = await automationProbe.probe(target) }
+            }
+            .buttonStyle(phosphorSecondaryStyle())
+            .disabled(automationProbe.isProbing)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(Self.bgPanel)
+        )
+    }
+
+    @ViewBuilder
+    private func statusBadge(status: AutomationStatus, isCurrent: Bool) -> some View {
+        let (text, color): (String, Color) = {
+            switch status {
+            case .unknown: return ("not asked", Self.textGrey)
+            case .granted: return ("granted", Self.phosphorGreen)
+            case .denied:  return ("denied",  Color(red: 1.0, green: 0.45, blue: 0.35))
+            case .missing: return ("not installed", Self.textGrey.opacity(0.7))
+            case .error:   return ("error", Color(red: 1.0, green: 0.45, blue: 0.35))
+            }
+        }()
+        HStack(spacing: 4) {
+            if isCurrent {
+                ProgressView().controlSize(.mini).tint(Self.phosphorGreen)
+            }
+            Text(text.uppercased())
+                .font(.system(size: 9, design: .monospaced).weight(.bold))
+                .foregroundColor(color)
+        }
+    }
+
+    private func buttonLabel(for status: AutomationStatus) -> String {
+        switch status {
+        case .unknown, .error: return "Grant"
+        case .granted:          return "Recheck"
+        case .denied:           return "Retry"
+        case .missing:          return "Skip"
         }
     }
 

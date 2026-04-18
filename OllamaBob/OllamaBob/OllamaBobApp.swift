@@ -4,6 +4,7 @@ import AppKit
 @main
 struct OllamaBobApp: App {
     @StateObject private var appState = AppState()
+    @ObservedObject private var settings = AppSettings.shared
 
     @Environment(\.openWindow) private var openWindow
 
@@ -13,6 +14,10 @@ struct OllamaBobApp: App {
                 openWindow(id: "chat")
             }
             .keyboardShortcut("o")
+
+            Button(settings.avatarOnlyMode ? "Show Full Chat" : "Avatar-only Mode") {
+                settings.avatarOnlyMode.toggle()
+            }
 
             Button("Tool Activity") {
                 openWindow(id: "tool-activity")
@@ -72,6 +77,11 @@ struct OllamaBobApp: App {
                     NotificationCenter.default.post(name: .bobNewChat, object: nil)
                 }
                 .keyboardShortcut("l", modifiers: .command)
+
+                Button(settings.avatarOnlyMode ? "Show Full Chat" : "Avatar-only Mode") {
+                    settings.avatarOnlyMode.toggle()
+                }
+                .keyboardShortcut("a", modifiers: [.command, .shift])
 
                 Divider()
 

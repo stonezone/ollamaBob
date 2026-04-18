@@ -1,6 +1,9 @@
 # macOS
 .DS_Store
+._*
 *.swp
+*.swo
+*.swn
 *~
 
 # Xcode / SPM build artifacts
@@ -11,6 +14,15 @@ DerivedData/
 xcuserdata/
 *.xcuserstate
 *.xcworkspace/xcshareddata/
+*.xcresult/
+
+# Test / coverage output
+coverage/
+.coverage
+*.gcno
+*.gcda
+*.profraw
+*.profdata
 
 # Databases (runtime only)
 *.sqlite
@@ -23,11 +35,24 @@ xcuserdata/
 .env
 .env.*
 !.env.example
+*.provisionprofile
+*.p12
+*.mobileprovision
 
 # Logs and temp artifacts
 *.log
 logs/
 bob_mockups/
+tmp/
+scratch/
+*.tmp
+*.pid
+*.pid.lock
+
+# Merge / patch backups
+*.orig
+*.rej
+*.bak
 
 # Python tooling (for tools/)
 __pycache__/
@@ -36,10 +61,19 @@ __pycache__/
 .venv/
 venv/
 
+# Node (defensive — no JS runtime in this repo today)
+node_modules/
+dist/
+out/
+
 # Editor
 .idea/
 .vscode/
 *.code-workspace
+
+# Claude Code local artifacts (not needed on remote)
+.claude/
+CLAUDE.local.md
 
 # Archived compiled artifacts — sources tracked, binaries ignored
 archive/**/*.app/

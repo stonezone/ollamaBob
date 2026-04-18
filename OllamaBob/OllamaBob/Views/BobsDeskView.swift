@@ -5,12 +5,25 @@ import AppKit
 
 /// Strips all macOS chrome from the chat window: makes the NSWindow non-opaque,
 /// hides the title bar visuals and traffic-light buttons, and lets the user
-/// drag from any background area. Result is a chrome-free surface where only
-/// the SwiftUI content (Bob's sprite + the rounded chat container) is visible.
+/// drag from any background area. Also walks the titlebar container tree and
+/// hides every NSVisualEffectView — macOS's hidden-titlebar style still
+/// renders a frosted-glass strip behind the content, and there's no public
+/// API to disable it. Tracks window frames per-mode so the user can park
+/// full mode and avatar-only mode in separate spots on the screen.
 /// Close via Cmd+W.
 private struct WindowTransparencyConfigurator: NSViewRepresentable {
+    let avatarOnly: Bool
+
+    private static let fullMinSize   = NSSize(width: 420, height: 520)
+    private static let avatarMinSize = NSSize(width: 280, height: 320)
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(avatarOnly: avatarOnly)
+    }
+
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
+        let mode = avatarOnly
         DispatchQueue.main.async {
             guard let window = view.window else { return }
             window.isOpaque = false
@@ -27,12 +40,140 @@ private struct WindowTransparencyConfigurator: NSViewRepresentable {
             window.standardWindowButton(.miniaturizeButton)?.isHidden = true
             window.standardWindowButton(.zoomButton)?.isHidden = true
             window.isMovableByWindowBackground = true
-            window.minSize = NSSize(width: 420, height: 520)
+            window.minSize = mode ? Self.avatarMinSize : Self.fullMinSize
+            // SwiftUI's content view can paint its own layer background on
+            // top of an otherwise-transparent NSWindow. Force it clear so
+            // avatar-only mode shows only Bob + bubbles over the desktop.
+            if let contentView = window.contentView {
+                contentView.wantsLayer = true
+                contentView.layer?.backgroundColor = .clear
+            }
+            context.coordinator.attachIfNeeded(window: window)
+            Self.hideChromeEffectViews(under: window)
         }
         return view
     }
 
-    func updateNSView(_ nsView: NSView, context: Context) {}
+    func updateNSView(_ nsView: NSView, context: Context) {
+        guard let window = nsView.window else { return }
+        if context.coordinator.avatarOnly != avatarOnly {
+            let previousMode = context.coordinator.avatarOnly
+            context.coordinator.avatarOnly = avatarOnly
+            window.minSize = avatarOnly ? Self.avatarMinSize : Self.fullMinSize
+            context.coordinator.handleModeSwitch(window: window, from: previousMode)
+        }
+        // The frosted titlebar view can be re-added by AppKit on window
+        // state changes (resize, screen move). Re-hide on every update.
+        Self.hideChromeEffectViews(under: window)
+        // SwiftUI re-paints the contentView background on state changes —
+        // clear it again so the desktop shows through.
+        window.contentView?.layer?.backgroundColor = .clear
+    }
+
+    /// Walk every subview of the window's root content container and
+    /// neutralise anything that paints a window-wide backdrop:
+    /// - hide `NSVisualEffectView` (the frosted "liquid glass" strip the
+    ///   hidden-titlebar style leaves behind)
+    /// - clear the CALayer background on every view in the hierarchy.
+    ///   NSThemeFrame, NSHostingView, and private SwiftUI backing views
+    ///   all paint their own layer fill on macOS 14 even when the NSWindow
+    ///   itself is set to `isOpaque = false` / `backgroundColor = .clear`.
+    ///   SwiftUI draws its content via CoreGraphics into the layer's
+    ///   drawing context, not via `layer.backgroundColor`, so stripping
+    ///   every backdrop tint is safe for rendered content.
+    private static func hideChromeEffectViews(under window: NSWindow) {
+        guard let rootView = window.contentView?.superview ?? window.contentView else { return }
+        var queue: [NSView] = [rootView]
+        while let current = queue.popLast() {
+            if current is NSVisualEffectView {
+                current.isHidden = true
+            }
+            if let layer = current.layer, layer.backgroundColor != nil {
+                layer.backgroundColor = .clear
+            }
+            queue.append(contentsOf: current.subviews)
+        }
+    }
+
+    /// Holds the NSWindow reference and per-mode frame observers. Writes
+    /// window-move/resize events back to `AppSettings` under the matching
+    /// mode's key, and restores the saved frame on mode switches.
+    @MainActor
+    final class Coordinator {
+        var avatarOnly: Bool
+        private weak var window: NSWindow?
+        private var moveObs: NSObjectProtocol?
+        private var resizeObs: NSObjectProtocol?
+
+        init(avatarOnly: Bool) { self.avatarOnly = avatarOnly }
+
+        func attachIfNeeded(window: NSWindow) {
+            guard self.window !== window else { return }
+            self.window = window
+            applySavedFrame(window: window)
+            startObserving(window: window)
+        }
+
+        func handleModeSwitch(window: NSWindow, from previous: Bool) {
+            // Save the current frame under the mode we're leaving, then
+            // restore whatever was saved for the mode we're entering.
+            saveFrame(mode: previous, frame: window.frame)
+            applySavedFrame(window: window)
+        }
+
+        private func applySavedFrame(window: NSWindow) {
+            let raw = avatarOnly
+                ? AppSettings.shared.avatarModeWindowFrame
+                : AppSettings.shared.fullModeWindowFrame
+            guard !raw.isEmpty else { return }
+            let rect = NSRectFromString(raw)
+            guard rect.width >= 200, rect.height >= 200 else { return }
+            // Don't restore onto a screen the user no longer has plugged in.
+            let visibleOnAnyScreen = NSScreen.screens.contains { $0.visibleFrame.intersects(rect) }
+            guard visibleOnAnyScreen else { return }
+            window.setFrame(rect, display: true, animate: false)
+        }
+
+        private func startObserving(window: NSWindow) {
+            let center = NotificationCenter.default
+            moveObs.map { center.removeObserver($0) }
+            resizeObs.map { center.removeObserver($0) }
+            moveObs = center.addObserver(
+                forName: NSWindow.didMoveNotification,
+                object: window,
+                queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self, let window = self.window else { return }
+                    self.saveFrame(mode: self.avatarOnly, frame: window.frame)
+                }
+            }
+            resizeObs = center.addObserver(
+                forName: NSWindow.didEndLiveResizeNotification,
+                object: window,
+                queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self, let window = self.window else { return }
+                    self.saveFrame(mode: self.avatarOnly, frame: window.frame)
+                }
+            }
+        }
+
+        private func saveFrame(mode: Bool, frame: NSRect) {
+            let str = NSStringFromRect(frame)
+            if mode {
+                AppSettings.shared.avatarModeWindowFrame = str
+            } else {
+                AppSettings.shared.fullModeWindowFrame = str
+            }
+        }
+
+        deinit {
+            if let o = moveObs { NotificationCenter.default.removeObserver(o) }
+            if let o = resizeObs { NotificationCenter.default.removeObserver(o) }
+        }
+    }
 }
 
 // MARK: - Drag Handle
@@ -54,15 +195,26 @@ private struct WindowDragHandle: NSViewRepresentable {
     func updateNSView(_ nsView: NSView, context: Context) {}
 }
 
-// MARK: - Speech Bubble Shape
+// MARK: - Comic Bubble Shape
 
-/// Rounded rectangle with a small downward-pointing triangular tail centered
-/// at the bottom edge. Used to position the bubble above Bob's portrait with
-/// the tail pointing at his head.
-private struct SpeechBubbleShape: Shape {
-    var cornerRadius: CGFloat = 12
-    var tailWidth: CGFloat = 16
-    var tailHeight: CGFloat = 10
+/// Unified comic-book-style speech bubble: rounded square body with a
+/// tapered triangular tail at the bottom. `tailDX` shifts the tail tip
+/// horizontally (defaults to 0 = straight down). Used for Bob's response
+/// bubble, the thinking-dots bubble, and the avatar-only input bubble.
+///
+/// Geometry constants aim for a thick-stroked, rounded-square silhouette
+/// that reads as a comic panel rather than a system speech balloon:
+/// generous corner radius, slim pointed tail, no fine detail.
+private struct ComicBubbleShape: Shape {
+    var tailDX: CGFloat = 0
+    var cornerRadius: CGFloat = 18
+    var tailWidth: CGFloat = 10
+    var tailHeight: CGFloat = 14
+
+    var animatableData: CGFloat {
+        get { tailDX }
+        set { tailDX = newValue }
+    }
 
     func path(in rect: CGRect) -> Path {
         let bodyRect = CGRect(
@@ -75,18 +227,141 @@ private struct SpeechBubbleShape: Shape {
         var path = Path()
         path.addRoundedRect(in: bodyRect, cornerSize: CGSize(width: cornerRadius, height: cornerRadius))
 
-        // Tail: triangle below the center-bottom of the body
-        let tailLeft = rect.midX - tailWidth / 2
+        let tailLeft  = rect.midX - tailWidth / 2
         let tailRight = rect.midX + tailWidth / 2
-        let tailTop = bodyRect.maxY
-        let tailTip = rect.maxY
+        let tailTop   = bodyRect.maxY
+        let tipX      = rect.midX + tailDX
+        let tipY      = rect.maxY
 
         path.move(to: CGPoint(x: tailLeft, y: tailTop))
-        path.addLine(to: CGPoint(x: rect.midX, y: tailTip))
+        path.addLine(to: CGPoint(x: tipX, y: tipY))
         path.addLine(to: CGPoint(x: tailRight, y: tailTop))
         path.closeSubpath()
 
         return path
+    }
+}
+
+// MARK: - Thinking Dots
+
+/// Three black "3D bubble" circles that scale and fade in sequence. Used
+/// inside the avatar-only thinking bubble while Bob is processing, in place
+/// of the normal response text.
+private struct ThinkingDots: View {
+    var body: some View {
+        TimelineView(.animation) { context in
+            let t = context.date.timeIntervalSinceReferenceDate
+            HStack(spacing: 6) {
+                dot(phase: t * 1.6)
+                dot(phase: t * 1.6 + 0.25)
+                dot(phase: t * 1.6 + 0.5)
+            }
+        }
+    }
+
+    private func dot(phase: Double) -> some View {
+        let cycle = phase.truncatingRemainder(dividingBy: 1.0)
+        let wave  = 0.5 + 0.5 * sin(cycle * 2 * .pi)
+        let scale = 0.65 + 0.35 * wave
+        let opacity = 0.35 + 0.65 * wave
+        return Circle()
+            .fill(
+                RadialGradient(
+                    gradient: Gradient(colors: [
+                        Color(white: 0.35),
+                        Color.black
+                    ]),
+                    center: UnitPoint(x: 0.3, y: 0.3),
+                    startRadius: 1,
+                    endRadius: 8
+                )
+            )
+            .frame(width: 9, height: 9)
+            .overlay(
+                Circle()
+                    .fill(Color.white.opacity(0.55))
+                    .frame(width: 3, height: 3)
+                    .offset(x: -1.5, y: -1.5)
+            )
+            .scaleEffect(scale)
+            .opacity(opacity)
+    }
+}
+
+// MARK: - Input Bubble Tail Tracker
+
+/// Observes window move/resize/screen notifications, computes the horizontal
+/// delta between the tracked view's on-screen centre and the primary
+/// monitor's bottom-centre (where a keyboard would be), and writes that
+/// delta into `tailDX` so `OrientedSpeechBubbleShape` can lean its tail
+/// toward the user's likely "mouth".
+private struct InputBubbleTailTracker: NSViewRepresentable {
+    @Binding var tailDX: CGFloat
+
+    func makeNSView(context: Context) -> NSView {
+        let view = TrackerView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.onPositionChange = { screenCenter in
+            // Primary monitor (the one with the menu bar / Dock in the
+            // default setup) is NSScreen.screens.first on macOS.
+            let primary = NSScreen.screens.first ?? NSScreen.main
+            let targetX = primary?.frame.midX ?? screenCenter.x
+            let dx = targetX - screenCenter.x
+            // Clamp so the tail doesn't leave the bubble body when Bob
+            // is parked at a screen edge.
+            let clamped = max(-60, min(60, dx))
+            DispatchQueue.main.async {
+                if abs(tailDX - clamped) > 0.5 {
+                    withAnimation(.easeInOut(duration: 0.25)) {
+                        tailDX = clamped
+                    }
+                }
+            }
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {}
+
+    final class TrackerView: NSView {
+        var onPositionChange: ((CGPoint) -> Void)?
+        private var observers: [NSObjectProtocol] = []
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            removeObservers()
+            guard let window = window else { return }
+            let center = NotificationCenter.default
+            for name in [
+                NSWindow.didMoveNotification,
+                NSWindow.didEndLiveResizeNotification,
+                NSWindow.didChangeScreenNotification
+            ] {
+                let obs = center.addObserver(
+                    forName: name,
+                    object: window,
+                    queue: .main
+                ) { [weak self] _ in self?.report() }
+                observers.append(obs)
+            }
+            // Report once after layout settles so the initial tail reflects
+            // where the window actually opened.
+            DispatchQueue.main.async { [weak self] in self?.report() }
+        }
+
+        private func report() {
+            guard let window = window else { return }
+            let rectInWindow = convert(bounds, to: nil)
+            let rectOnScreen = window.convertToScreen(rectInWindow)
+            onPositionChange?(CGPoint(x: rectOnScreen.midX, y: rectOnScreen.midY))
+        }
+
+        private func removeObservers() {
+            for obs in observers { NotificationCenter.default.removeObserver(obs) }
+            observers.removeAll()
+        }
+
+        deinit { removeObservers() }
     }
 }
 
@@ -156,6 +431,11 @@ struct BobsDeskView: View {
     // Bob-voice idle-return: last time the user sent something. If >5min,
     // the next send plays an "idle_return" clip.
     @State private var lastSendAt: Date? = nil
+
+    // Avatar-only mode: horizontal offset of the input bubble's tail tip,
+    // computed from the window's on-screen position vs. the primary
+    // monitor's bottom-centre. Driven by InputBubbleTailTracker.
+    @State private var inputTailDX: CGFloat = 0
 
     // F12 — preferences window access
     @Environment(\.openWindow) private var openWindow
@@ -236,23 +516,17 @@ struct BobsDeskView: View {
     // MARK: Body
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Invisible top strip — grab anywhere up here to drag the window.
-            // Needed because the chromeless NSWindow has no titlebar handle
-            // and every other row is interactive SwiftUI that swallows clicks.
-            WindowDragHandle()
-                .frame(height: 18)
-
-            if settings.showBob {
-                portraitSection
-                    .frame(height: 240)
-                    .padding(.top, 4)
+        Group {
+            if settings.avatarOnlyMode {
+                avatarOnlyLayout
+                    .frame(minWidth: 300, idealWidth: 360, minHeight: 340, idealHeight: 420)
+            } else {
+                fullLayout
+                    .frame(minWidth: 420, idealWidth: 520, minHeight: 520, idealHeight: 760)
             }
-
-            chatContainer
         }
-        .frame(minWidth: 420, idealWidth: 520, minHeight: 520, idealHeight: 760)
-        .background(WindowTransparencyConfigurator())
+        .background(Color.clear)
+        .background(WindowTransparencyConfigurator(avatarOnly: settings.avatarOnlyMode))
         .task { session.loadExistingConversationIfNeeded() }
         // Sync bubble visibility whenever messages change
         .onChange(of: session.messages.count) {
@@ -365,6 +639,74 @@ struct BobsDeskView: View {
             guard let at, let text = Heartbeat.shared.lastNoticeText else { return }
             systemNotices.append(SystemNotice(text: text, at: at))
         }
+    }
+
+    // MARK: - Layouts
+
+    /// The full terminal-style layout: drag strip → Bob (optional) → transcript
+    /// + input row. This is the classic Bob's Desk surface.
+    private var fullLayout: some View {
+        VStack(spacing: 0) {
+            // Invisible top strip — grab anywhere up here to drag the window.
+            // Needed because the chromeless NSWindow has no titlebar handle
+            // and every other row is interactive SwiftUI that swallows clicks.
+            WindowDragHandle()
+                .frame(height: 18)
+
+            if settings.showBob {
+                portraitSection
+                    .frame(height: 240)
+                    .padding(.top, 4)
+            }
+
+            chatContainer
+        }
+    }
+
+    /// The stripped-back avatar-only layout: just Bob with a bubble above him
+    /// (response or animated thinking dots) and a compact input bubble below.
+    /// No transcript, no tool trace, no status line. Drag the window by
+    /// clicking on Bob himself.
+    private var avatarOnlyLayout: some View {
+        VStack(spacing: 4) {
+            // Top spacer nudges Bob down from the window's edge so the bubble
+            // has room to breathe.
+            Spacer(minLength: 8)
+
+            // Bob's response/thinking area — speech bubble when idle, dots
+            // when processing.
+            ZStack(alignment: .bottom) {
+                speechBubbleView
+                    .opacity(bubbleVisible && !agentLoop.isProcessing ? 1 : 0)
+                    .animation(.easeInOut(duration: 0.3), value: bubbleVisible)
+                    .animation(.easeInOut(duration: 0.2), value: agentLoop.isProcessing)
+
+                thinkingDotsBubble
+                    .opacity(agentLoop.isProcessing ? 1 : 0)
+                    .animation(.easeInOut(duration: 0.2), value: agentLoop.isProcessing)
+            }
+            .frame(maxWidth: 300, minHeight: 52)
+
+            draggablePortrait
+
+            compactInputBubble
+                .opacity(agentLoop.isProcessing ? 0.0 : 1.0)
+                .animation(.easeInOut(duration: 0.3), value: agentLoop.isProcessing)
+                .padding(.horizontal, 20)
+                .padding(.bottom, 12)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    /// Bob's portrait overlaid with a transparent drag handle. Mouse-down on
+    /// Bob himself initiates window drag, so there's no separate drag strip
+    /// in avatar-only mode.
+    private var draggablePortrait: some View {
+        ZStack {
+            bobPortrait
+            WindowDragHandle()
+        }
+        .frame(height: 160)
     }
 
     // MARK: - Chat Container
@@ -521,6 +863,68 @@ struct BobsDeskView: View {
         return lines
     }
 
+    // MARK: - Thinking Dots Bubble  (avatar-only mode)
+
+    /// Bob's speech bubble with animated dots in place of text, shown in
+    /// avatar-only mode while he's processing. Mirrors `speechBubbleView`'s
+    /// white-with-black-stroke styling so the shape reads as "Bob thinking".
+    private var thinkingDotsBubble: some View {
+        ZStack {
+            ComicBubbleShape()
+                .fill(Color.white.opacity(surfaceOpacity))
+            ComicBubbleShape()
+                .stroke(Color.black.opacity(surfaceOpacity), lineWidth: 3)
+            ThinkingDots()
+                .padding(.horizontal, 14)
+                .padding(.top, 10)
+                .padding(.bottom, 22)
+        }
+        .compositingGroup()
+        .shadow(color: .black.opacity(0.25 * surfaceOpacity), radius: 0, x: 2, y: 2)
+        .frame(width: 82, height: 48)
+    }
+
+    // MARK: - Compact Input Bubble  (avatar-only mode)
+
+    /// Small white speech bubble below Bob that grows as the user types.
+    /// Tail points down toward the primary monitor's bottom-centre (where
+    /// a keyboard would roughly be) via `inputTailDX`. Honors the
+    /// translucency slider like every other surface.
+    private var compactInputBubble: some View {
+        ZStack {
+            ComicBubbleShape(tailDX: inputTailDX)
+                .fill(Color.white.opacity(surfaceOpacity))
+            ComicBubbleShape(tailDX: inputTailDX)
+                .stroke(Color.black.opacity(surfaceOpacity), lineWidth: 3)
+
+            HStack(alignment: .center, spacing: 6) {
+                TextField("Ask Bob\u{2026}", text: $session.inputText, axis: .vertical)
+                    .textFieldStyle(.plain)
+                    .lineLimit(1...4)
+                    .font(.system(size: 12))
+                    .foregroundColor(.black.opacity(textOpacity))
+                    .focused($inputFocused)
+                    .onSubmit { sendWithSound() }
+
+                Button(action: { sendWithSound() }) {
+                    Image(systemName: "arrow.up.circle.fill")
+                        .font(.system(size: 14))
+                        .foregroundColor(.black.opacity(textOpacity))
+                }
+                .buttonStyle(.plain)
+                .disabled(session.inputText.trimmingCharacters(in: .whitespaces).isEmpty || agentLoop.isProcessing)
+            }
+            .padding(.horizontal, 14)
+            .padding(.top, 10)
+            .padding(.bottom, 22)
+        }
+        .compositingGroup()
+        .shadow(color: .black.opacity(0.25 * surfaceOpacity), radius: 0, x: 2, y: 2)
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(minWidth: 160, idealWidth: 230, maxWidth: 290)
+        .background(InputBubbleTailTracker(tailDX: $inputTailDX))
+    }
+
     // MARK: - Speech Bubble
 
     private var speechBubbleView: some View {
@@ -530,19 +934,21 @@ struct BobsDeskView: View {
             : rawText
 
         return ZStack {
-            SpeechBubbleShape()
+            ComicBubbleShape()
                 .fill(Color.white.opacity(surfaceOpacity))
-            SpeechBubbleShape()
-                .stroke(Color.black.opacity(surfaceOpacity), lineWidth: 1.5)
+            ComicBubbleShape()
+                .stroke(Color.black.opacity(surfaceOpacity), lineWidth: 3)
             Text(display)
                 .font(.system(size: 11))
                 .foregroundColor(.black.opacity(textOpacity))
                 .multilineTextAlignment(.leading)
                 .lineLimit(5)
-                .padding(.horizontal, 14)
-                .padding(.top, 10)
-                .padding(.bottom, 18)
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+                .padding(.bottom, 24)
         }
+        .compositingGroup()
+        .shadow(color: .black.opacity(0.25 * surfaceOpacity), radius: 0, x: 2, y: 2)
         .frame(maxWidth: 320)
         .fixedSize(horizontal: false, vertical: true)
     }
