@@ -2,6 +2,12 @@ import SwiftUI
 import WebKit
 import AppKit
 
+enum RichHTMLNavigationDecision: Equatable {
+    case allow
+    case cancel
+    case openExternal
+}
+
 struct RichHTMLView: NSViewRepresentable {
     @ObservedObject var state: RichHTMLState
 
@@ -46,6 +52,30 @@ struct RichHTMLView: NSViewRepresentable {
         webView.loadHTMLString(html, baseURL: nil)
     }
 
+    static func navigationDecision(
+        url: URL?,
+        navigationType: WKNavigationType,
+        isMainFrame: Bool
+    ) -> RichHTMLNavigationDecision {
+        guard let url else { return .allow }
+
+        let scheme = url.scheme?.lowercased()
+        let isHTTPURL = scheme == "http" || scheme == "https"
+
+        if navigationType == .linkActivated {
+            return isHTTPURL ? .openExternal : .cancel
+        }
+
+        // Keep Bob-authored HTML inside the initial document. Any
+        // automatic top-level navigation (for example meta refresh or a
+        // form post) gets blocked instead of replacing the companion view.
+        if isMainFrame, let scheme, scheme != "about", scheme != "data" {
+            return .cancel
+        }
+
+        return .allow
+    }
+
     final class Coordinator: NSObject, WKNavigationDelegate {
         fileprivate var lastHTML = ""
 
@@ -60,17 +90,23 @@ struct RichHTMLView: NSViewRepresentable {
             decidePolicyFor navigationAction: WKNavigationAction,
             decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
         ) {
-            guard navigationAction.navigationType == .linkActivated,
-                  let url = navigationAction.request.url else {
-                decisionHandler(.allow)
-                return
-            }
+            let decision = RichHTMLView.navigationDecision(
+                url: navigationAction.request.url,
+                navigationType: navigationAction.navigationType,
+                isMainFrame: navigationAction.targetFrame?.isMainFrame ?? true
+            )
 
-            if let scheme = url.scheme?.lowercased(),
-               scheme == "http" || scheme == "https" {
-                _ = workspace.open(url)
+            switch decision {
+            case .allow:
+                decisionHandler(.allow)
+            case .cancel:
+                decisionHandler(.cancel)
+            case .openExternal:
+                if let url = navigationAction.request.url {
+                    _ = workspace.open(url)
+                }
+                decisionHandler(.cancel)
             }
-            decisionHandler(.cancel)
         }
     }
 }

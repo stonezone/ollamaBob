@@ -1,4 +1,5 @@
 import XCTest
+import WebKit
 @testable import OllamaBob
 
 @MainActor
@@ -51,6 +52,42 @@ final class MultimediaBobTests: XCTestCase {
         XCTAssertTrue(state.html.contains("<p>Hello</p>"))
         XCTAssertFalse(state.html.contains("<script"))
         XCTAssertFalse(state.html.contains("example.com/a.png"))
+    }
+
+    func testPresentationServiceRejectsWhenRichPresentationDisabled() {
+        let service = PresentationService(workspace: FakeWorkspace(), richHTMLState: RichHTMLState())
+        let original = AppSettings.shared.richPresentationEnabled
+        defer { AppSettings.shared.richPresentationEnabled = original }
+
+        AppSettings.shared.richPresentationEnabled = false
+
+        XCTAssertThrowsError(try service.present(kind: .html, content: "<p>Hello</p>")) { error in
+            XCTAssertEqual(error as? PresentationError, .richPresentationDisabled)
+        }
+    }
+
+    func testPresentationServiceStripsRefreshAndRemoteEmbedsWhenRemoteResourcesDisabled() throws {
+        let service = PresentationService(workspace: FakeWorkspace(), richHTMLState: RichHTMLState())
+        let original = AppSettings.shared.richPresentationRemoteResourcesEnabled
+        defer { AppSettings.shared.richPresentationRemoteResourcesEnabled = original }
+        AppSettings.shared.richPresentationRemoteResourcesEnabled = false
+        service.registerOpenRichHTMLWindow { }
+
+        _ = try service.present(
+            kind: .html,
+            content: """
+            <meta http-equiv="refresh" content="0;url=https://example.com">
+            <iframe src="https://example.com/embed"></iframe>
+            <video src="https://example.com/video.mp4"></video>
+            <p>Hello</p>
+            """
+        )
+
+        let html = service.richHTMLState.html
+        XCTAssertFalse(html.localizedCaseInsensitiveContains("http-equiv=\"refresh\""))
+        XCTAssertFalse(html.contains("example.com/embed"))
+        XCTAssertFalse(html.contains("example.com/video.mp4"))
+        XCTAssertTrue(html.contains("<p>Hello</p>"))
     }
 
     func testPresentationServiceRejectsUnsupportedURLSchemes() {
@@ -110,6 +147,36 @@ final class MultimediaBobTests: XCTestCase {
         let artifacts = ArtifactDetector.detect(in: text)
 
         XCTAssertTrue(artifacts.isEmpty)
+    }
+
+    func testRichHTMLNavigationDecisionOpensClickedHTTPLinksExternally() {
+        let decision = RichHTMLView.navigationDecision(
+            url: URL(string: "https://example.com/docs"),
+            navigationType: .linkActivated,
+            isMainFrame: true
+        )
+
+        XCTAssertEqual(decision, .openExternal)
+    }
+
+    func testRichHTMLNavigationDecisionCancelsAutomaticTopLevelNavigation() {
+        let decision = RichHTMLView.navigationDecision(
+            url: URL(string: "https://example.com/redirect"),
+            navigationType: .other,
+            isMainFrame: true
+        )
+
+        XCTAssertEqual(decision, .cancel)
+    }
+
+    func testRichHTMLNavigationDecisionAllowsInitialDocumentLoad() {
+        let decision = RichHTMLView.navigationDecision(
+            url: URL(string: "about:blank"),
+            navigationType: .other,
+            isMainFrame: true
+        )
+
+        XCTAssertEqual(decision, .allow)
     }
 }
 

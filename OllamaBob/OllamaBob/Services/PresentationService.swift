@@ -9,6 +9,7 @@ enum PresentationKind: String, CaseIterable, Sendable {
 }
 
 enum PresentationError: LocalizedError, Equatable {
+    case richPresentationDisabled
     case htmlEmpty
     case urlMalformed
     case urlSchemeNotAllowed
@@ -19,6 +20,8 @@ enum PresentationError: LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
+        case .richPresentationDisabled:
+            return "rich presentation disabled"
         case .htmlEmpty:
             return "html empty"
         case .urlMalformed:
@@ -71,6 +74,10 @@ final class PresentationService: ObservableObject {
 
     @discardableResult
     func present(kind: PresentationKind, content: String, title: String? = nil) throws -> String {
+        guard AppSettings.shared.richPresentationEnabled else {
+            throw PresentationError.richPresentationDisabled
+        }
+
         switch kind {
         case .html:
             return try presentHTML(content, title: title)
@@ -136,17 +143,25 @@ final class PresentationService: ObservableObject {
 
     static func sanitizeHTML(_ html: String, allowRemoteResources: Bool) -> String {
         var sanitized = html
-        sanitized = stripMatches(
-            pattern: #"(?is)<script\b[^>]*>.*?</script>"#,
-            in: sanitized
-        )
+        let alwaysStripPatterns = [
+            #"(?is)<script\b[^>]*>.*?</script>"#,
+            #"(?is)<meta\b[^>]*http-equiv\s*=\s*['"]?refresh['"]?[^>]*>"#
+        ]
+        for pattern in alwaysStripPatterns {
+            sanitized = stripMatches(pattern: pattern, in: sanitized)
+        }
 
         guard allowRemoteResources == false else { return sanitized }
 
         let remotePatterns = [
             #"(?is)<img\b[^>]*\bsrc\s*=\s*['"]https?://[^'"]+['"][^>]*>"#,
             #"(?is)<link\b[^>]*\bhref\s*=\s*['"]https?://[^'"]+['"][^>]*>"#,
-            #"(?is)<source\b[^>]*\bsrc\s*=\s*['"]https?://[^'"]+['"][^>]*>"#
+            #"(?is)<source\b[^>]*\bsrc\s*=\s*['"]https?://[^'"]+['"][^>]*>"#,
+            #"(?is)<iframe\b[^>]*\bsrc\s*=\s*['"]https?://[^'"]+['"][^>]*>.*?</iframe>"#,
+            #"(?is)<audio\b[^>]*\bsrc\s*=\s*['"]https?://[^'"]+['"][^>]*>.*?</audio>"#,
+            #"(?is)<video\b[^>]*\bsrc\s*=\s*['"]https?://[^'"]+['"][^>]*>.*?</video>"#,
+            #"(?is)<object\b[^>]*\bdata\s*=\s*['"]https?://[^'"]+['"][^>]*>.*?</object>"#,
+            #"(?is)<embed\b[^>]*\bsrc\s*=\s*['"]https?://[^'"]+['"][^>]*>"#
         ]
         for pattern in remotePatterns {
             sanitized = stripMatches(pattern: pattern, in: sanitized)
