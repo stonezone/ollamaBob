@@ -44,6 +44,9 @@ enum BuiltinToolsCatalog {
         // MARK: Web
         Entry(name: "web_search", category: "web", posture: .none, description: "Brave web search, top 5 results"),
 
+        // MARK: Presentation
+        Entry(name: "present", category: "presentation", posture: .none, description: "Open rich HTML, URLs, or local files for the user"),
+
         // MARK: Media
         Entry(name: "ocr",           category: "media", posture: .none,  description: "Extract text from an image or clipboard screenshot"),
         Entry(name: "speak",         category: "media", posture: .none,  description: "Speak text aloud via macOS TTS"),
@@ -76,7 +79,7 @@ enum BuiltinToolsCatalog {
 
     /// Rendering order for categories in the Preferences UI.
     static let categoryOrder: [String] = [
-        "files", "shell", "git", "web", "media", "utility",
+        "files", "shell", "git", "web", "presentation", "media", "utility",
         "youtube", "clipboard", "automation", "memory", "meta"
     ]
 

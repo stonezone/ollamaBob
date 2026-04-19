@@ -40,6 +40,9 @@ enum ApprovalPolicy {
         case "web_search":
             return .none
 
+        case "present":
+            return .none
+
         case "read_tool_output":
             // Reads a file Bob himself wrote during this conversation,
             // under OllamaBob's own app support dir. No user-visible

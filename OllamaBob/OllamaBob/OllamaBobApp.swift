@@ -51,15 +51,21 @@ struct OllamaBobApp: App {
         }
 
         Window("Bob's Desk", id: "chat") {
-            Group {
-                if appState.preflightPassed {
-                    BobsDeskView(agentLoop: appState.agentLoop)
-                } else if let status = appState.preflightStatus {
-                    PreflightErrorView(status: status, onRetry: { appState.runPreflight() })
-                } else {
-                    ProgressView("Starting up...")
-                        .frame(width: 300, height: 200)
+            ZStack {
+                Group {
+                    if appState.preflightPassed {
+                        BobsDeskView(agentLoop: appState.agentLoop)
+                    } else if let status = appState.preflightStatus {
+                        PreflightErrorView(status: status, onRetry: { appState.runPreflight() })
+                    } else {
+                        ProgressView("Starting up...")
+                            .frame(width: 300, height: 200)
+                    }
                 }
+
+                PresentationWindowBinder()
+                    .frame(width: 0, height: 0)
+                    .allowsHitTesting(false)
             }
         }
         .defaultSize(width: 520, height: 760)
@@ -117,6 +123,11 @@ struct OllamaBobApp: App {
         }
         .defaultSize(width: 450, height: 400)
 
+        Window("Bob's View", id: "rich-html") {
+            RichHTMLView(state: PresentationService.shared.richHTMLState)
+        }
+        .defaultSize(width: 760, height: 560)
+
         Window("Preferences", id: "preferences") {
             PreferencesView()
         }
@@ -169,5 +180,18 @@ final class AppState: ObservableObject {
         agentLoop.modelSwitchHandler = { oldModel, newModel in
             print("Model switched from \(oldModel) to \(newModel)")
         }
+    }
+}
+
+private struct PresentationWindowBinder: View {
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        Color.clear
+            .onAppear {
+                PresentationService.shared.registerOpenRichHTMLWindow {
+                    openWindow(id: "rich-html")
+                }
+            }
     }
 }

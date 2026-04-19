@@ -204,6 +204,13 @@ struct PreferencesView: View {
                     .padding(.horizontal, 24)
                     .padding(.top, 12)
 
+                richPresentationSection
+
+                Divider()
+                    .background(PreferencesView.phosphorGreen.opacity(0.2))
+                    .padding(.horizontal, 24)
+                    .padding(.top, 12)
+
                 // Mac app automation (TCC) — controls whether Bob can drive
                 // Mail / Calendar / Finder / etc. via AppleScript.
                 macAppPermissionsSection
@@ -255,8 +262,8 @@ struct PreferencesView: View {
     private var externalToolsHeader: some View {
         VStack(alignment: .leading, spacing: 3) {
             Text("EXTERNAL CLI TOOLS")
-                .font(.system(.caption, design: .monospaced).weight(.bold))
-                .foregroundColor(PreferencesView.phosphorGreen)
+            .font(.system(.caption, design: .monospaced).weight(.bold))
+            .foregroundColor(PreferencesView.phosphorGreen)
             Text("Detected on $PATH. Bob can call these via the shell tool.")
                 .font(.system(.caption2, design: .monospaced))
                 .foregroundColor(PreferencesView.textGrey)
@@ -264,6 +271,44 @@ struct PreferencesView: View {
         .padding(.horizontal, 24)
         .padding(.top, 12)
         .padding(.bottom, 4)
+    }
+
+    private var richPresentationSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("RICH PRESENTATION")
+                    .font(.system(.caption, design: .monospaced).weight(.bold))
+                    .foregroundColor(PreferencesView.phosphorGreen)
+                Text("Control Bob's HTML companion window and the assistant-message artifact chips that route through the same presentation pipeline.")
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundColor(PreferencesView.textGrey)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .lineSpacing(2)
+            }
+            .padding(.horizontal, 24)
+            .padding(.top, 12)
+
+            VStack(spacing: 1) {
+                richPresentationToggleRow(
+                    title: "Enable rich presentation",
+                    subtitle: "Registers Bob's `present` tool and allows rich HTML, URL, and file presentation.",
+                    isOn: $settings.richPresentationEnabled,
+                    dimmed: false
+                )
+                richPresentationToggleRow(
+                    title: "Allow remote resources in HTML",
+                    subtitle: "Permit external images and stylesheets when Bob opens rich HTML in the companion window.",
+                    isOn: $settings.richPresentationRemoteResourcesEnabled,
+                    dimmed: !settings.richPresentationEnabled
+                )
+                richPresentationToggleRow(
+                    title: "Show artifact chips in chat",
+                    subtitle: "Show Open chips for supported assistant-generated links and markdown images below chat bubbles.",
+                    isOn: $settings.richPresentationArtifactChipsEnabled,
+                    dimmed: !settings.richPresentationEnabled
+                )
+            }
+        }
     }
 
     private var macAppPermissionsSection: some View {
@@ -319,6 +364,35 @@ struct PreferencesView: View {
             .padding(.horizontal, 24)
             .padding(.top, 4)
         }
+    }
+
+    private func richPresentationToggleRow(
+        title: String,
+        subtitle: String,
+        isOn: Binding<Bool>,
+        dimmed: Bool
+    ) -> some View {
+        HStack(alignment: .center, spacing: 16) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.system(.caption, design: .monospaced).weight(.medium))
+                    .foregroundColor(.white)
+                Text(subtitle)
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundColor(PreferencesView.textGrey)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer()
+            Toggle("", isOn: isOn)
+                .toggleStyle(.switch)
+                .tint(PreferencesView.phosphorGreen)
+                .labelsHidden()
+                .disabled(dimmed)
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 10)
+        .background(PreferencesView.bgPanel)
+        .opacity(dimmed ? 0.4 : 1.0)
     }
 
     private func macAppPermissionRow(target: AutomationTarget) -> some View {

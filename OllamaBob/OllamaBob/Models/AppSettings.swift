@@ -72,6 +72,24 @@ final class AppSettings: ObservableObject {
         didSet { UserDefaults.standard.set(avatarModeWindowFrame, forKey: Keys.avatarModeWindowFrame) }
     }
 
+    /// Master switch for rich presentation. When disabled, Bob should not
+    /// see the `present` tool and chat should hide artifact chips.
+    @Published var richPresentationEnabled: Bool {
+        didSet { UserDefaults.standard.set(richPresentationEnabled, forKey: Keys.richPresentationEnabled) }
+    }
+
+    /// Allow Bob-authored HTML to load remote images/styles. Disabling this
+    /// keeps the rich view self-contained.
+    @Published var richPresentationRemoteResourcesEnabled: Bool {
+        didSet { UserDefaults.standard.set(richPresentationRemoteResourcesEnabled, forKey: Keys.richPresentationRemoteResourcesEnabled) }
+    }
+
+    /// Show detected "Open" chips under assistant messages for supported
+    /// markdown artifacts. Bob-initiated presentation still works when OFF.
+    @Published var richPresentationArtifactChipsEnabled: Bool {
+        didSet { UserDefaults.standard.set(richPresentationArtifactChipsEnabled, forKey: Keys.richPresentationArtifactChipsEnabled) }
+    }
+
     private enum Keys {
         static let showBob               = "showBob"
         static let chatWindowOpacity     = "chatWindowOpacity"
@@ -83,6 +101,9 @@ final class AppSettings: ObservableObject {
         static let avatarOnlyMode        = "avatarOnlyMode"
         static let fullModeWindowFrame   = "fullModeWindowFrame"
         static let avatarModeWindowFrame = "avatarModeWindowFrame"
+        static let richPresentationEnabled = "richPresentationEnabled"
+        static let richPresentationRemoteResourcesEnabled = "richPresentationRemoteResourcesEnabled"
+        static let richPresentationArtifactChipsEnabled = "richPresentationArtifactChipsEnabled"
     }
 
     private init() {
@@ -114,6 +135,15 @@ final class AppSettings: ObservableObject {
         if defaults.object(forKey: Keys.avatarOnlyMode) == nil {
             defaults.set(false, forKey: Keys.avatarOnlyMode)
         }
+        if defaults.object(forKey: Keys.richPresentationEnabled) == nil {
+            defaults.set(true, forKey: Keys.richPresentationEnabled)
+        }
+        if defaults.object(forKey: Keys.richPresentationRemoteResourcesEnabled) == nil {
+            defaults.set(true, forKey: Keys.richPresentationRemoteResourcesEnabled)
+        }
+        if defaults.object(forKey: Keys.richPresentationArtifactChipsEnabled) == nil {
+            defaults.set(true, forKey: Keys.richPresentationArtifactChipsEnabled)
+        }
 
         self.showBob               = defaults.bool(forKey: Keys.showBob)
         self.chatWindowOpacity     = defaults.double(forKey: Keys.chatWindowOpacity)
@@ -124,6 +154,9 @@ final class AppSettings: ObservableObject {
         self.avatarOnlyMode        = defaults.bool(forKey: Keys.avatarOnlyMode)
         self.fullModeWindowFrame   = defaults.string(forKey: Keys.fullModeWindowFrame) ?? ""
         self.avatarModeWindowFrame = defaults.string(forKey: Keys.avatarModeWindowFrame) ?? ""
+        self.richPresentationEnabled = defaults.bool(forKey: Keys.richPresentationEnabled)
+        self.richPresentationRemoteResourcesEnabled = defaults.bool(forKey: Keys.richPresentationRemoteResourcesEnabled)
+        self.richPresentationArtifactChipsEnabled = defaults.bool(forKey: Keys.richPresentationArtifactChipsEnabled)
 
         let storedCtx = defaults.integer(forKey: Keys.numCtx)
         self.numCtx = AppConfig.numCtxAllowed.contains(storedCtx) ? storedCtx : AppConfig.numCtx

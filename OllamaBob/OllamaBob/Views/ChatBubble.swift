@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 struct ChatBubble: View {
     let message: ChatMessage
@@ -16,6 +17,10 @@ struct ChatBubble: View {
                     toolCallBubble(calls: calls)
                 } else {
                     textBubble
+                }
+
+                if shouldShowArtifactChips {
+                    artifactChipRow
                 }
 
                 Text(timeString)
@@ -125,11 +130,41 @@ struct ChatBubble: View {
         return trimmed?.isEmpty == false ? trimmed : nil
     }
 
+    private var shouldShowArtifactChips: Bool {
+        message.role == .assistant &&
+        settings.richPresentationEnabled &&
+        settings.richPresentationArtifactChipsEnabled &&
+        detectedArtifacts.isEmpty == false
+    }
+
+    private var detectedArtifacts: [DetectedArtifact] {
+        ArtifactDetector.detect(in: message.content)
+    }
+
+    private var artifactChipRow: some View {
+        HStack(spacing: 6) {
+            ForEach(detectedArtifacts) { artifact in
+                ArtifactChip(artifact: artifact) {
+                    openArtifact(artifact)
+                }
+            }
+        }
+    }
+
     private var sanitizedToolContent: String {
         message.content
             .replacingOccurrences(of: "<untrusted>", with: "")
             .replacingOccurrences(of: "</untrusted>", with: "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func openArtifact(_ artifact: DetectedArtifact) {
+        do {
+            try PresentationService.shared.present(kind: artifact.kind, content: artifact.content, title: artifact.title)
+        } catch {
+            NSSound.beep()
+            print("[ArtifactChip] \(error.localizedDescription)")
+        }
     }
 
     private func transcriptPanel(title: String?, content: String) -> some View {

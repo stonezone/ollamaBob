@@ -1,6 +1,7 @@
 import Foundation
 
 /// Manages tool definitions and validation.
+@MainActor
 struct ToolRegistry {
     private let tools: [String: OllamaToolDef]
     private let requiredArgs: [String: Set<String>]
@@ -118,6 +119,18 @@ struct ToolRegistry {
             )
             reqs["web_search"] = ["query"]
         }
+
+        defs["present"] = .tool(
+            name: "present",
+            description: "Display rich content for the user. `kind=html` opens Bob's companion window, `kind=url` opens the browser, `kind=file` opens a local file in its default app.",
+            properties: [
+                "kind": ("string", "One of: html, url, file."),
+                "content": ("string", "HTML source, URL, or absolute file path depending on kind."),
+                "title": ("string", "Optional label for the rich view or logs.")
+            ],
+            required: ["kind", "content"]
+        )
+        reqs["present"] = ["kind", "content"]
 
         // read_tool_output — meta-tool for fetching spillover outputs.
         // Registered unconditionally; no approval needed (it only reads
@@ -299,16 +312,17 @@ struct ToolRegistry {
 
     /// All tool definitions for the Ollama request
     var toolDefs: [OllamaToolDef] {
-        Array(tools.values)
+        toolNames.compactMap { tools[$0] }
     }
 
     /// Check if a tool name is registered
     func has(_ name: String) -> Bool {
-        tools[name] != nil
+        tools[name] != nil && isEnabled(name)
     }
 
     /// Validate that required arguments are present
     func validateArgs(_ name: String, _ args: [String: Any]) -> Bool {
+        guard has(name) else { return false }
         guard let required = requiredArgs[name] else { return false }
         for key in required {
             guard let val = args[key] else { return false }
@@ -324,6 +338,15 @@ struct ToolRegistry {
     }
 
     var toolNames: [String] {
-        Array(tools.keys).sorted()
+        tools.keys.filter(isEnabled(_:)).sorted()
+    }
+
+    private func isEnabled(_ name: String) -> Bool {
+        switch name {
+        case "present":
+            return AppSettings.shared.richPresentationEnabled
+        default:
+            return true
+        }
     }
 }

@@ -288,6 +288,12 @@ final class AgentLoop: ObservableObject {
             }
             return await WebSearchTool.execute(query: query, provider: provider)
 
+        case "present":
+            let kind = args["kind"] as? String ?? ""
+            let content = args["content"] as? String ?? ""
+            let title = args["title"] as? String
+            return await PresentTool.execute(kind: kind, content: content, title: title)
+
         case "read_tool_output":
             return await executeReadToolOutput(args: args)
 
@@ -636,6 +642,11 @@ final class AgentLoop: ObservableObject {
             return "Search files: \(args["pattern"] as? String ?? "unknown")"
         case "web_search":
             return "Web search: \(args["query"] as? String ?? "unknown")"
+        case "present":
+            let kind = args["kind"] as? String ?? "?"
+            let title = (args["title"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+            let label = title.map { " [\($0)]" } ?? ""
+            return "Present \(kind)\(label)"
         case "read_tool_output":
             let id = Self.parseInt(args["id"]).map(String.init) ?? "?"
             return "Read stored output: id=\(id)"
