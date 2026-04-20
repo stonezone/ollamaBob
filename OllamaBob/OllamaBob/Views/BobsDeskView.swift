@@ -331,6 +331,13 @@ struct SystemNotice: Identifiable {
     var isGreeting: Bool = false
 }
 
+private struct ScrollContentBottomKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
 // MARK: - BobsDeskView
 
 struct BobsDeskView: View {
@@ -389,7 +396,11 @@ struct BobsDeskView: View {
     // F6 — real-time tool feedback
     @State private var currentToolName: String? = nil
     @State private var autoScrollEnabled = true
+    @State private var isNearBottom = true
     @State private var cachedContextTokensUsed = 0
+
+    // Plan 2 — transient history overlay (avatar-only mode)
+    @State private var showHistoryOverlay = false
 
     // F8 — sound: true once the user has dispatched at least one message
     @State private var hasProcessed = false
@@ -627,6 +638,10 @@ struct BobsDeskView: View {
                 maybeGreet()
             }
         }
+        // Plan 2 — toggle history overlay from menu bar shortcut
+        .onReceive(NotificationCenter.default.publisher(for: .bobToggleHistoryOverlay)) { _ in
+            showHistoryOverlay.toggle()
+        }
         .onAppear {
             refreshFactCount()
             startMemoryRefreshTimer()
@@ -695,56 +710,67 @@ struct BobsDeskView: View {
         // cap is always `height - Bob - input - gaps`. Bob's 160pt slot and
         // the input pill get `.layoutPriority(2)` so the bubble gives up
         // space first when the window is short.
-        GeometryReader { proxy in
-            let portrait: CGFloat = 160
-            let inputSlot: CGFloat = 56   // pill height incl. tail + padding
-            let gapTop: CGFloat = 10
-            let gapBubbleToBob: CGFloat = 10
-            let gapBobToInput: CGFloat = 10
-            let gapBottom: CGFloat = 12
-            let reserved = portrait + inputSlot + gapTop + gapBubbleToBob + gapBobToInput + gapBottom
-            let bubbleCap = max(Self.minBubbleHeight, proxy.size.height - reserved)
+        ZStack {
+            GeometryReader { proxy in
+                let portrait: CGFloat = 160
+                let inputSlot: CGFloat = 56   // pill height incl. tail + padding
+                let gapTop: CGFloat = 10
+                let gapBubbleToBob: CGFloat = 10
+                let gapBobToInput: CGFloat = 10
+                let gapBottom: CGFloat = 12
+                let reserved = portrait + inputSlot + gapTop + gapBubbleToBob + gapBobToInput + gapBottom
+                let bubbleCap = max(Self.minBubbleHeight, proxy.size.height - reserved)
 
-            VStack(spacing: 0) {
-                Spacer().frame(height: gapTop)
+                VStack(spacing: 0) {
+                    Spacer().frame(height: gapTop)
 
-                ZStack(alignment: .bottom) {
-                    speechBubbleView(maxHeight: bubbleCap)
-                        .opacity(bubbleVisible || agentLoop.isProcessing ? 1 : 0)
-                        .animation(.easeInOut(duration: 0.3), value: bubbleVisible)
-                        .animation(.easeInOut(duration: 0.25), value: agentLoop.isProcessing)
+                    ZStack(alignment: .bottom) {
+                        speechBubbleView(maxHeight: bubbleCap)
+                            .opacity(bubbleVisible || agentLoop.isProcessing ? 1 : 0)
+                            .animation(.easeInOut(duration: 0.3), value: bubbleVisible)
+                            .animation(.easeInOut(duration: 0.25), value: agentLoop.isProcessing)
+
+                        historyToggleButton
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                            .padding(.top, 6)
+                            .padding(.trailing, 6)
+                    }
+                    .frame(maxWidth: 360, maxHeight: bubbleCap, alignment: .bottom)
+                    .layoutPriority(0)
+
+                    Spacer().frame(height: gapBubbleToBob)
+
+                    draggablePortrait
+                        .layoutPriority(2)
+
+                    if uncensoredModeEnabled {
+                        uncensoredConversationBadge
+                            .padding(.top, 8)
+                            .layoutPriority(1)
+                    }
+
+                    Spacer().frame(height: gapBobToInput)
+
+                    compactInputBubble
+                        .opacity(agentLoop.isProcessing ? 0.0 : 1.0)
+                        .animation(.easeInOut(duration: 0.3), value: agentLoop.isProcessing)
+                        .padding(.horizontal, 20)
+                        .layoutPriority(2)
+
+                    Spacer().frame(height: gapBottom)
                 }
-                .frame(maxWidth: 360, maxHeight: bubbleCap, alignment: .bottom)
-                .layoutPriority(0)
-
-                Spacer().frame(height: gapBubbleToBob)
-
-                draggablePortrait
-                    .layoutPriority(2)
-
-                if uncensoredModeEnabled {
-                    uncensoredConversationBadge
-                        .padding(.top, 8)
-                        .layoutPriority(1)
-                }
-
-                Spacer().frame(height: gapBobToInput)
-
-                compactInputBubble
-                    .opacity(agentLoop.isProcessing ? 0.0 : 1.0)
-                    .animation(.easeInOut(duration: 0.3), value: agentLoop.isProcessing)
-                    .padding(.horizontal, 20)
-                    .layoutPriority(2)
-
-                Spacer().frame(height: gapBottom)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-        }
-        .safeAreaInset(edge: .top, spacing: 0) {
-            modelSwitchBanner
-        }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            errorBanner
+            .safeAreaInset(edge: .top, spacing: 0) {
+                modelSwitchBanner
+            }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                errorBanner
+            }
+
+            if showHistoryOverlay {
+                historyOverlay
+            }
         }
     }
 
@@ -983,6 +1009,98 @@ struct BobsDeskView: View {
             .help("This conversation is marked uncensored. Configured tag: \(settings.effectiveUncensoredModelName)")
     }
 
+    // MARK: - History Overlay (Plan 2)
+
+    private var historyToggleButton: some View {
+        Button(action: { showHistoryOverlay.toggle() }) {
+            Image(systemName: "clock")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(.black.opacity(0.45 * textOpacity))
+                .padding(5)
+                .background(
+                    Circle()
+                        .fill(Self.speechBubbleFill)
+                        .overlay(Circle().stroke(Self.speechBubbleStroke, lineWidth: 0.6))
+                )
+        }
+        .buttonStyle(.plain)
+        .opacity(bubbleVisible || agentLoop.isProcessing ? 1 : 0)
+        .animation(.easeInOut(duration: 0.3), value: bubbleVisible)
+        .help("Show conversation history")
+    }
+
+    private var historyOverlay: some View {
+        ZStack(alignment: .center) {
+            // Tap outside to dismiss
+            Color.clear
+                .contentShape(Rectangle())
+                .onTapGesture { showHistoryOverlay = false }
+
+            // Panel
+            VStack(spacing: 0) {
+                HStack {
+                    Text("History")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(.black.opacity(0.7))
+                    Spacer()
+                    Button(action: { showHistoryOverlay = false }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 16))
+                            .foregroundColor(.black.opacity(0.45))
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 12)
+                .padding(.top, 10)
+                .padding(.bottom, 6)
+
+                Divider()
+                    .background(Self.speechBubbleStroke)
+
+                ScrollView {
+                    LazyVStack(spacing: 4) {
+                        ForEach(interleavedItemsCache) { item in
+                            switch item.content {
+                            case .message(let msg):
+                                if Self.shouldShowInTranscript(msg) {
+                                    ChatBubble(
+                                        message: msg,
+                                        chatWindowOpacity: settings.chatWindowOpacity,
+                                        richPresentationEnabled: settings.richPresentationEnabled,
+                                        richPresentationArtifactChipsEnabled: settings.richPresentationArtifactChipsEnabled
+                                    )
+                                    .id(msg.id)
+                                }
+                            case .notice(let notice):
+                                systemNoticeRow(notice)
+                                    .id(notice.id.uuidString)
+                            }
+                        }
+                    }
+                    .padding(.vertical, 8)
+                }
+                .padding(.horizontal, 8)
+            }
+            .frame(maxWidth: 340, maxHeight: 300)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Self.speechBubbleFill.opacity(0.95))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(Self.speechBubbleStroke, lineWidth: 0.9)
+            )
+            .shadow(color: .black.opacity(0.22), radius: 12, x: 0, y: 5)
+            .padding(.horizontal, 16)
+
+            // Esc to dismiss
+            Button("") { showHistoryOverlay = false }
+                .keyboardShortcut(.cancelAction)
+                .opacity(0)
+                .accessibilityHidden(true)
+        }
+    }
+
     @ViewBuilder
     private func uncensoredTogglePill(compact: Bool = false, darkText: Bool = false) -> some View {
         if settings.uncensoredModeAvailable {
@@ -1200,64 +1318,77 @@ struct BobsDeskView: View {
 
     private var transcriptSection: some View {
         ScrollViewReader { proxy in
-            ZStack(alignment: .bottomTrailing) {
-                ScrollView {
-                    LazyVStack(spacing: 4) {
-                        ForEach(interleavedItemsCache) { item in
-                            switch item.content {
-                            case .message(let msg):
-                                if Self.shouldShowInTranscript(msg) {
-                                    ChatBubble(
-                                        message: msg,
-                                        chatWindowOpacity: settings.chatWindowOpacity,
-                                        richPresentationEnabled: settings.richPresentationEnabled,
-                                        richPresentationArtifactChipsEnabled: settings.richPresentationArtifactChipsEnabled
-                                    )
-                                        .id(msg.id)
+            GeometryReader { scrollProxy in
+                let scrollViewHeight = scrollProxy.size.height
+                ZStack(alignment: .bottomTrailing) {
+                    ScrollView {
+                        LazyVStack(spacing: 4) {
+                            ForEach(interleavedItemsCache) { item in
+                                switch item.content {
+                                case .message(let msg):
+                                    if Self.shouldShowInTranscript(msg) {
+                                        ChatBubble(
+                                            message: msg,
+                                            chatWindowOpacity: settings.chatWindowOpacity,
+                                            richPresentationEnabled: settings.richPresentationEnabled,
+                                            richPresentationArtifactChipsEnabled: settings.richPresentationArtifactChipsEnabled
+                                        )
+                                            .id(msg.id)
+                                    }
+                                case .notice(let notice):
+                                    systemNoticeRow(notice)
+                                        .id(notice.id.uuidString)
                                 }
-                            case .notice(let notice):
-                                systemNoticeRow(notice)
-                                    .id(notice.id.uuidString)
                             }
                         }
+                        .padding(.vertical, 8)
+
+                        GeometryReader { contentProxy in
+                            Color.clear
+                                .preference(
+                                    key: ScrollContentBottomKey.self,
+                                    value: contentProxy.frame(in: .named("transcriptScroll")).maxY
+                                )
+                        }
+                        .frame(height: 0)
                     }
-                    .padding(.vertical, 8)
-                }
-                .simultaneousGesture(
-                    DragGesture(minimumDistance: 20)
-                        .onChanged { value in
-                            guard abs(value.translation.height) > 36 else { return }
+                    .coordinateSpace(name: "transcriptScroll")
+                    .onPreferenceChange(ScrollContentBottomKey.self) { contentBottom in
+                        let newIsNearBottom = contentBottom <= scrollViewHeight + 50
+                        if !newIsNearBottom && isNearBottom {
                             autoScrollEnabled = false
                         }
-                )
-                .onChange(of: transcriptRefreshToken) {
-                    guard autoScrollEnabled else { return }
-                    withAnimation {
-                        if let lastID = interleavedItemsCache.last?.id {
-                            proxy.scrollTo(lastID, anchor: .bottom)
-                        }
+                        isNearBottom = newIsNearBottom
                     }
-                }
-
-                if autoScrollEnabled == false {
-                    Button {
-                        autoScrollEnabled = true
+                    .onChange(of: session.transcriptRevision) {
+                        guard autoScrollEnabled && isNearBottom else { return }
                         withAnimation {
                             if let lastID = interleavedItemsCache.last?.id {
                                 proxy.scrollTo(lastID, anchor: .bottom)
                             }
                         }
-                    } label: {
-                        Label("Jump to latest", systemImage: "arrow.down.circle.fill")
-                            .font(.caption.bold())
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 8)
-                            .background(Self.bgPanel.opacity(surfaceOpacity * 0.95))
-                            .clipShape(Capsule(style: .continuous))
                     }
-                    .buttonStyle(.plain)
-                    .padding(.trailing, 14)
-                    .padding(.bottom, 12)
+
+                    if autoScrollEnabled == false {
+                        Button {
+                            autoScrollEnabled = true
+                            withAnimation {
+                                if let lastID = interleavedItemsCache.last?.id {
+                                    proxy.scrollTo(lastID, anchor: .bottom)
+                                }
+                            }
+                        } label: {
+                            Label("Jump to latest", systemImage: "arrow.down.circle.fill")
+                                .font(.caption.bold())
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 8)
+                                .background(Self.bgPanel.opacity(surfaceOpacity * 0.95))
+                                .clipShape(Capsule(style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.trailing, 14)
+                        .padding(.bottom, 12)
+                    }
                 }
             }
         }
@@ -1548,4 +1679,5 @@ struct BobsDeskView: View {
 
 extension Notification.Name {
     static let bobNewChat = Notification.Name("com.ollamabob.newChat")
+    static let bobToggleHistoryOverlay = Notification.Name("com.ollamabob.toggleHistoryOverlay")
 }
