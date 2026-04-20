@@ -25,6 +25,8 @@ Latest polish after the main release commits:
 - per-row time-format allocations were removed from conversation search and tool-activity UI to reduce avoidable redraw work in those surfaces
 - `BobsDeskView` now resets conversation-scoped notice/tool cursor state on conversation switch
 - `ChatSessionController` now publishes `transcriptRevision`, and `BobsDeskView` consumes it to avoid the old turn-completion bubble timing race
+- avatar-only mode now shows the same model-switch and error banners as the full transcript layout
+- avatar-only speech-bubble previews now use constrained rendered blocks, so markdown-image syntax and raw HTML payloads no longer leak directly into Bob's top bubble
 
 The current app bundle should be built from `OllamaBob/` with:
 

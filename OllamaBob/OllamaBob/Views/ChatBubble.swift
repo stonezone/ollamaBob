@@ -8,6 +8,10 @@ enum ChatBubbleRendering {
         case code(language: String?, content: String)
     }
 
+    struct AvatarPreview {
+        let blocks: [Block]
+    }
+
     struct TranscriptPreview {
         let text: String
         let isTruncated: Bool
@@ -46,9 +50,7 @@ enum ChatBubbleRendering {
             return true
         }
 
-        let lower = trimmed.lowercased()
-        let containsRenderedHTMLPayload = lower.contains("<!doctype html") || lower.contains("<html") || lower.contains("<body")
-        if containsRenderedHTMLPayload,
+        if containsHTMLPayload(trimmed),
            toolCalls.contains(where: {
                $0.function.name == "present" &&
                (($0.function.parsedArguments["kind"] as? String)?.lowercased() == "html")
@@ -59,32 +61,44 @@ enum ChatBubbleRendering {
         return true
     }
 
-    static func avatarBubblePreviewText(for content: String) -> String {
+    static func avatarBubblePreview(for content: String) -> AvatarPreview {
         let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.isEmpty == false else { return "" }
-
-        if containsMarkdownImageSyntax(trimmed) {
-            return trimmed
+        guard trimmed.isEmpty == false else {
+            return AvatarPreview(blocks: [])
         }
 
-        let bubbleBlocks = blocks(for: trimmed)
-        let fragments = bubbleBlocks.compactMap { block -> String? in
+        if containsMarkdownImageSyntax(trimmed) {
+            return AvatarPreview(blocks: [.markdown(AttributedString("Image attached below."))])
+        }
+
+        if containsHTMLPayload(trimmed) {
+            return AvatarPreview(blocks: [.markdown(AttributedString("Opened rich view."))])
+        }
+
+        let previewBlocks = blocks(for: trimmed).compactMap { block -> Block? in
             switch block {
             case .markdown(let attributed):
                 let text = String(attributed.characters).trimmingCharacters(in: .whitespacesAndNewlines)
-                return text.isEmpty ? nil : text
+                guard text.isEmpty == false else { return nil }
+                return .markdown(attributedString(from: text))
             case .code(let language, let content):
                 let body = content.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard body.isEmpty == false else { return nil }
-                if let language, language.isEmpty == false {
-                    return "\(language)\n\(body)"
-                }
-                return body
+                let preview = transcriptPreview(
+                    for: body,
+                    expanded: false,
+                    maxLines: 4,
+                    maxCharacters: 220
+                )
+                return .code(language: language, content: preview.text)
             }
         }
 
-        let joined = fragments.joined(separator: "\n\n").trimmingCharacters(in: .whitespacesAndNewlines)
-        return joined.isEmpty ? trimmed : joined
+        if previewBlocks.isEmpty {
+            return AvatarPreview(blocks: [.markdown(attributedString(from: trimmed))])
+        }
+
+        return AvatarPreview(blocks: Array(previewBlocks.prefix(2)))
     }
 
     static func toolCallSummary(_ call: OllamaToolCall) -> String {
@@ -223,6 +237,18 @@ enum ChatBubbleRendering {
 
     private static func containsMarkdownImageSyntax(_ content: String) -> Bool {
         content.range(of: #"\!\[[^\]]*\]\([^)]+\)"#, options: .regularExpression) != nil
+    }
+
+    private static func containsHTMLPayload(_ content: String) -> Bool {
+        let lower = content.lowercased()
+        if lower.contains("<!doctype html") || lower.contains("<html") || lower.contains("<body") {
+            return true
+        }
+
+        return content.range(
+            of: #"<(?:!DOCTYPE|/?(?:html|head|body|style|div|span|p|a|ul|ol|li|h[1-6]|img|section|article|main|header|footer|meta|link)\b)"#,
+            options: [.regularExpression, .caseInsensitive]
+        ) != nil
     }
 }
 

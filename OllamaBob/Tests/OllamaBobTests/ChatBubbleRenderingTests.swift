@@ -97,7 +97,7 @@ final class ChatBubbleRenderingTests: XCTestCase {
     }
 
     func testAvatarBubblePreviewStripsFenceMarkersButKeepsCode() {
-        let preview = ChatBubbleRendering.avatarBubblePreviewText(
+        let preview = ChatBubbleRendering.avatarBubblePreview(
             for: """
             ```bash
             cat ~/.zshrc
@@ -105,7 +105,45 @@ final class ChatBubbleRenderingTests: XCTestCase {
             """
         )
 
-        XCTAssertEqual(preview, "bash\ncat ~/.zshrc")
+        XCTAssertEqual(preview.blocks.count, 1)
+        if case .code(let language, let content) = preview.blocks[0] {
+            XCTAssertEqual(language, "bash")
+            XCTAssertEqual(content, "cat ~/.zshrc")
+        } else {
+            XCTFail("Expected code preview block")
+        }
+    }
+
+    func testAvatarBubblePreviewReplacesMarkdownImageSyntaxWithPlaceholder() {
+        let preview = ChatBubbleRendering.avatarBubblePreview(
+            for: "![alt](/Users/zack/Desktop/m3-test.png)"
+        )
+
+        XCTAssertEqual(preview.blocks.count, 1)
+        if case .markdown(let attributed) = preview.blocks[0] {
+            XCTAssertEqual(
+                String(attributed.characters).trimmingCharacters(in: .whitespacesAndNewlines),
+                "Image attached below."
+            )
+        } else {
+            XCTFail("Expected markdown placeholder block")
+        }
+    }
+
+    func testAvatarBubblePreviewReplacesHTMLPayloadWithPlaceholder() {
+        let preview = ChatBubbleRendering.avatarBubblePreview(
+            for: "<!DOCTYPE html><html><body><h1>Hello</h1></body></html>"
+        )
+
+        XCTAssertEqual(preview.blocks.count, 1)
+        if case .markdown(let attributed) = preview.blocks[0] {
+            XCTAssertEqual(
+                String(attributed.characters).trimmingCharacters(in: .whitespacesAndNewlines),
+                "Opened rich view."
+            )
+        } else {
+            XCTFail("Expected markdown placeholder block")
+        }
     }
 
     func testTranscriptPreviewTruncatesLongContentWhenCollapsed() {

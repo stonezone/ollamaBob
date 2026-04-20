@@ -70,6 +70,14 @@ Why second:
 
 - These are user-visible and isolated once the turn-order issue is fixed.
 
+### Phase 2 Status
+
+Completed on 2026-04-20:
+
+- avatar-only mode now shows the same model-switch and error banners that the transcript layout shows
+- avatar-only speech-bubble previews now route through a constrained `ChatBubbleRendering` preview instead of leaking raw markdown-image syntax or HTML-ish payloads
+- fenced code still renders as code-style preview content in the avatar bubble, but rich HTML payloads collapse to a safe placeholder and markdown-image replies collapse to an image placeholder
+
 ## Phase 3 — Render Hot-Path Cleanup
 
 Target findings:

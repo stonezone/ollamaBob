@@ -418,13 +418,12 @@ struct BobsDeskView: View {
         session.messages.last(where: { $0.role == .assistant && !$0.content.isEmpty })
     }
 
-    private var latestAssistantLine: String? {
-        // Check system notices (greeting) first if no real messages
-        let realLine = latestAssistantMessage
-            .map { ChatBubbleRendering.avatarBubblePreviewText(for: $0.content) }
-        if let line = realLine { return line }
-        // Fallback: show greeting in bubble too
-        return systemNotices.first(where: { $0.isGreeting })?.text
+    private var latestAssistantPreview: ChatBubbleRendering.AvatarPreview? {
+        latestAssistantMessage.map { ChatBubbleRendering.avatarBubblePreview(for: $0.content) }
+    }
+
+    private var latestGreetingLine: String? {
+        systemNotices.first(where: { $0.isGreeting })?.text
     }
 
     /// True only when the very last visible message is an assistant text reply.
@@ -729,6 +728,12 @@ struct BobsDeskView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
         }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            modelSwitchBanner
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            errorBanner
+        }
     }
 
     /// Bob's portrait overlaid with a transparent drag handle. Mouse-down on
@@ -1023,7 +1028,8 @@ struct BobsDeskView: View {
     /// height for portrait mode). Text always scrolls inside so the
     /// bubble's frame is stable as new tokens stream in.
     private func speechBubbleView(maxHeight: CGFloat) -> some View {
-        let rawText = latestAssistantLine ?? ""
+        let preview = latestAssistantPreview
+        let greetingText = latestGreetingLine ?? ""
         let shape = ComicBubbleShape(tailAnchorX: Self.avatarBubbleTailAnchorX, tailDirection: .down)
         let isAvatarOnly = settings.avatarOnlyMode
         let textFont = Font.system(
@@ -1037,8 +1043,10 @@ struct BobsDeskView: View {
                 if agentLoop.isProcessing || awaitingTurnTranscript {
                     ThinkingDots()
                         .frame(maxWidth: .infinity, alignment: .leading)
+                } else if let preview, preview.blocks.isEmpty == false {
+                    avatarBubblePreviewContent(preview.blocks, textFont: textFont, isAvatarOnly: isAvatarOnly)
                 } else {
-                    Text(rawText)
+                    Text(greetingText)
                         .font(textFont)
                         .foregroundColor(.black.opacity(0.9 * textOpacity))
                         .multilineTextAlignment(.leading)
@@ -1062,6 +1070,51 @@ struct BobsDeskView: View {
                maxHeight: (bubbleVisible || agentLoop.isProcessing) ? maxHeight : Self.minBubbleHeight)
         .animation(.easeInOut(duration: 0.3), value: bubbleVisible)
         .animation(.easeInOut(duration: 0.25), value: agentLoop.isProcessing)
+    }
+
+    @ViewBuilder
+    private func avatarBubblePreviewContent(
+        _ blocks: [ChatBubbleRendering.Block],
+        textFont: Font,
+        isAvatarOnly: Bool
+    ) -> some View {
+        VStack(alignment: .leading, spacing: isAvatarOnly ? 10 : 8) {
+            ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
+                switch block {
+                case .markdown(let attributed):
+                    Text(attributed)
+                        .font(textFont)
+                        .foregroundColor(.black.opacity(0.9 * textOpacity))
+                        .multilineTextAlignment(.leading)
+                        .lineSpacing(isAvatarOnly ? 2 : 1)
+                        .lineLimit(isAvatarOnly ? 5 : 4)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .tint(.accentColor)
+                        .textSelection(.enabled)
+                case .code(let language, let content):
+                    VStack(alignment: .leading, spacing: 4) {
+                        if let language, language.isEmpty == false {
+                            Text(language)
+                                .font(.system(size: isAvatarOnly ? 11 : 10, weight: .bold, design: .monospaced))
+                                .foregroundColor(.black.opacity(0.65 * textOpacity))
+                        }
+
+                        Text(content)
+                            .font(.system(size: isAvatarOnly ? 13 : 11, design: .monospaced))
+                            .foregroundColor(.black.opacity(0.9 * textOpacity))
+                            .lineSpacing(1)
+                            .lineLimit(isAvatarOnly ? 5 : 4)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .textSelection(.enabled)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .background(Color.black.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: - Status Line
