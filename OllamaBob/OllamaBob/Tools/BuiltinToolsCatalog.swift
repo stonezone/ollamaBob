@@ -27,7 +27,7 @@ enum BuiltinToolsCatalog {
     /// this list, but the Tools tab will silently miss new tools otherwise.
     static let entries: [Entry] = [
         // MARK: Files
-        Entry(name: "read_file",        category: "files", posture: .none,  description: "Read a file's contents by absolute path"),
+        Entry(name: "read_file",        category: "files", posture: .none,  description: "Read a file's contents into chat by absolute path"),
         Entry(name: "write_file",       category: "files", posture: .modal, description: "Write UTF-8 text to a file (overwrites)"),
         Entry(name: "move_file",        category: "files", posture: .modal, description: "Move or rename a file or directory"),
         Entry(name: "create_directory", category: "files", posture: .modal, description: "Create a directory (parents included)"),
@@ -45,7 +45,7 @@ enum BuiltinToolsCatalog {
         Entry(name: "web_search", category: "web", posture: .none, description: "Brave web search, top 5 results"),
 
         // MARK: Presentation
-        Entry(name: "present", category: "presentation", posture: .none, description: "Open rich HTML, URLs, or local files for the user"),
+        Entry(name: "present", category: "presentation", posture: .none, description: "Open rich HTML, URLs, or local files in the user's apps"),
 
         // MARK: Media
         Entry(name: "ocr",           category: "media", posture: .none,  description: "Extract text from an image or clipboard screenshot"),

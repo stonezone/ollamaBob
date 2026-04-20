@@ -1,0 +1,122 @@
+import XCTest
+@testable import OllamaBob
+
+@MainActor
+final class ChatBubbleRenderingTests: XCTestCase {
+    func testShouldShowAssistantBodySuppressesHTMLPayloadForPresentHTMLToolCall() {
+        let call = makeToolCall(
+            name: "present",
+            arguments: [
+                "kind": .string("html"),
+                "content": .string("<!DOCTYPE html><html><body>Hello</body></html>")
+            ]
+        )
+
+        XCTAssertFalse(
+            ChatBubbleRendering.shouldShowAssistantBody(
+                content: "<!DOCTYPE html><html><body>Hello</body></html>",
+                toolCalls: [call]
+            )
+        )
+    }
+
+    func testShouldShowAssistantBodyKeepsHumanReadableMixedTurnText() {
+        let call = makeToolCall(
+            name: "present",
+            arguments: [
+                "kind": .string("url"),
+                "content": .string("https://example.com")
+            ]
+        )
+
+        XCTAssertTrue(
+            ChatBubbleRendering.shouldShowAssistantBody(
+                content: "Opening the page for you now.",
+                toolCalls: [call]
+            )
+        )
+    }
+
+    func testToolCallSummaryIncludesPresentKindAndPreview() {
+        let call = makeToolCall(
+            name: "present",
+            arguments: [
+                "kind": .string("file"),
+                "content": .string("/Users/zack/Desktop/m3-test.png")
+            ]
+        )
+
+        XCTAssertEqual(
+            ChatBubbleRendering.toolCallSummary(call),
+            "file: /Users/zack/Desktop/m3-test.png"
+        )
+    }
+
+    func testBlocksSplitMarkdownAndFencedCode() {
+        let blocks = ChatBubbleRendering.blocks(
+            for: """
+            Here is **bold** text.
+
+            ```bash
+            cat ~/.zshrc
+            ```
+            """
+        )
+
+        XCTAssertEqual(blocks.count, 2)
+        if case .markdown = blocks[0] {
+        } else {
+            XCTFail("Expected markdown block first")
+        }
+
+        if case .code(let language, let content) = blocks[1] {
+            XCTAssertEqual(language, "bash")
+            XCTAssertEqual(content, "cat ~/.zshrc")
+        } else {
+            XCTFail("Expected code block second")
+        }
+    }
+
+    func testShouldRenderAssistantContentLiterallyForMarkdownImages() {
+        XCTAssertTrue(
+            ChatBubbleRendering.shouldRenderAssistantContentLiterally(
+                "![m3-test](/Users/zack/Desktop/m3-test.png)"
+            )
+        )
+    }
+
+    func testAvatarBubblePreviewStripsFenceMarkersButKeepsCode() {
+        let preview = ChatBubbleRendering.avatarBubblePreviewText(
+            for: """
+            ```bash
+            cat ~/.zshrc
+            ```
+            """
+        )
+
+        XCTAssertEqual(preview, "bash\ncat ~/.zshrc")
+    }
+
+    func testTranscriptPreviewTruncatesLongContentWhenCollapsed() {
+        let longText = Array(repeating: "line", count: 30).joined(separator: "\n")
+
+        let preview = ChatBubbleRendering.transcriptPreview(for: longText, expanded: false, maxLines: 5, maxCharacters: 1000)
+        let expanded = ChatBubbleRendering.transcriptPreview(for: longText, expanded: true, maxLines: 5, maxCharacters: 1000)
+
+        XCTAssertTrue(preview.isTruncated)
+        XCTAssertTrue(preview.text.hasSuffix("…"))
+        XCTAssertFalse(expanded.isTruncated)
+        XCTAssertEqual(expanded.text, longText)
+    }
+
+    private func makeToolCall(name: String, arguments: [String: JSONValue]) -> OllamaToolCall {
+        OllamaToolCall(
+            id: nil,
+            function: OllamaToolCall.FunctionCall(
+                index: nil,
+                name: name,
+                arguments: .object(arguments)
+            )
+        )
+    }
+}

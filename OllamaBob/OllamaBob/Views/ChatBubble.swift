@@ -1,29 +1,256 @@
 import SwiftUI
 import AppKit
 
+@MainActor
+enum ChatBubbleRendering {
+    enum Block {
+        case markdown(AttributedString)
+        case code(language: String?, content: String)
+    }
+
+    struct TranscriptPreview {
+        let text: String
+        let isTruncated: Bool
+    }
+
+    private static var blockCache: [String: [Block]] = [:]
+
+    static func blocks(for content: String) -> [Block] {
+        if let cached = blockCache[content] {
+            return cached
+        }
+
+        let parsed = parseBlocks(from: content)
+        blockCache[content] = parsed
+        return parsed
+    }
+
+    static func shouldShowAssistantBody(content: String, toolCalls: [OllamaToolCall]?) -> Bool {
+        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.isEmpty == false else { return false }
+
+        guard let toolCalls, toolCalls.isEmpty == false else {
+            return true
+        }
+
+        let lower = trimmed.lowercased()
+        let containsRenderedHTMLPayload = lower.contains("<!doctype html") || lower.contains("<html") || lower.contains("<body")
+        if containsRenderedHTMLPayload,
+           toolCalls.contains(where: {
+               $0.function.name == "present" &&
+               (($0.function.parsedArguments["kind"] as? String)?.lowercased() == "html")
+           }) {
+            return false
+        }
+
+        return true
+    }
+
+    static func shouldRenderAssistantContentLiterally(_ content: String) -> Bool {
+        containsMarkdownImageSyntax(content)
+    }
+
+    static func avatarBubblePreviewText(for content: String) -> String {
+        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.isEmpty == false else { return "" }
+
+        if containsMarkdownImageSyntax(trimmed) {
+            return trimmed
+        }
+
+        let bubbleBlocks = blocks(for: trimmed)
+        let fragments = bubbleBlocks.compactMap { block -> String? in
+            switch block {
+            case .markdown(let attributed):
+                let text = String(attributed.characters).trimmingCharacters(in: .whitespacesAndNewlines)
+                return text.isEmpty ? nil : text
+            case .code(let language, let content):
+                let body = content.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard body.isEmpty == false else { return nil }
+                if let language, language.isEmpty == false {
+                    return "\(language)\n\(body)"
+                }
+                return body
+            }
+        }
+
+        let joined = fragments.joined(separator: "\n\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        return joined.isEmpty ? trimmed : joined
+    }
+
+    static func toolCallSummary(_ call: OllamaToolCall) -> String {
+        let args = call.function.parsedArguments
+        switch call.function.name {
+        case "shell":
+            return (args["command"] as? String) ?? ""
+        case "read_file", "write_file", "list_directory":
+            return (args["path"] as? String) ?? ""
+        case "move_file":
+            return [args["source"] as? String, args["destination"] as? String]
+                .compactMap { $0 }
+                .joined(separator: " -> ")
+        case "search_files":
+            return (args["pattern"] as? String) ?? ""
+        case "web_search":
+            return (args["query"] as? String) ?? ""
+        case "git_status":
+            return "repo status"
+        case "git_diff":
+            return ((args["path"] as? String).flatMap { $0.isEmpty ? nil : $0 }) ?? "repo diff"
+        case "present":
+            let kind = (args["kind"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "?"
+            let title = (args["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let rawContent = (args["content"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let preview: String
+            if kind == "html" {
+                preview = title?.isEmpty == false ? title! : "rich view"
+            } else {
+                preview = rawContent
+            }
+            return "\(kind): \(preview)"
+        default:
+            return ""
+        }
+    }
+
+    static func shortTimeString(for timestamp: Date) -> String {
+        timestamp.formatted(date: .omitted, time: .shortened)
+    }
+
+    static func transcriptPreview(
+        for content: String,
+        expanded: Bool,
+        maxLines: Int = 12,
+        maxCharacters: Int = 1400
+    ) -> TranscriptPreview {
+        guard expanded == false else {
+            return TranscriptPreview(text: content, isTruncated: false)
+        }
+
+        let lines = content.split(separator: "\n", omittingEmptySubsequences: false)
+        let exceedsLines = lines.count > maxLines
+        let exceedsCharacters = content.count > maxCharacters
+        guard exceedsLines || exceedsCharacters else {
+            return TranscriptPreview(text: content, isTruncated: false)
+        }
+
+        let limitedByLines = lines.prefix(maxLines).joined(separator: "\n")
+        let limitedText = String(limitedByLines.prefix(maxCharacters)).trimmingCharacters(in: .whitespacesAndNewlines)
+        return TranscriptPreview(text: limitedText + "\n…", isTruncated: true)
+    }
+
+    private static func parseBlocks(from content: String) -> [Block] {
+        var blocks: [Block] = []
+        var textLines: [String] = []
+        var codeLines: [String] = []
+        var inFence = false
+        var codeLanguage: String?
+
+        func flushText() {
+            let joined = textLines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard joined.isEmpty == false else {
+                textLines.removeAll(keepingCapacity: true)
+                return
+            }
+            blocks.append(.markdown(attributedString(from: joined)))
+            textLines.removeAll(keepingCapacity: true)
+        }
+
+        func flushCode() {
+            let joined = codeLines.joined(separator: "\n")
+            blocks.append(.code(language: codeLanguage, content: joined))
+            codeLines.removeAll(keepingCapacity: true)
+            codeLanguage = nil
+        }
+
+        for line in content.split(separator: "\n", omittingEmptySubsequences: false) {
+            let string = String(line)
+            let trimmed = string.trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix("```") {
+                if inFence {
+                    flushCode()
+                } else {
+                    flushText()
+                    codeLanguage = parseFenceLanguage(from: trimmed)
+                }
+                inFence.toggle()
+                continue
+            }
+
+            if inFence {
+                codeLines.append(string)
+            } else {
+                textLines.append(string)
+            }
+        }
+
+        if inFence {
+            flushCode()
+        } else {
+            flushText()
+        }
+
+        if blocks.isEmpty {
+            return [.markdown(attributedString(from: content))]
+        }
+
+        return blocks
+    }
+
+    private static func parseFenceLanguage(from fenceLine: String) -> String? {
+        let language = fenceLine.dropFirst(3).trimmingCharacters(in: .whitespacesAndNewlines)
+        return language.isEmpty ? nil : language
+    }
+
+    private static func attributedString(from markdown: String) -> AttributedString {
+        if let attributed = try? AttributedString(
+            markdown: markdown,
+            options: AttributedString.MarkdownParsingOptions(interpretedSyntax: .full)
+        ) {
+            return attributed
+        }
+        return AttributedString(markdown)
+    }
+
+    private static func containsMarkdownImageSyntax(_ content: String) -> Bool {
+        content.range(of: #"\!\[[^\]]*\]\([^)]+\)"#, options: .regularExpression) != nil
+    }
+}
+
 struct ChatBubble: View {
     let message: ChatMessage
     @ObservedObject private var settings = AppSettings.shared
 
+    @State private var isToolPanelExpanded = false
+    @State private var isThinkingPanelExpanded = false
+
     var body: some View {
+        let artifacts = resolvedArtifacts
+        let assistantCalls = message.role == .assistant ? (message.toolCalls ?? []) : []
+        let showAssistantText = message.role == .assistant
+            ? ChatBubbleRendering.shouldShowAssistantBody(content: message.content, toolCalls: message.toolCalls)
+            : message.role != .tool
+
         HStack {
             if message.role == .user { Spacer(minLength: 40) }
 
             VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 4) {
                 if message.role == .tool {
                     toolBubble
-                } else if message.role == .assistant,
-                          let calls = message.toolCalls, !calls.isEmpty {
-                    toolCallBubble(calls: calls)
                 } else {
-                    textBubble
+                    if showAssistantText {
+                        textBubble
+                    }
+                    if assistantCalls.isEmpty == false {
+                        toolCallBubble(calls: assistantCalls)
+                    }
                 }
 
-                if shouldShowArtifactChips {
-                    artifactChipRow
+                if shouldShowArtifactChips(artifacts) {
+                    artifactChipRow(artifacts: artifacts)
                 }
 
-                Text(timeString)
+                Text(ChatBubbleRendering.shortTimeString(for: message.timestamp))
                     .font(.caption2)
                     .foregroundColor(.secondary.opacity(textOpacity))
             }
@@ -35,12 +262,59 @@ struct ChatBubble: View {
     }
 
     private var textBubble: some View {
-        Text(message.content)
-            .padding(10)
-            .background(bubbleColor)
-            .foregroundColor(message.role == .user ? .white.opacity(textOpacity) : .primary.opacity(textOpacity))
-            .cornerRadius(12)
-            .textSelection(.enabled)
+        Group {
+            if message.role == .assistant {
+                if ChatBubbleRendering.shouldRenderAssistantContentLiterally(message.content) {
+                    Text(message.content)
+                        .font(.system(.body, design: .monospaced))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    assistantTextContent
+                }
+            } else {
+                Text(message.content)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(10)
+        .background(bubbleColor)
+        .foregroundColor(message.role == .user ? .white.opacity(textOpacity) : .primary.opacity(textOpacity))
+        .cornerRadius(12)
+        .textSelection(.enabled)
+    }
+
+    private var assistantTextContent: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(Array(ChatBubbleRendering.blocks(for: message.content).enumerated()), id: \.offset) { _, block in
+                switch block {
+                case .markdown(let attributed):
+                    if String(attributed.characters).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+                        Text(attributed)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .tint(.accentColor)
+                    }
+                case .code(let language, let content):
+                    VStack(alignment: .leading, spacing: 4) {
+                        if let language, language.isEmpty == false {
+                            Text(language)
+                                .font(.caption2.bold())
+                                .foregroundColor(.secondary.opacity(textOpacity))
+                        }
+
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            Text(content)
+                                .font(.system(.caption, design: .monospaced))
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(8)
+                        }
+                        .background(Color.black.opacity(0.08))
+                        .cornerRadius(8)
+                    }
+                }
+            }
+        }
+        .fixedSize(horizontal: false, vertical: true)
     }
 
     /// Distinct rendering for an assistant turn that is about to run a tool.
@@ -57,7 +331,7 @@ struct ChatBubble: View {
                     Text(call.function.name)
                         .font(.caption.bold())
                         .foregroundColor(.accentColor)
-                    Text(toolCallSummary(call))
+                    Text(ChatBubbleRendering.toolCallSummary(call))
                         .font(.system(.caption, design: .monospaced))
                         .foregroundColor(.secondary.opacity(textOpacity))
                         .lineLimit(1)
@@ -66,32 +340,12 @@ struct ChatBubble: View {
             }
 
             if let thinking = sanitizedThinking, thinking.isEmpty == false {
-                transcriptPanel(title: "thinking", content: thinking)
+                transcriptPanel(title: "thinking", content: thinking, isExpanded: $isThinkingPanelExpanded)
             }
         }
         .padding(8)
         .background(Color(.controlBackgroundColor).opacity(surfaceOpacity * 0.75))
         .cornerRadius(8)
-    }
-
-    private func toolCallSummary(_ call: OllamaToolCall) -> String {
-        let args = call.function.parsedArguments
-        switch call.function.name {
-        case "shell":     return (args["command"] as? String) ?? ""
-        case "read_file": return (args["path"] as? String) ?? ""
-        case "write_file": return (args["path"] as? String) ?? ""
-        case "list_directory": return (args["path"] as? String) ?? ""
-        case "move_file":
-            return [args["source"] as? String, args["destination"] as? String]
-                .compactMap { $0 }
-                .joined(separator: " -> ")
-        case "search_files": return (args["pattern"] as? String) ?? ""
-        case "web_search":   return (args["query"] as? String) ?? ""
-        case "git_status": return "repo status"
-        case "git_diff":
-            return ((args["path"] as? String).flatMap { $0.isEmpty ? nil : $0 }) ?? "repo diff"
-        default: return ""
-        }
     }
 
     private var toolBubble: some View {
@@ -104,7 +358,7 @@ struct ChatBubble: View {
             }
             .foregroundColor(.secondary.opacity(textOpacity))
 
-            transcriptPanel(title: nil, content: sanitizedToolContent)
+            transcriptPanel(title: nil, content: sanitizedToolContent, isExpanded: $isToolPanelExpanded)
         }
     }
 
@@ -130,20 +384,23 @@ struct ChatBubble: View {
         return trimmed?.isEmpty == false ? trimmed : nil
     }
 
-    private var shouldShowArtifactChips: Bool {
-        message.role == .assistant &&
-        settings.richPresentationEnabled &&
-        settings.richPresentationArtifactChipsEnabled &&
-        detectedArtifacts.isEmpty == false
+    private var resolvedArtifacts: [DetectedArtifact] {
+        guard message.role == .assistant,
+              settings.richPresentationEnabled,
+              settings.richPresentationArtifactChipsEnabled else {
+            return []
+        }
+
+        return ArtifactDetector.detect(in: message.content)
     }
 
-    private var detectedArtifacts: [DetectedArtifact] {
-        ArtifactDetector.detect(in: message.content)
+    private func shouldShowArtifactChips(_ artifacts: [DetectedArtifact]) -> Bool {
+        artifacts.isEmpty == false
     }
 
-    private var artifactChipRow: some View {
-        HStack(spacing: 6) {
-            ForEach(detectedArtifacts) { artifact in
+    private func artifactChipRow(artifacts: [DetectedArtifact]) -> some View {
+        WrappingChipLayout(spacing: 6) {
+            ForEach(artifacts) { artifact in
                 ArtifactChip(artifact: artifact) {
                     openArtifact(artifact)
                 }
@@ -167,31 +424,122 @@ struct ChatBubble: View {
         }
     }
 
-    private func transcriptPanel(title: String?, content: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+    private func transcriptPanel(title: String?, content: String, isExpanded: Binding<Bool>) -> some View {
+        let preview = ChatBubbleRendering.transcriptPreview(for: content, expanded: isExpanded.wrappedValue)
+
+        return VStack(alignment: .leading, spacing: 6) {
             if let title {
                 Text(title)
                     .font(.caption2.bold())
                     .foregroundColor(.secondary.opacity(textOpacity))
             }
 
-            ScrollView(.vertical, showsIndicators: true) {
-                Text(content)
+            ScrollView(.horizontal, showsIndicators: false) {
+                Text(preview.text)
                     .font(.system(.caption, design: .monospaced))
                     .foregroundColor(.primary.opacity(textOpacity))
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .textSelection(.enabled)
             }
-            .frame(maxHeight: 180)
             .padding(8)
             .background(Color(.controlBackgroundColor).opacity(surfaceOpacity * 0.9))
             .cornerRadius(8)
+
+            if preview.isTruncated {
+                HStack {
+                    Spacer()
+                    Button(isExpanded.wrappedValue ? "Collapse" : "Expand") {
+                        isExpanded.wrappedValue.toggle()
+                    }
+                    .buttonStyle(.plain)
+                    .font(.caption2.bold())
+                    .foregroundColor(.accentColor)
+                }
+            } else if isExpanded.wrappedValue {
+                HStack {
+                    Spacer()
+                    Button("Collapse") {
+                        isExpanded.wrappedValue = false
+                    }
+                    .buttonStyle(.plain)
+                    .font(.caption2.bold())
+                    .foregroundColor(.accentColor)
+                }
+            }
         }
     }
+}
 
-    private var timeString: String {
-        let formatter = DateFormatter()
-        formatter.timeStyle = .short
-        return formatter.string(from: message.timestamp)
+private struct WrappingChipLayout<Content: View>: View {
+    let spacing: CGFloat
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        _WrappingChipFlowLayout(spacing: spacing) {
+            content
+        }
+    }
+}
+
+private struct _WrappingChipFlowLayout: Layout {
+    let spacing: CGFloat
+
+    init(spacing: CGFloat) {
+        self.spacing = spacing
+    }
+
+    func sizeThatFits(
+        proposal: ProposedViewSize,
+        subviews: Subviews,
+        cache: inout ()
+    ) -> CGSize {
+        let maxWidth = proposal.width ?? .greatestFiniteMagnitude
+        var x: CGFloat = 0
+        var y: CGFloat = 0
+        var rowHeight: CGFloat = 0
+        var usedWidth: CGFloat = 0
+
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x > 0, x + size.width > maxWidth {
+                x = 0
+                y += rowHeight + spacing
+                rowHeight = 0
+            }
+
+            usedWidth = max(usedWidth, x + size.width)
+            rowHeight = max(rowHeight, size.height)
+            x += size.width + spacing
+        }
+
+        return CGSize(width: usedWidth, height: y + rowHeight)
+    }
+
+    func placeSubviews(
+        in bounds: CGRect,
+        proposal: ProposedViewSize,
+        subviews: Subviews,
+        cache: inout ()
+    ) {
+        var x = bounds.minX
+        var y = bounds.minY
+        var rowHeight: CGFloat = 0
+
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x > bounds.minX, x + size.width > bounds.maxX {
+                x = bounds.minX
+                y += rowHeight + spacing
+                rowHeight = 0
+            }
+
+            subview.place(
+                at: CGPoint(x: x, y: y),
+                anchor: .topLeading,
+                proposal: ProposedViewSize(width: size.width, height: size.height)
+            )
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+        }
     }
 }

@@ -16,40 +16,48 @@ enum ArtifactDetector {
     static func detect(in text: String) -> [DetectedArtifact] {
         let masked = maskingCode(in: text)
 
-        let markdownImageMatches = matches(
-            pattern: #"\!\[([^\]]*)\]\(([^)\n]+)\)"#,
-            in: masked
-        )
-        let markdownLinkMatches = matches(
-            pattern: #"\[([^\]]+)\]\((https?://[^)\s]+)\)"#,
-            in: masked
-        )
+        let markdownImageMatches = matches(regex: markdownImageRegex, in: masked)
+        let markdownLinkMatches = matches(regex: markdownLinkRegex, in: masked)
 
         var artifacts: [DetectedArtifact] = []
         var seen = Set<String>()
+        var consumedMatches: [Match] = []
 
         for match in markdownImageMatches {
             guard match.captures.count >= 2 else { continue }
             let alt = match.captures[0]
-            let path = match.captures[1].trimmingCharacters(in: .whitespacesAndNewlines)
-            guard looksLikeLocalPath(path) else { continue }
+            let target = match.captures[1].trimmingCharacters(in: .whitespacesAndNewlines)
+            let artifact: DetectedArtifact
+            if looksLikeLocalPath(target) {
+                artifact = DetectedArtifact(
+                    kind: .file,
+                    content: target,
+                    title: alt.isEmpty ? nil : alt,
+                    label: labelForFile(target),
+                    systemImage: imageForFile(target)
+                )
+            } else if let url = normalizedRemoteURL(target) {
+                artifact = DetectedArtifact(
+                    kind: .url,
+                    content: url,
+                    title: alt.isEmpty ? nil : alt,
+                    label: "Open image in browser",
+                    systemImage: "photo"
+                )
+            } else {
+                continue
+            }
 
-            let artifact = DetectedArtifact(
-                kind: .file,
-                content: path,
-                title: alt.isEmpty ? nil : alt,
-                label: labelForFile(path),
-                systemImage: imageForFile(path)
-            )
             if seen.insert(artifact.id).inserted {
                 artifacts.append(artifact)
             }
+            consumedMatches.append(match)
         }
 
         for match in markdownLinkMatches {
             guard match.captures.count >= 2 else { continue }
             let text = match.captures[0].trimmingCharacters(in: .whitespacesAndNewlines)
-            let url = match.captures[1].trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let url = normalizedRemoteURL(match.captures[1]) else { continue }
 
             let artifact = DetectedArtifact(
                 kind: .url,
@@ -61,9 +69,10 @@ enum ArtifactDetector {
             if seen.insert(artifact.id).inserted {
                 artifacts.append(artifact)
             }
+            consumedMatches.append(match)
         }
 
-        let bareURLScanText = blanking(matchRanges: markdownImageMatches + markdownLinkMatches, in: masked)
+        let bareURLScanText = blanking(matchRanges: consumedMatches, in: masked)
         for rawURL in bareURLs(in: bareURLScanText) {
             let url = trimmingTrailingPunctuation(from: rawURL)
             let artifact = DetectedArtifact(
@@ -86,10 +95,20 @@ enum ArtifactDetector {
         let captures: [String]
     }
 
-    private static func matches(pattern: String, in text: String) -> [Match] {
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
-            return []
-        }
+    private static let markdownImageRegex = try? NSRegularExpression(
+        pattern: #"\!\[([^\]]*)\]\(([^)\n]+)\)"#,
+        options: [.caseInsensitive]
+    )
+
+    private static let markdownLinkRegex = try? NSRegularExpression(
+        pattern: #"\[([^\]]+)\]\((https?://[^)\s]+)\)"#,
+        options: [.caseInsensitive]
+    )
+
+    private static let linkDetector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
+
+    private static func matches(regex: NSRegularExpression?, in text: String) -> [Match] {
+        guard let regex else { return [] }
         let range = NSRange(text.startIndex..., in: text)
         return regex.matches(in: text, range: range).compactMap { result in
             var captures: [String] = []
@@ -155,16 +174,18 @@ enum ArtifactDetector {
     }
 
     private static func bareURLs(in text: String) -> [String] {
-        guard let regex = try? NSRegularExpression(
-            pattern: #"\bhttps?://[^\s<>\[\]\"`]+"#,
-            options: [.caseInsensitive]
-        ) else {
+        guard let linkDetector else {
             return []
         }
+
         let range = NSRange(text.startIndex..., in: text)
-        return regex.matches(in: text, range: range).compactMap { match in
-            guard let matchRange = Range(match.range, in: text) else { return nil }
-            return String(text[matchRange])
+        return linkDetector.matches(in: text, range: range).compactMap { match in
+            guard let url = match.url,
+                  let scheme = url.scheme?.lowercased(),
+                  scheme == "http" || scheme == "https" else {
+                return nil
+            }
+            return url.absoluteString
         }
     }
 
@@ -180,7 +201,17 @@ enum ArtifactDetector {
     }
 
     private static func trimmingTrailingPunctuation(from string: String) -> String {
-        string.trimmingCharacters(in: CharacterSet(charactersIn: ".,!?:;"))
+        string.trimmingCharacters(in: CharacterSet(charactersIn: ".,!?:;)]}'\""))
+    }
+
+    private static func normalizedRemoteURL(_ candidate: String) -> String? {
+        let trimmed = trimmingTrailingPunctuation(from: candidate.trimmingCharacters(in: .whitespacesAndNewlines))
+        guard let url = URL(string: trimmed),
+              let scheme = url.scheme?.lowercased(),
+              scheme == "http" || scheme == "https" else {
+            return nil
+        }
+        return trimmed
     }
 
     private static func labelForFile(_ path: String) -> String {

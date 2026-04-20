@@ -349,8 +349,11 @@ struct BobsDeskView: View {
     // the slider governs the chat surface chrome in fullLayout; avatar-only
     // bubbles carry their own translucency and must stay legible at any
     // chatWindowOpacity setting.
-    private static let bubbleFill   = Color.white.opacity(0.48)
-    private static let bubbleStroke = Color.black.opacity(0.18)
+    private static let bubbleFill         = Color.white.opacity(0.48)
+    private static let bubbleStroke       = Color.black.opacity(0.18)
+    private static let speechBubbleFill   = Color.white.opacity(0.64)
+    private static let speechBubbleStroke = Color.black.opacity(0.28)
+    private static let avatarBubbleTailAnchorX: CGFloat = 0.56
 
     /// Exposed for PersonaQuickSwapMenu so it can share the same green tint.
     static let phosphorGreenPublic = Color(red: 0.22, green: 1.0, blue: 0.08)
@@ -409,10 +412,14 @@ struct BobsDeskView: View {
     // MARK: Computed helpers
 
     /// The most recent assistant message with non-empty content, for the speech bubble.
+    private var latestAssistantMessage: ChatMessage? {
+        session.messages.last(where: { $0.role == .assistant && !$0.content.isEmpty })
+    }
+
     private var latestAssistantLine: String? {
         // Check system notices (greeting) first if no real messages
-        let realLine = session.messages.last(where: { $0.role == .assistant && !$0.content.isEmpty })
-            .map { $0.content }
+        let realLine = latestAssistantMessage
+            .map { ChatBubbleRendering.avatarBubblePreviewText(for: $0.content) }
         if let line = realLine { return line }
         // Fallback: show greeting in bubble too
         return systemNotices.first(where: { $0.isGreeting })?.text
@@ -499,7 +506,7 @@ struct BobsDeskView: View {
         .onReceive(agentLoop.$isProcessing) { processing in
             if processing {
                 withAnimation(.easeInOut(duration: 0.3)) {
-                    bubbleVisible = false
+                    bubbleVisible = true
                 }
                 // F2 — start-of-turn bookkeeping
                 turnStartedAt = Date()
@@ -648,14 +655,11 @@ struct BobsDeskView: View {
 
                 ZStack(alignment: .bottom) {
                     speechBubbleView(maxHeight: bubbleCap)
-                        .opacity(bubbleVisible ? 1 : 0)
+                        .opacity(bubbleVisible || agentLoop.isProcessing ? 1 : 0)
                         .animation(.easeInOut(duration: 0.3), value: bubbleVisible)
-
-                    thinkingDotsBubble
-                        .opacity(agentLoop.isProcessing ? 1 : 0)
                         .animation(.easeInOut(duration: 0.25), value: agentLoop.isProcessing)
                 }
-                .frame(maxWidth: 300, maxHeight: bubbleCap, alignment: .bottom)
+                .frame(maxWidth: 360, maxHeight: bubbleCap, alignment: .bottom)
                 .layoutPriority(0)
 
                 Spacer().frame(height: gapBubbleToBob)
@@ -726,8 +730,9 @@ struct BobsDeskView: View {
                     .allowsHitTesting(false)
 
                 speechBubbleView(maxHeight: Self.portraitBubbleMaxHeight)
-                    .opacity(bubbleVisible ? 1 : 0)
+                    .opacity(bubbleVisible || agentLoop.isProcessing ? 1 : 0)
                     .animation(.easeInOut(duration: 0.3), value: bubbleVisible)
+                    .animation(.easeInOut(duration: 0.25), value: agentLoop.isProcessing)
             }
             .frame(maxWidth: 360, minHeight: 56, maxHeight: Self.portraitBubbleMaxHeight)
             .padding(.bottom, 6)
@@ -841,29 +846,6 @@ struct BobsDeskView: View {
         return lines
     }
 
-    // MARK: - Thinking Dots Bubble  (avatar-only mode)
-
-    /// Bob's speech bubble with animated dots in place of text, shown in
-    /// avatar-only mode while he's processing. Mirrors `speechBubbleView`'s
-    /// translucent styling so the shape reads as "Bob thinking" without
-    /// chroming the desktop behind it.
-    private var thinkingDotsBubble: some View {
-        let shape = ComicBubbleShape(tailAnchorX: 0.72)
-        return ZStack {
-            shape
-                .fill(Self.bubbleFill.opacity(surfaceOpacity))
-            shape
-                .stroke(Self.bubbleStroke.opacity(surfaceOpacity), lineWidth: 0.6)
-            ThinkingDots()
-                .padding(.horizontal, 14)
-                .padding(.top, 10)
-                .padding(.bottom, 24)
-        }
-        .compositingGroup()
-        .shadow(color: .black.opacity(0.18 * surfaceOpacity), radius: 10, x: 0, y: 4)
-        .frame(width: 82, height: 52)
-    }
-
     // MARK: - Compact Input Bubble  (avatar-only mode)
 
     /// Pill-shaped translucent input below Bob. "Ask Bob…" placeholder on
@@ -917,8 +899,8 @@ struct BobsDeskView: View {
     /// `maxHeight` and scrolls internally — never grows past the cap. This
     /// keeps Bob's portrait fully visible in avatar-only mode and keeps the
     /// portrait-slot bubble from pushing Bob down in full mode.
-    private static let minBubbleHeight: CGFloat = 44
-    private static let portraitBubbleMaxHeight: CGFloat = 80
+    private static let minBubbleHeight: CGFloat = 56
+    private static let portraitBubbleMaxHeight: CGFloat = 104
 
     /// Renders Bob's response inside a translucent speech bubble. The
     /// `maxHeight` cap is supplied by the parent layout (computed from
@@ -927,30 +909,44 @@ struct BobsDeskView: View {
     /// bubble's frame is stable as new tokens stream in.
     private func speechBubbleView(maxHeight: CGFloat) -> some View {
         let rawText = latestAssistantLine ?? ""
-        let shape = ComicBubbleShape(tailAnchorX: 0.72, tailDirection: .down)
+        let shape = ComicBubbleShape(tailAnchorX: Self.avatarBubbleTailAnchorX, tailDirection: .down)
+        let isAvatarOnly = settings.avatarOnlyMode
+        let textFont = Font.system(
+            size: isAvatarOnly ? 15 : 13,
+            weight: isAvatarOnly ? .semibold : .medium,
+            design: .rounded
+        )
 
         return ScrollView(.vertical, showsIndicators: false) {
-            Text(rawText)
-                .font(.system(size: 12))
-                .foregroundColor(.black.opacity(0.82 * textOpacity))
-                .multilineTextAlignment(.leading)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 16)
-                .padding(.top, 12)
-                .padding(.bottom, 22)
-        }
-        .background(
-            ZStack {
-                shape.fill(Self.bubbleFill.opacity(surfaceOpacity))
-                shape.stroke(Self.bubbleStroke.opacity(surfaceOpacity), lineWidth: 0.6)
+            Group {
+                if agentLoop.isProcessing {
+                    ThinkingDots()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    Text(rawText)
+                        .font(textFont)
+                        .foregroundColor(.black.opacity(0.9 * textOpacity))
+                        .multilineTextAlignment(.leading)
+                        .lineSpacing(isAvatarOnly ? 2 : 1)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .shadow(color: .white.opacity(0.12), radius: 0.4, x: 0, y: 0.4)
+                        .textSelection(.enabled)
+                }
             }
-        )
+            .padding(.horizontal, isAvatarOnly ? 18 : 16)
+            .padding(.top, isAvatarOnly ? 14 : 12)
+            .padding(.bottom, isAvatarOnly ? 24 : 22)
+        }
+        .background(shape.fill(Self.speechBubbleFill))
+        .overlay(shape.stroke(Self.speechBubbleStroke, lineWidth: isAvatarOnly ? 1.2 : 0.9))
+        .clipShape(shape)
         .compositingGroup()
-        .shadow(color: .black.opacity(0.18 * surfaceOpacity), radius: 10, x: 0, y: 4)
-        .frame(maxWidth: 320)
+        .shadow(color: .black.opacity(0.22), radius: 12, x: 0, y: 5)
+        .frame(maxWidth: isAvatarOnly ? 360 : 332)
         .frame(minHeight: Self.minBubbleHeight,
-               maxHeight: bubbleVisible ? maxHeight : Self.minBubbleHeight)
+               maxHeight: (bubbleVisible || agentLoop.isProcessing) ? maxHeight : Self.minBubbleHeight)
         .animation(.easeInOut(duration: 0.3), value: bubbleVisible)
+        .animation(.easeInOut(duration: 0.25), value: agentLoop.isProcessing)
     }
 
     // MARK: - Status Line
@@ -1014,39 +1010,67 @@ struct BobsDeskView: View {
 
     private var transcriptSection: some View {
         ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(spacing: 4) {
-                    ForEach(interleavedItems) { item in
-                        switch item.content {
-                        case .message(let msg):
-                            if Self.shouldShowInTranscript(msg) {
-                                ChatBubble(message: msg)
-                                    .id(msg.id)
+            ZStack(alignment: .bottomTrailing) {
+                ScrollView {
+                    LazyVStack(spacing: 4) {
+                        ForEach(interleavedItems) { item in
+                            switch item.content {
+                            case .message(let msg):
+                                if Self.shouldShowInTranscript(msg) {
+                                    ChatBubble(message: msg)
+                                        .id(msg.id)
+                                }
+                            case .notice(let notice):
+                                systemNoticeRow(notice)
+                                    .id(notice.id.uuidString)
                             }
-                        case .notice(let notice):
-                            systemNoticeRow(notice)
-                                .id(notice.id.uuidString)
+                        }
+                    }
+                    .padding(.vertical, 8)
+                }
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: 20)
+                        .onChanged { value in
+                            guard abs(value.translation.height) > 36 else { return }
+                            autoScrollEnabled = false
+                        }
+                )
+                .onChange(of: session.messages.count) {
+                    guard autoScrollEnabled else { return }
+                    withAnimation {
+                        if let lastID = interleavedItems.last?.id {
+                            proxy.scrollTo(lastID, anchor: .bottom)
                         }
                     }
                 }
-                .padding(.vertical, 8)
-            }
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 6)
-                    .onChanged { _ in autoScrollEnabled = false }
-            )
-            .onChange(of: session.messages.count) {
-                guard autoScrollEnabled else { return }
-                withAnimation {
-                    proxy.scrollTo(session.messages.last?.id ?? "thinking", anchor: .bottom)
-                }
-            }
-            .onChange(of: systemNotices.count) {
-                guard autoScrollEnabled else { return }
-                withAnimation {
-                    if let last = systemNotices.last {
-                        proxy.scrollTo(last.id.uuidString, anchor: .bottom)
+                .onChange(of: systemNotices.count) {
+                    guard autoScrollEnabled else { return }
+                    withAnimation {
+                        if let last = interleavedItems.last?.id {
+                            proxy.scrollTo(last, anchor: .bottom)
+                        }
                     }
+                }
+
+                if autoScrollEnabled == false {
+                    Button {
+                        autoScrollEnabled = true
+                        withAnimation {
+                            if let lastID = interleavedItems.last?.id {
+                                proxy.scrollTo(lastID, anchor: .bottom)
+                            }
+                        }
+                    } label: {
+                        Label("Jump to latest", systemImage: "arrow.down.circle.fill")
+                            .font(.caption.bold())
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 8)
+                            .background(Self.bgPanel.opacity(surfaceOpacity * 0.95))
+                            .clipShape(Capsule(style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.trailing, 14)
+                    .padding(.bottom, 12)
                 }
             }
         }

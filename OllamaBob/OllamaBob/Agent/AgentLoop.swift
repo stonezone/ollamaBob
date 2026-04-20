@@ -55,6 +55,7 @@ final class AgentLoop: ObservableObject {
     /// and the `read_tool_output` meta-tool use this to scope spillout files
     /// per conversation.
     private var currentConversationId: String?
+    private var currentUserMessage: String?
 
     var approvalHandler: ApprovalHandler?
     var modelSwitchHandler: ModelSwitchHandler?
@@ -99,12 +100,17 @@ final class AgentLoop: ObservableObject {
             }
         }
         currentConversationId = conversationId
+        currentUserMessage = userMessage
         defer {
             isProcessing = false
             currentConversationId = nil
+            currentUserMessage = nil
         }
 
         let loopStart = Date()
+        var turnHadToolFailure = false
+        var lastFailedToolResult: ToolResult?
+        var lastToolResult: ToolResult?
         // Always re-prepend a FRESH system prompt. We strip any inherited
         // system messages from history so the persona/tool rules can never
         // be evicted by Ollama's context truncation as the conversation grows
@@ -148,13 +154,22 @@ final class AgentLoop: ObservableObject {
                 throw AgentLoopError.ollamaUnavailable(error.localizedDescription)
             }
 
-            let assistantMessage = response.message
+            var assistantMessage = response.message
 
             // No tool calls — final response
             guard let toolCalls = assistantMessage.toolCalls, !toolCalls.isEmpty else {
+                assistantMessage.content = Self.normalizedFinalAssistantContent(
+                    assistantMessage.content,
+                    for: userMessage,
+                    turnHadToolFailure: turnHadToolFailure,
+                    lastFailedToolResult: lastFailedToolResult,
+                    lastToolResult: lastToolResult
+                )
                 messages.append(assistantMessage)
-                consecutiveFailures = 0
-                bobMood = .happy
+                if lastToolResult?.success != false {
+                    consecutiveFailures = 0
+                }
+                bobMood = lastToolResult?.success == false ? .sheepish : .happy
                 return messages
             }
 
@@ -175,6 +190,14 @@ final class AgentLoop: ObservableObject {
             // honest. See BobOperatingRules for the matching rules.
             for call in toolCalls {
                 let rawResult = await executeToolCall(call)
+                lastToolResult = rawResult
+                if rawResult.success {
+                    turnHadToolFailure = false
+                    lastFailedToolResult = nil
+                } else {
+                    turnHadToolFailure = true
+                    lastFailedToolResult = rawResult
+                }
                 let spilled = await spilloutIfNeeded(rawResult)
                 let wrapped = UntrustedWrapper.wrap(spilled.content)
                 messages.append(.toolResult(name: spilled.toolName, content: wrapped))
@@ -193,6 +216,11 @@ final class AgentLoop: ObservableObject {
 
         // Validate tool exists
         guard registry.has(name) else {
+            if let result = redirectedDisabledPresentToolIfNeeded(name: name, args: args) {
+                logTool(name: name, input: "\(args)", output: result.content, approval: .none, approved: false, durationMs: 0)
+                bobMood = .sheepish
+                return result
+            }
             logTool(name: name, input: "\(args)", output: "Unknown tool", approval: .forbidden, approved: false, durationMs: 0)
             consecutiveFailures += 1
             await checkFallback()
@@ -207,6 +235,18 @@ final class AgentLoop: ObservableObject {
             await checkFallback()
             bobMood = .confused
             return .failure(tool: name, error: "Invalid or missing arguments for '\(name)'", durationMs: 0)
+        }
+
+        if let result = redirectedReadFileOpenIntentIfNeeded(name: name, args: args) {
+            logTool(name: name, input: "\(args)", output: result.content, approval: .none, approved: false, durationMs: 0)
+            bobMood = .sheepish
+            return result
+        }
+
+        if let result = redirectedAppleScriptOpenIntentIfNeeded(name: name, args: args) {
+            logTool(name: name, input: "\(args)", output: result.content, approval: .none, approved: false, durationMs: 0)
+            bobMood = .sheepish
+            return result
         }
 
         // Check approval
@@ -231,9 +271,14 @@ final class AgentLoop: ObservableObject {
         }
 
         // Execute
-        consecutiveFailures = 0
         let result = await executeTool(name: name, args: args)
         logTool(name: name, input: "\(args)", output: result.content, approval: approval, approved: true, durationMs: result.durationMs)
+        if result.success {
+            consecutiveFailures = 0
+            bobMood = .typing
+        } else {
+            bobMood = .sheepish
+        }
         return result
     }
 
@@ -534,6 +579,420 @@ final class AgentLoop: ObservableObject {
         if let n = value as? NSNumber { return n.intValue }
         if let s = value as? String { return Int(s.trimmingCharacters(in: .whitespaces)) }
         return nil
+    }
+
+    private func redirectedReadFileOpenIntentIfNeeded(name: String, args: [String: Any]) -> ToolResult? {
+        guard name == "read_file",
+              let path = args["path"] as? String,
+              let currentUserMessage,
+              Self.shouldRedirectReadFileToPresent(userMessage: currentUserMessage, path: path) else {
+            return nil
+        }
+
+        let guidance: String
+        if AppSettings.shared.richPresentationEnabled {
+            guidance = "User asked to open a local file in its default app, not to read its contents into chat. Use present with kind='file' and content='\(path)' instead of read_file. If present returns 'path not allowed', relay that refusal to the user."
+        } else {
+            guidance = "User asked to open a local file in its default app, not to read its contents into chat. Rich presentation is disabled, so do not use read_file here. Use shell with macOS open if appropriate, or explain that you cannot open it."
+        }
+
+        return .failure(tool: "read_file", error: guidance, durationMs: 0)
+    }
+
+    private func redirectedDisabledPresentToolIfNeeded(name: String, args: [String: Any]) -> ToolResult? {
+        guard name == "present",
+              AppSettings.shared.richPresentationEnabled == false,
+              let currentUserMessage else {
+            return nil
+        }
+
+        let lower = currentUserMessage.lowercased()
+        let openIntent = ["open ", "launch ", "show ", "in preview", "in browser", "default app", "proper window"]
+            .contains { lower.contains($0) }
+        guard openIntent else { return nil }
+
+        let content = (args["content"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let kind = (args["kind"] as? String)?.lowercased() ?? ""
+
+        let guidance: String
+        if kind == "file" || content.hasPrefix("/") || content.hasPrefix("~") {
+            guidance = "Rich presentation is disabled, so the present tool is unavailable. Use shell with macOS open for the file instead, or explain that you cannot open it."
+        } else if kind == "url" || content.lowercased().hasPrefix("http://") || content.lowercased().hasPrefix("https://") {
+            guidance = "Rich presentation is disabled, so the present tool is unavailable. Use shell with macOS open for the URL instead, or explain that you cannot open it."
+        } else {
+            guidance = "Rich presentation is disabled, so the present tool is unavailable. Use shell with macOS open for simple open/show requests, or explain that you cannot open it."
+        }
+
+        return .failure(tool: "present", error: guidance, durationMs: 0)
+    }
+
+    private func redirectedAppleScriptOpenIntentIfNeeded(name: String, args: [String: Any]) -> ToolResult? {
+        guard name == "applescript",
+              let script = args["script"] as? String,
+              let currentUserMessage,
+              Self.shouldRedirectAppleScriptOpenToShell(userMessage: currentUserMessage, script: script) else {
+            return nil
+        }
+
+        return .failure(
+            tool: "applescript",
+            error: "User asked to open a file or URL in its default app. Do not use applescript for that. Use shell with macOS open instead, or explain that you cannot open it.",
+            durationMs: 0
+        )
+    }
+
+    static func shouldRedirectReadFileToPresent(userMessage: String, path: String) -> Bool {
+        let trimmedPath = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmedPath.hasPrefix("/") || trimmedPath.hasPrefix("~") else {
+            return false
+        }
+
+        let lower = userMessage.lowercased()
+        let openPhrases = [
+            "open ",
+            "launch ",
+            "in preview",
+            "preview ",
+            "in browser",
+            "in my browser",
+            "default app"
+        ]
+        guard openPhrases.contains(where: { lower.contains($0) }) else {
+            return false
+        }
+
+        let contentReadPhrases = [
+            "contents of",
+            "content of",
+            "show me the contents",
+            "paste the contents",
+            "quote the contents",
+            "summarize the file",
+            "cat ",
+            "head ",
+            "tail ",
+            "grep "
+        ]
+        return contentReadPhrases.contains(where: { lower.contains($0) }) == false
+    }
+
+    static func shouldRedirectAppleScriptOpenToShell(userMessage: String, script: String) -> Bool {
+        let lowerMessage = userMessage.lowercased()
+        let lowerScript = script.lowercased()
+        let openIntent = ["open ", "launch ", "show ", "preview ", "in preview", "in browser", "default app"]
+            .contains { lowerMessage.contains($0) }
+        guard openIntent else { return false }
+
+        let isSimpleOpenScript =
+            lowerScript.contains(" to open file ") ||
+            lowerScript.contains(" to open posix file") ||
+            lowerScript.contains(" to open alias ") ||
+            lowerScript.contains(" to open location ") ||
+            lowerScript.contains("tell application \"finder\" to open ") ||
+            lowerScript.contains("open location ")
+
+        let automationIntent = ["finder automation", "system events", "click", "select", "reveal in finder"]
+            .contains { lowerMessage.contains($0) }
+
+        return isSimpleOpenScript && automationIntent == false
+    }
+
+    static func normalizedFinalAssistantContent(
+        _ content: String,
+        for userMessage: String,
+        turnHadToolFailure: Bool,
+        lastFailedToolResult: ToolResult?,
+        lastToolResult: ToolResult?
+    ) -> String {
+        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        let lowerUser = userMessage.lowercased()
+
+        if let markdownImage = explicitMarkdownImageResponse(for: userMessage) {
+            return markdownImage
+        }
+
+        if requestsOnlyFencedCodeBlock(lowerUser),
+           let fencedBlock = firstFencedCodeBlock(in: trimmed) {
+            return fencedBlock
+        }
+
+        if let lastToolResult,
+           lastToolResult.success,
+           finalSuccessfulOpenShouldOverride(content: trimmed, userMessage: userMessage, result: lastToolResult) {
+            return conciseSuccessReply(for: userMessage, from: lastToolResult)
+        }
+
+        if turnHadToolFailure,
+           let lastFailedToolResult,
+           contentAcknowledgesFailure(trimmed) == false {
+            return conciseFailureReply(for: userMessage, from: lastFailedToolResult)
+        }
+
+        if requestsSingleLine(lowerUser) {
+            return firstNonEmptyLine(in: trimmed)
+        }
+
+        if requestsSingleSentence(lowerUser) {
+            return bestSentence(in: trimmed, userMessage: userMessage)
+        }
+
+        return trimmed
+    }
+
+    private static func explicitMarkdownImageResponse(for userMessage: String) -> String? {
+        let lowerUser = userMessage.lowercased()
+        guard lowerUser.contains("markdown only"),
+              lowerUser.contains("![alt](path)") else {
+            return nil
+        }
+
+        guard let path = extractAbsoluteOrTildePath(from: userMessage) else {
+            return nil
+        }
+
+        let fileName = URL(fileURLWithPath: NSString(string: path).expandingTildeInPath).deletingPathExtension().lastPathComponent
+        let alt = fileName.isEmpty ? "image" : fileName
+        return "![\(alt)](\(path))"
+    }
+
+    private static func requestsOnlyFencedCodeBlock(_ lowerUser: String) -> Bool {
+        lowerUser.contains("fenced code block") ||
+        lowerUser.contains("only that fenced block") ||
+        lowerUser.contains("just the code block")
+    }
+
+    private static func requestsSingleSentence(_ lowerUser: String) -> Bool {
+        lowerUser.contains("one sentence")
+    }
+
+    private static func requestsSingleLine(_ lowerUser: String) -> Bool {
+        lowerUser.contains("one line")
+    }
+
+    private static func firstFencedCodeBlock(in content: String) -> String? {
+        guard let openRange = content.range(of: "```") else { return nil }
+        guard let closeRange = content.range(of: "```", range: openRange.upperBound..<content.endIndex) else { return nil }
+        return String(content[openRange.lowerBound..<closeRange.upperBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func contentAcknowledgesFailure(_ content: String) -> Bool {
+        let lower = content.lowercased()
+        let markers = ["couldn't", "could not", "failed", "error", "not allowed", "denied", "refused", "did not succeed", "can't", "cannot"]
+        return markers.contains { lower.contains($0) }
+    }
+
+    private static func finalSuccessfulOpenShouldOverride(content: String, userMessage: String, result: ToolResult) -> Bool {
+        guard result.toolName == "shell" || result.toolName == "present" else { return false }
+        guard isOpenIntent(userMessage) else { return false }
+        if contentAcknowledgesFailure(content) { return true }
+        return contentAcknowledgesOpenSuccess(content) == false
+    }
+
+    private static func isOpenIntent(_ userMessage: String) -> Bool {
+        let lower = userMessage.lowercased()
+        return ["open ", "launch ", "show ", "in preview", "in browser", "in my browser", "default app", "proper window"]
+            .contains { lower.contains($0) }
+    }
+
+    private static func contentAcknowledgesOpenSuccess(_ content: String) -> Bool {
+        let lower = content.lowercased()
+        let markers = [
+            "opened",
+            "open in preview",
+            "in preview",
+            "in your browser",
+            "in my browser",
+            "rich view",
+            "shown",
+            "showing"
+        ]
+        return markers.contains { lower.contains($0) }
+    }
+
+    private static func conciseFailureReply(for userMessage: String, from result: ToolResult) -> String {
+        let detail = result.content
+            .replacingOccurrences(of: "Error: ", with: "")
+            .replacingOccurrences(of: "Denied: ", with: "")
+            .replacingOccurrences(of: "Forbidden: ", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if detail.localizedCaseInsensitiveContains("path not allowed"),
+           let path = extractAbsoluteOrTildePath(from: userMessage) {
+            return "I couldn't open \(path) because that path is not allowed."
+        }
+
+        if detail.isEmpty {
+            return "I couldn't complete that request."
+        }
+
+        let sentence = firstSentence(in: detail)
+        return sentence.hasPrefix("I ") ? sentence : "I couldn't complete that request: \(sentence.prefix(1).lowercased())\(sentence.dropFirst())"
+    }
+
+    private static func conciseSuccessReply(for userMessage: String, from result: ToolResult) -> String {
+        let detail = result.content
+            .replacingOccurrences(of: "Opened file: ", with: "")
+            .replacingOccurrences(of: "Opened URL: ", with: "")
+            .replacingOccurrences(of: "Opened rich view: ", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let lowerUser = userMessage.lowercased()
+        if lowerUser.contains("in preview"),
+           let path = extractAbsoluteOrTildePath(from: userMessage) {
+            return "I opened \(path) in Preview."
+        }
+
+        if lowerUser.contains("in browser") || lowerUser.contains("in my browser") {
+            return "I opened it in your browser."
+        }
+
+        if detail.isEmpty == false, detail != "(no output)" {
+            return result.content
+        }
+
+        if let path = extractAbsoluteOrTildePath(from: userMessage) {
+            return "I opened \(path)."
+        }
+
+        return "I completed that request."
+    }
+
+    private static func extractAbsoluteOrTildePath(from text: String) -> String? {
+        let patterns = [#"(~\/[^\s`]+)"#, #"((?:\/[^\s`]+)+)"#]
+        for pattern in patterns {
+            guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
+            let range = NSRange(text.startIndex..., in: text)
+            guard let match = regex.firstMatch(in: text, range: range),
+                  let capture = Range(match.range(at: 1), in: text) else {
+                continue
+            }
+            return String(text[capture]).trimmingCharacters(in: CharacterSet(charactersIn: ".,!?;:)]}\"'"))
+        }
+        return nil
+    }
+
+    private static func firstNonEmptyLine(in content: String) -> String {
+        content
+            .split(separator: "\n", omittingEmptySubsequences: true)
+            .map(String.init)
+            .first(where: { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false })?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? content
+    }
+
+    private static func firstSentence(in content: String) -> String {
+        let cleaned = content
+            .replacingOccurrences(of: "\n", with: " ")
+            .replacingOccurrences(of: #"(?i)\b(anything else sir\??|bob is done sir[^\.\!\?]*[\.\!\?]?|most welcome sir[^\.\!\?]*[\.\!\?]?)"#,
+                                  with: "",
+                                  options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard cleaned.isEmpty == false else { return content.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+        if let regex = try? NSRegularExpression(pattern: #"[.!?](?=\s|$)"#) {
+            let nsRange = NSRange(cleaned.startIndex..., in: cleaned)
+            if let match = regex.firstMatch(in: cleaned, range: nsRange),
+               let range = Range(match.range, in: cleaned) {
+                return String(cleaned[..<range.upperBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+        return cleaned
+    }
+
+    private static func bestSentence(in content: String, userMessage: String) -> String {
+        let sentences = splitSentences(in: content)
+        guard sentences.isEmpty == false else {
+            return firstSentence(in: content)
+        }
+
+        let keywords = significantKeywords(from: userMessage)
+        return sentences.max { scoreSentence($0, keywords: keywords) < scoreSentence($1, keywords: keywords) } ?? firstSentence(in: content)
+    }
+
+    private static func splitSentences(in content: String) -> [String] {
+        let cleaned = content
+            .replacingOccurrences(of: "\n", with: " ")
+            .replacingOccurrences(of: #"(?i)\b(anything else sir\??|bob is done sir[^\.\!\?]*[\.\!\?]?|most welcome sir[^\.\!\?]*[\.\!\?]?)"#,
+                                  with: "",
+                                  options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard cleaned.isEmpty == false else { return [] }
+
+        guard let regex = try? NSRegularExpression(pattern: #"[.!?](?=\s|$)"#) else {
+            return [cleaned]
+        }
+
+        let range = NSRange(cleaned.startIndex..., in: cleaned)
+        let matches = regex.matches(in: cleaned, range: range)
+        guard matches.isEmpty == false else { return [cleaned] }
+
+        var sentences: [String] = []
+        var sentenceStart = cleaned.startIndex
+
+        for match in matches {
+            guard let punctuationRange = Range(match.range, in: cleaned) else { continue }
+            let sentence = String(cleaned[sentenceStart..<punctuationRange.upperBound])
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if sentence.isEmpty == false {
+                sentences.append(sentence)
+            }
+
+            sentenceStart = punctuationRange.upperBound
+            while sentenceStart < cleaned.endIndex, cleaned[sentenceStart].isWhitespace {
+                sentenceStart = cleaned.index(after: sentenceStart)
+            }
+        }
+
+        if sentenceStart < cleaned.endIndex {
+            let tail = String(cleaned[sentenceStart...]).trimmingCharacters(in: .whitespacesAndNewlines)
+            if tail.isEmpty == false {
+                sentences.append(tail)
+            }
+        }
+
+        return sentences.isEmpty ? [cleaned] : sentences
+    }
+
+    private static func scoreSentence(_ sentence: String, keywords: [String]) -> Int {
+        let lower = sentence.lowercased()
+        var score = 0
+
+        if lower.contains("~/") || lower.contains("/") { score += 12 }
+        if lower.range(of: #"(~\/|\/[A-Za-z0-9._-]+)"#, options: .regularExpression) != nil { score += 6 }
+        if lower.contains("located") || lower.contains("called") || lower.contains("use ") { score += 3 }
+        if lower.contains(" is ") || lower.hasPrefix("is ") || lower.contains(" are ") { score += 1 }
+
+        for keyword in keywords where lower.contains(keyword) {
+            score += 3
+        }
+
+        let fillerPatterns = [
+            "actually sir",
+            "yes sir",
+            "very simple matter",
+            "simple matter",
+            "one moment",
+            "bob will",
+            "no tension",
+            "most welcome"
+        ]
+        if fillerPatterns.contains(where: { lower.contains($0) }) { score -= 8 }
+        if lower.contains("anything else") { score -= 10 }
+
+        score -= max(0, sentence.count - 120) / 12
+        return score
+    }
+
+    private static func significantKeywords(from userMessage: String) -> [String] {
+        let lower = userMessage.lowercased()
+        let stopWords: Set<String> = [
+            "the", "a", "an", "in", "on", "at", "for", "to", "my", "me", "is", "where", "what",
+            "show", "give", "just", "only", "one", "sentence", "line", "code", "block", "no", "tool", "tools"
+        ]
+
+        return lower
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { $0.count >= 3 && stopWords.contains($0) == false }
     }
 
     // MARK: - Approval

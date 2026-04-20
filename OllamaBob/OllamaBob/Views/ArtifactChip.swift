@@ -13,8 +13,8 @@ struct ArtifactChip: View {
                     .font(.system(.caption2, design: .monospaced).weight(.medium))
             }
             .foregroundColor(.accentColor)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 5)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
             .background(
                 Capsule(style: .continuous)
                     .fill(Color.accentColor.opacity(0.12))
@@ -25,5 +25,29 @@ struct ArtifactChip: View {
             )
         }
         .buttonStyle(.plain)
+        .contentShape(Rectangle())
+        .help(helpText)
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityHint(accessibilityHint)
+        .accessibilityAddTraits(.isLink)
+    }
+
+    private var accessibilityLabel: String {
+        artifact.title ?? artifact.label
+    }
+
+    private var accessibilityHint: String {
+        switch artifact.kind {
+        case .file:
+            return "Opens the file in its default macOS app."
+        case .url:
+            return "Opens the link in your default browser."
+        case .html:
+            return "Opens Bob's rich view window."
+        }
+    }
+
+    private var helpText: String {
+        "\(artifact.label): \(artifact.content)"
     }
 }

@@ -22,7 +22,7 @@ struct ToolRegistry {
         // read_file
         defs["read_file"] = .tool(
             name: "read_file",
-            description: "Read the contents of a file at the given path.",
+            description: "Read the contents of a file into chat. Do not use this to open a file in Preview, the browser, or another app.",
             properties: ["path": ("string", "Absolute path to the file to read")],
             required: ["path"]
         )
@@ -122,7 +122,7 @@ struct ToolRegistry {
 
         defs["present"] = .tool(
             name: "present",
-            description: "Display rich content for the user. `kind=html` opens Bob's companion window, `kind=url` opens the browser, `kind=file` opens a local file in its default app.",
+            description: "Open content for the user. Use this when they say open, launch, or show something in Bob's window, the browser, Preview, or another default app. `kind=html` opens Bob's companion window and should contain real clickable anchors when source URLs are available. `kind=url` opens the browser, `kind=file` opens a local file in its default app.",
             properties: [
                 "kind": ("string", "One of: html, url, file."),
                 "content": ("string", "HTML source, URL, or absolute file path depending on kind."),

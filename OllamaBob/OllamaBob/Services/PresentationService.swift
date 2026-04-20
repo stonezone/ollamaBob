@@ -47,6 +47,41 @@ protocol WorkspaceOpening {
 
 extension NSWorkspace: WorkspaceOpening {}
 
+protocol BrowserActivating {
+    func activateBrowser(for url: URL)
+}
+
+struct DefaultBrowserActivator: BrowserActivating {
+    func activateBrowser(for url: URL) {
+        guard let appURL = NSWorkspace.shared.urlForApplication(toOpen: url),
+              let bundleIdentifier = Bundle(url: appURL)?.bundleIdentifier else {
+            return
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            let runningApps = NSRunningApplication.runningApplications(withBundleIdentifier: bundleIdentifier)
+            for app in runningApps {
+                _ = app.activate(options: [.activateAllWindows])
+            }
+        }
+    }
+}
+
+enum ExternalURLPresenter {
+    @discardableResult
+    static func open(
+        _ url: URL,
+        workspace: WorkspaceOpening,
+        browserActivator: BrowserActivating
+    ) -> Bool {
+        guard workspace.open(url) else {
+            return false
+        }
+        browserActivator.activateBrowser(for: url)
+        return true
+    }
+}
+
 @MainActor
 final class PresentationService: ObservableObject {
     static let shared = PresentationService()
@@ -54,18 +89,28 @@ final class PresentationService: ObservableObject {
     let richHTMLState: RichHTMLState
 
     private let workspace: WorkspaceOpening
+    private let browserActivator: BrowserActivating
     private var openRichHTMLWindowHandler: (() -> Void)?
 
     init(
         workspace: WorkspaceOpening,
-        richHTMLState: RichHTMLState
+        richHTMLState: RichHTMLState,
+        browserActivator: BrowserActivating = DefaultBrowserActivator()
     ) {
         self.workspace = workspace
         self.richHTMLState = richHTMLState
+        self.browserActivator = browserActivator
     }
 
-    convenience init(workspace: WorkspaceOpening = NSWorkspace.shared) {
-        self.init(workspace: workspace, richHTMLState: RichHTMLState())
+    convenience init(
+        workspace: WorkspaceOpening = NSWorkspace.shared,
+        browserActivator: BrowserActivating = DefaultBrowserActivator()
+    ) {
+        self.init(
+            workspace: workspace,
+            richHTMLState: RichHTMLState(),
+            browserActivator: browserActivator
+        )
     }
 
     func registerOpenRichHTMLWindow(_ handler: @escaping () -> Void) {
@@ -106,7 +151,10 @@ final class PresentationService: ObservableObject {
         )
 
         richHTMLState.title = effectiveTitle
-        richHTMLState.html = Self.wrapHTMLDocumentIfNeeded(sanitized)
+        richHTMLState.html = Self.injectDocumentDefaults(
+            into: sanitized,
+            allowRemoteResources: AppSettings.shared.richPresentationRemoteResourcesEnabled
+        )
         openRichHTMLWindowHandler()
         return "Opened rich view: \(effectiveTitle)"
     }
@@ -119,7 +167,7 @@ final class PresentationService: ObservableObject {
         guard scheme == "http" || scheme == "https" else {
             throw PresentationError.urlSchemeNotAllowed
         }
-        guard workspace.open(url) else {
+        guard ExternalURLPresenter.open(url, workspace: workspace, browserActivator: browserActivator) else {
             throw PresentationError.openFailed(trimmed)
         }
         return "Opened URL: \(trimmed)"
@@ -145,7 +193,10 @@ final class PresentationService: ObservableObject {
         var sanitized = html
         let alwaysStripPatterns = [
             #"(?is)<script\b[^>]*>.*?</script>"#,
-            #"(?is)<meta\b[^>]*http-equiv\s*=\s*['"]?refresh['"]?[^>]*>"#
+            #"(?is)<meta\b[^>]*http-equiv\s*=\s*['"]?refresh['"]?[^>]*>"#,
+            #"(?is)\son[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)"#,
+            #"(?is)\s(?:href|src|data|poster)\s*=\s*(['"])\s*(?:javascript|vbscript):.*?\1"#,
+            #"(?is)\s(?:href|src|data|poster)\s*=\s*(?:javascript|vbscript):[^\s>]+"#
         ]
         for pattern in alwaysStripPatterns {
             sanitized = stripMatches(pattern: pattern, in: sanitized)
@@ -161,7 +212,9 @@ final class PresentationService: ObservableObject {
             #"(?is)<audio\b[^>]*\bsrc\s*=\s*['"]https?://[^'"]+['"][^>]*>.*?</audio>"#,
             #"(?is)<video\b[^>]*\bsrc\s*=\s*['"]https?://[^'"]+['"][^>]*>.*?</video>"#,
             #"(?is)<object\b[^>]*\bdata\s*=\s*['"]https?://[^'"]+['"][^>]*>.*?</object>"#,
-            #"(?is)<embed\b[^>]*\bsrc\s*=\s*['"]https?://[^'"]+['"][^>]*>"#
+            #"(?is)<embed\b[^>]*\bsrc\s*=\s*['"]https?://[^'"]+['"][^>]*>"#,
+            #"(?is)\ssrcset\s*=\s*['"][^'"]*https?://[^'"]*['"]"#,
+            #"(?is)<style\b[^>]*>.*?(?:@import\s+['"]https?://|url\(\s*['"]?https?://).*?</style>"#
         ]
         for pattern in remotePatterns {
             sanitized = stripMatches(pattern: pattern, in: sanitized)
@@ -169,21 +222,71 @@ final class PresentationService: ObservableObject {
         return sanitized
     }
 
-    static func wrapHTMLDocumentIfNeeded(_ html: String) -> String {
-        guard html.range(of: #"<html\b"#, options: [.regularExpression, .caseInsensitive]) == nil else {
-            return html
+    static func injectDocumentDefaults(into html: String, allowRemoteResources: Bool) -> String {
+        let defaults = documentDefaults(allowRemoteResources: allowRemoteResources)
+
+        if let headRange = html.range(of: #"<head\b[^>]*>"#, options: [.regularExpression, .caseInsensitive]) {
+            var document = html
+            document.insert(contentsOf: "\n\(defaults)\n", at: headRange.upperBound)
+            return document
         }
+
+        if let htmlRange = html.range(of: #"<html\b[^>]*>"#, options: [.regularExpression, .caseInsensitive]) {
+            var document = html
+            document.insert(contentsOf: "\n<head>\n\(defaults)\n</head>\n", at: htmlRange.upperBound)
+            return document
+        }
+
         return """
         <!DOCTYPE html>
         <html>
         <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
+        \(defaults)
         </head>
         <body>
         \(html)
         </body>
         </html>
+        """
+    }
+
+    private static func documentDefaults(allowRemoteResources: Bool) -> String {
+        let contentSecurityPolicy: String
+        if allowRemoteResources {
+            contentSecurityPolicy = "default-src 'none'; img-src https: data: file:; style-src 'unsafe-inline' https:; font-src https: data:; connect-src https:; media-src https: data: file:; object-src 'none'; frame-src https:;"
+        } else {
+            contentSecurityPolicy = "default-src 'none'; img-src data: file:; style-src 'unsafe-inline'; font-src data: file:; connect-src 'none'; media-src data: file:; object-src 'none'; frame-src 'none';"
+        }
+
+        return """
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="color-scheme" content="light dark">
+        <meta http-equiv="Content-Security-Policy" content="\(contentSecurityPolicy)">
+        <style>
+        :root { color-scheme: light dark; }
+        html, body {
+          margin: 0;
+          padding: 0;
+          background: transparent;
+          color: CanvasText;
+          font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+          line-height: 1.5;
+        }
+        body {
+          padding: 20px 24px;
+        }
+        a {
+          color: LinkText;
+        }
+        img, video {
+          max-width: 100%;
+          height: auto;
+        }
+        pre, code {
+          font-family: "SF Mono", Menlo, Monaco, monospace;
+        }
+        </style>
         """
     }
 

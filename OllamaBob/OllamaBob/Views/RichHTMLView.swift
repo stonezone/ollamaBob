@@ -12,17 +12,20 @@ struct RichHTMLView: NSViewRepresentable {
     @ObservedObject var state: RichHTMLState
 
     private let workspace: WorkspaceOpening
+    private let browserActivator: BrowserActivating
 
     init(
         state: RichHTMLState,
-        workspace: WorkspaceOpening = NSWorkspace.shared
+        workspace: WorkspaceOpening = NSWorkspace.shared,
+        browserActivator: BrowserActivating = DefaultBrowserActivator()
     ) {
         self.state = state
         self.workspace = workspace
+        self.browserActivator = browserActivator
     }
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(workspace: workspace)
+        Coordinator(workspace: workspace, browserActivator: browserActivator)
     }
 
     func makeNSView(context: Context) -> WKWebView {
@@ -33,8 +36,11 @@ struct RichHTMLView: NSViewRepresentable {
 
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
-        webView.setValue(false, forKey: "drawsBackground")
+        webView.underPageBackgroundColor = .clear
         load(state.html, into: webView, coordinator: context.coordinator)
+        DispatchQueue.main.async {
+            webView.window?.title = state.title
+        }
         return webView
     }
 
@@ -43,7 +49,9 @@ struct RichHTMLView: NSViewRepresentable {
             load(state.html, into: webView, coordinator: context.coordinator)
         }
         if webView.window?.title != state.title {
-            webView.window?.title = state.title
+            DispatchQueue.main.async {
+                webView.window?.title = state.title
+            }
         }
     }
 
@@ -80,9 +88,11 @@ struct RichHTMLView: NSViewRepresentable {
         fileprivate var lastHTML = ""
 
         private let workspace: WorkspaceOpening
+        private let browserActivator: BrowserActivating
 
-        init(workspace: WorkspaceOpening) {
+        init(workspace: WorkspaceOpening, browserActivator: BrowserActivating) {
             self.workspace = workspace
+            self.browserActivator = browserActivator
         }
 
         func webView(
@@ -103,9 +113,19 @@ struct RichHTMLView: NSViewRepresentable {
                 decisionHandler(.cancel)
             case .openExternal:
                 if let url = navigationAction.request.url {
-                    _ = workspace.open(url)
+                    _ = ExternalURLPresenter.open(
+                        url,
+                        workspace: workspace,
+                        browserActivator: browserActivator
+                    )
                 }
                 decisionHandler(.cancel)
+            }
+        }
+
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            DispatchQueue.main.async {
+                webView.window?.title = webView.title ?? webView.window?.title ?? "Bob's View"
             }
         }
     }
