@@ -51,6 +51,14 @@ Why first:
 - These are the highest-value correctness issues.
 - They affect visible behavior and state integrity.
 
+### Phase 1 Status
+
+Completed on 2026-04-20:
+
+- `BobsDeskView` now resets conversation-scoped notice/tool-activity cursor state when the active conversation changes.
+- `ChatSessionController` now publishes a narrow `transcriptRevision` signal whenever the transcript actually changes.
+- `BobsDeskView` now uses that transcript signal to clear the turn-completion race instead of relying on the old post-processing timing workaround.
+
 ## Phase 2 — Avatar-Only Parity
 
 Target findings:

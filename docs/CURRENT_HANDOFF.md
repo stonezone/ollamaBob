@@ -23,6 +23,8 @@ Latest polish after the main release commits:
 - deprecated `onChange` usage in `ConversationManagerView` was modernized to keep the build warning-free in that area
 - `ChatPanel` now tracks transcript growth by a refresh token instead of message-count only, so edits to the latest message keep the secondary transcript pinned correctly
 - per-row time-format allocations were removed from conversation search and tool-activity UI to reduce avoidable redraw work in those surfaces
+- `BobsDeskView` now resets conversation-scoped notice/tool cursor state on conversation switch
+- `ChatSessionController` now publishes `transcriptRevision`, and `BobsDeskView` consumes it to avoid the old turn-completion bubble timing race
 
 The current app bundle should be built from `OllamaBob/` with:
 

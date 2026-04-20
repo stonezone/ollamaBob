@@ -4,6 +4,7 @@ import Foundation
 final class ChatSessionController: ObservableObject {
     @Published var inputText = ""
     @Published private(set) var messages: [ChatMessage] = []
+    @Published private(set) var transcriptRevision = 0
     @Published private(set) var errorMessage: String?
     @Published private(set) var conversationId: String?
     @Published private(set) var conversationTitle = "New Chat"
@@ -219,6 +220,7 @@ final class ChatSessionController: ObservableObject {
 
         let userMsg = ChatMessage(role: .user, content: text)
         messages.append(userMsg)
+        markTranscriptChanged()
         inputText = ""
         errorMessage = nil
 
@@ -252,6 +254,7 @@ final class ChatSessionController: ObservableObject {
     private func appendNewMessages(from updatedHistory: [OllamaMessage], startingAt startIndex: Int, conversationId: String) {
         guard startIndex < updatedHistory.count else { return }
 
+        var appendedMessages = false
         for i in startIndex..<updatedHistory.count {
             let ollamaMsg = updatedHistory[i]
             if ollamaMsg.role == "assistant" {
@@ -263,6 +266,7 @@ final class ChatSessionController: ObservableObject {
                 )
                 if !chatMsg.content.isEmpty || (chatMsg.toolCalls?.isEmpty == false) {
                     messages.append(chatMsg)
+                    appendedMessages = true
                     persist(chatMsg, in: conversationId)
                 }
             } else if ollamaMsg.role == "tool" {
@@ -272,8 +276,13 @@ final class ChatSessionController: ObservableObject {
                     toolName: ollamaMsg.toolName
                 )
                 messages.append(chatMsg)
+                appendedMessages = true
                 persist(chatMsg, in: conversationId)
             }
+        }
+
+        if appendedMessages {
+            markTranscriptChanged()
         }
     }
 
@@ -310,6 +319,7 @@ final class ChatSessionController: ObservableObject {
         conversationUncensoredMode = false
         messages = []
         ollamaHistory = []
+        markTranscriptChanged()
     }
 
     private func applyConversation(id: String, title: String, uncensoredMode: Bool, messages: [ChatMessage]) {
@@ -318,6 +328,11 @@ final class ChatSessionController: ObservableObject {
         conversationUncensoredMode = uncensoredMode
         self.messages = messages
         ollamaHistory = messages.compactMap(Self.toOllamaMessage(_:))
+        markTranscriptChanged()
+    }
+
+    private func markTranscriptChanged() {
+        transcriptRevision += 1
     }
 
     private static func toOllamaMessage(_ msg: ChatMessage) -> OllamaMessage? {

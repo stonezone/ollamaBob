@@ -367,6 +367,7 @@ struct BobsDeskView: View {
     @StateObject private var session: ChatSessionController
     @State private var breathPhase     = false
     @State private var bubbleVisible   = false
+    @State private var awaitingTurnTranscript = false
 
     // F1 — greeting (display-only, not persisted)
     @State private var hasGreeted = false
@@ -524,8 +525,15 @@ struct BobsDeskView: View {
             rebuildInterleavedItems()
         }
         .onChange(of: session.conversationId) {
+            resetConversationScopedNoticeState()
             enforceMasterUncensoredSetting()
             rebuildInterleavedItems()
+            withAnimation(.easeInOut(duration: 0.3)) {
+                bubbleVisible = shouldShowBubble
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                maybeGreet()
+            }
         }
         .onChange(of: settings.uncensoredModeAvailable) {
             enforceMasterUncensoredSetting()
@@ -533,8 +541,16 @@ struct BobsDeskView: View {
         .onChange(of: transcriptRefreshToken) {
             rebuildInterleavedItems()
         }
-        // Sync bubble visibility whenever messages change
-        .onChange(of: session.messages.count) {
+        // Sync bubble visibility whenever the transcript actually changes.
+        .onChange(of: session.transcriptRevision) {
+            awaitingTurnTranscript = false
+            withAnimation(.easeInOut(duration: 0.3)) {
+                bubbleVisible = shouldShowBubble
+            }
+        }
+        .onChange(of: session.errorMessage) {
+            guard agentLoop.isProcessing == false else { return }
+            awaitingTurnTranscript = false
             withAnimation(.easeInOut(duration: 0.3)) {
                 bubbleVisible = shouldShowBubble
             }
@@ -542,6 +558,7 @@ struct BobsDeskView: View {
         // Also react when a message's content changes (tool result fills in)
         .onReceive(agentLoop.$isProcessing) { processing in
             if processing {
+                awaitingTurnTranscript = true
                 withAnimation(.easeInOut(duration: 0.3)) {
                     bubbleVisible = true
                 }
@@ -553,16 +570,6 @@ struct BobsDeskView: View {
             } else {
                 // F6 — clear tool chip when processing finishes
                 currentToolName = nil
-                // Re-sync the bubble a beat after processing ends. The
-                // session controller appends the turn's messages AFTER
-                // the agent loop returns, so at this instant the bubble
-                // might still be stale; a short delay lets messages
-                // settle, then shouldShowBubble reflects the final answer.
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                    withAnimation(.easeInOut(duration: 0.3)) {
-                        bubbleVisible = shouldShowBubble
-                    }
-                }
                 // F8 — play receive sound only after a user-initiated round-trip
                 if hasProcessed {
                     BobSounds.playReceive()
@@ -1027,7 +1034,7 @@ struct BobsDeskView: View {
 
         return ScrollView(.vertical, showsIndicators: false) {
             Group {
-                if agentLoop.isProcessing {
+                if agentLoop.isProcessing || awaitingTurnTranscript {
                     ThinkingDots()
                         .frame(maxWidth: .infinity, alignment: .leading)
                 } else {
@@ -1363,6 +1370,13 @@ struct BobsDeskView: View {
     private func enforceMasterUncensoredSetting() {
         guard settings.uncensoredModeAvailable == false, session.conversationUncensoredMode else { return }
         session.setConversationUncensoredMode(false)
+    }
+
+    private func resetConversationScopedNoticeState() {
+        systemNotices.removeAll()
+        hasGreeted = false
+        awaitingTurnTranscript = false
+        lastSeenToolActivityIndex = agentLoop.toolActivity.count
     }
 
     // MARK: - F1 Greeting

@@ -127,6 +127,85 @@ final class ChatSessionControllerTests: XCTestCase {
         XCTAssertEqual(database.savedToolLogs.count, 1)
     }
 
+    func testTranscriptRevisionAdvancesWhenCompletedTurnAppendsMessages() async {
+        let processExpectation = expectation(description: "agent loop called")
+        let database = FakeDatabase(
+            createdConversation: ConversationRecord(
+                id: "convo-revision",
+                title: "New Chat",
+                isPinned: false,
+                uncensoredMode: false,
+                createdAt: Date(),
+                updatedAt: Date()
+            )
+        )
+        let agentLoop = FakeAgentLoop()
+        agentLoop.onProcess = { message, _, _, _ in
+            processExpectation.fulfill()
+            return [
+                .user(message),
+                .assistant("hello back")
+            ]
+        }
+
+        let controller = ChatSessionController(
+            agentLoop: agentLoop,
+            database: database,
+            toolOutputStore: FakeToolOutputStore()
+        )
+        controller.inputText = "hello"
+
+        XCTAssertEqual(controller.transcriptRevision, 0)
+
+        controller.sendCurrentInput(allowsLocalCommands: false)
+
+        XCTAssertEqual(controller.transcriptRevision, 1)
+
+        await fulfillment(of: [processExpectation], timeout: 1.0)
+        await Task.yield()
+
+        XCTAssertEqual(controller.transcriptRevision, 2)
+        XCTAssertEqual(controller.messages.map(\.content), ["hello", "hello back"])
+    }
+
+    func testTranscriptRevisionStaysPutWhenCompletedTurnAddsNoMessages() async {
+        let processExpectation = expectation(description: "agent loop called")
+        let database = FakeDatabase(
+            createdConversation: ConversationRecord(
+                id: "convo-revision",
+                title: "New Chat",
+                isPinned: false,
+                uncensoredMode: false,
+                createdAt: Date(),
+                updatedAt: Date()
+            )
+        )
+        let agentLoop = FakeAgentLoop()
+        agentLoop.onProcess = { message, _, _, _ in
+            processExpectation.fulfill()
+            return [
+                .user(message)
+            ]
+        }
+
+        let controller = ChatSessionController(
+            agentLoop: agentLoop,
+            database: database,
+            toolOutputStore: FakeToolOutputStore()
+        )
+        controller.inputText = "hello"
+
+        controller.sendCurrentInput(allowsLocalCommands: false)
+
+        XCTAssertEqual(controller.transcriptRevision, 1)
+
+        await fulfillment(of: [processExpectation], timeout: 1.0)
+        await Task.yield()
+
+        XCTAssertEqual(controller.transcriptRevision, 1)
+        XCTAssertEqual(controller.messages.map(\.content), ["hello"])
+    }
+
     func testToolBackedTurnPreservesThinkingAndAssistantContent() async {
         let processExpectation = expectation(description: "tool-backed turn processed")
         let database = FakeDatabase(
@@ -271,6 +350,7 @@ final class ChatSessionControllerTests: XCTestCase {
         XCTAssertTrue(controller.conversationUncensoredMode)
         XCTAssertEqual(controller.messages.map(\.content), ["first", "second"])
         XCTAssertEqual(controller.history.map(\.role), ["user", "assistant"])
+        XCTAssertEqual(controller.transcriptRevision, 1)
         XCTAssertEqual(controller.inputText, "")
         XCTAssertNil(controller.errorMessage)
     }
