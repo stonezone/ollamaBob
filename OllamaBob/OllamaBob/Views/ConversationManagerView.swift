@@ -1,6 +1,12 @@
 import SwiftUI
 
 struct ConversationManagerView: View {
+    private static let searchResultDateFormatter: RelativeDateTimeFormatter = {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .short
+        return formatter
+    }()
+
     @ObservedObject var session: ChatSessionController
     @StateObject private var conversationStore = ConversationStoreController()
     @State private var isPresented = false
@@ -190,11 +196,6 @@ struct ConversationManagerView: View {
 
     @ViewBuilder
     private func searchResultRow(_ hit: DatabaseManager.MessageSearchHit) -> some View {
-        let formatter: RelativeDateTimeFormatter = {
-            let f = RelativeDateTimeFormatter()
-            f.unitsStyle = .short
-            return f
-        }()
         HStack(alignment: .top, spacing: 8) {
             VStack(alignment: .leading, spacing: 3) {
                 Text(hit.conversationTitle)
@@ -208,7 +209,7 @@ struct ConversationManagerView: View {
                         .padding(.vertical, 1)
                         .background(Color.accentColor.opacity(0.15))
                         .cornerRadius(3)
-                    Text(formatter.localizedString(for: hit.createdAt, relativeTo: Date()))
+                    Text(Self.searchResultDateFormatter.localizedString(for: hit.createdAt, relativeTo: Date()))
                         .font(.caption2)
                         .foregroundColor(.secondary)
                 }

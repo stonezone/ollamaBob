@@ -84,8 +84,6 @@ struct ToolActivityRow: View {
     }
 
     private var timeString: String {
-        let formatter = DateFormatter()
-        formatter.timeStyle = .short
-        return formatter.string(from: entry.timestamp)
+        entry.timestamp.formatted(date: .omitted, time: .shortened)
     }
 }
