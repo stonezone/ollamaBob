@@ -137,11 +137,16 @@ For each phase:
 5. update [CURRENT_HANDOFF.md](/Users/zack/ollamaBob/docs/CURRENT_HANDOFF.md)
 6. commit and push before moving on
 
-## Immediate Next Step
+### Phase 5 Status
 
-Start with Phase 0:
+Completed on 2026-04-20:
 
-- determine whether `ChatPanel` is still a real supported surface
-- then choose the correct Phase 1 branch:
-  - shared-session refactor if retained
-  - removal/deferral if dead
+- active icon-only send controls in `BobsDeskView` now expose accessibility labels and hints
+- `ToolActivityView` now has an explicit show/hide-details affordance instead of opaque tap-only expansion
+- tool input/output previews are easier to inspect, selectable, and more accessible
+- the operator/QA note promised during the earlier reflection is now present at [OPERATOR_QA.md](/Users/zack/ollamaBob/docs/OPERATOR_QA.md)
+- explanatory comments were added to the ChatPanel transcript refresh token, the macOS file-open timeout normalization path in `AgentLoop`, and the rich HTML snapshot reopen path in `PresentationService`
+
+## Current Status
+
+All planned phases in this remediation pass are complete.

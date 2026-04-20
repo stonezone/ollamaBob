@@ -10,6 +10,11 @@ struct ChatPanel: View {
         _session = StateObject(wrappedValue: ChatSessionController(agentLoop: agentLoop))
     }
 
+    // Secondary transcript views do not always get rebuilt when the latest
+    // message grows in place, so the scroll anchor needs more than just a
+    // message count. This token intentionally includes the latest message id,
+    // body length, and processing state so "stick to latest" keeps working on
+    // non-primary chat surfaces too.
     private var transcriptRefreshToken: String {
         let lastMessageToken = session.messages.last.map {
             "\($0.id)|\($0.content.count)|\($0.timestamp.timeIntervalSince1970)"

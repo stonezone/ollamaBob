@@ -949,6 +949,10 @@ struct BobsDeskView: View {
             }
             .buttonStyle(.plain)
             .disabled(!canSend)
+            .accessibilityLabel("Send message")
+            .accessibilityHint(canSend
+                ? "Sends the current chat input."
+                : "Enter a message to enable sending.")
         }
         .padding(.horizontal, 14)
         .padding(.top, 9 + 10)   // extra top room so the tail doesn't overlap the field
@@ -1402,6 +1406,12 @@ struct BobsDeskView: View {
             }
             .buttonStyle(.plain)
             .disabled(session.inputText.trimmingCharacters(in: .whitespaces).isEmpty || agentLoop.isProcessing)
+            .accessibilityLabel("Send message")
+            .accessibilityHint(
+                session.inputText.trimmingCharacters(in: .whitespaces).isEmpty || agentLoop.isProcessing
+                    ? "Enter a message to enable sending."
+                    : "Sends the current chat input."
+            )
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
@@ -1410,6 +1420,7 @@ struct BobsDeskView: View {
             Button("") { inputFocused = true }
                 .keyboardShortcut("k", modifiers: .command)
                 .opacity(0)
+                .accessibilityHidden(true)
         )
     }
 

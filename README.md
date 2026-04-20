@@ -82,6 +82,7 @@ Notes:
 - [AGENTS.md](AGENTS.md): repo layout, commands, coding/testing conventions
 - [CLAUDE.md](CLAUDE.md): project guide and operating context for coding-agent sessions
 - [docs/CURRENT_HANDOFF.md](docs/CURRENT_HANDOFF.md): current technical handoff, model-switch guidance, and rollout state
+- [docs/OPERATOR_QA.md](docs/OPERATOR_QA.md): manual QA checklist and operator gotchas for live app testing
 - [docs/MULTIMEDIA_BOB.md](docs/MULTIMEDIA_BOB.md): rich presentation design/spec and implemented acceptance coverage
 - [OllamaBob/NAUGHTYBOB_PLAN.md](OllamaBob/NAUGHTYBOB_PLAN.md): Naughty Bob v1 plan and shipped behavior
 

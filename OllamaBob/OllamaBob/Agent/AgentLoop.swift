@@ -853,6 +853,9 @@ final class AgentLoop: ObservableObject {
             return "I couldn't open \(path) because that path is not allowed."
         }
 
+        // `open ~/Desktop/...` and similar shell fallbacks can block on a macOS
+        // TCC prompt instead of returning promptly. When that happens we want a
+        // retry/approval explanation, not a misleading generic shell failure.
         if detail.localizedCaseInsensitiveContains("command timed out after"),
            isOpenIntent(userMessage) {
             if let path = extractAbsoluteOrTildePath(from: userMessage),

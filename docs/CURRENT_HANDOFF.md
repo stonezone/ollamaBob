@@ -34,6 +34,8 @@ Latest polish after the main release commits:
 - `ChatBubble` now strips `<untrusted>` wrapper tags with a tag-aware helper instead of brittle literal substring replacement
 - `ArtifactChip` tooltips no longer expose raw artifact payloads such as full local file paths
 - `RichHTMLView` now opens safe clicked `mailto:` and `tel:` links externally
+- active icon-only send controls now expose accessibility labels and hints in both input surfaces
+- `ToolActivityView` now uses an explicit details toggle, selectable preview text, and clearer expanded input/output panels
 
 The current app bundle should be built from `OllamaBob/` with:
 
@@ -141,6 +143,7 @@ Primary files:
 - [MULTIMEDIA_BOB.md](/Users/zack/ollamaBob/docs/MULTIMEDIA_BOB.md): rich presentation plan/spec
 - [NAUGHTYBOB_PLAN.md](/Users/zack/ollamaBob/OllamaBob/NAUGHTYBOB_PLAN.md): uncensored-mode plan/spec
 - [CHAT_REVIEW_REMEDIATION_PLAN.md](/Users/zack/ollamaBob/docs/CHAT_REVIEW_REMEDIATION_PLAN.md): active phased plan for the remaining validated chat/UI review findings
+- [OPERATOR_QA.md](/Users/zack/ollamaBob/docs/OPERATOR_QA.md): manual QA checklist and operator gotchas
 
 ## Verification Commands
 

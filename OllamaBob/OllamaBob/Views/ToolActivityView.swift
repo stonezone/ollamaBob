@@ -31,6 +31,7 @@ struct ToolActivityRow: View {
             HStack {
                 Image(systemName: iconName)
                     .foregroundColor(iconColor)
+                    .accessibilityHidden(true)
                 Text(entry.toolName)
                     .font(.body.bold())
                 Spacer()
@@ -40,23 +41,38 @@ struct ToolActivityRow: View {
                 Text(timeString)
                     .font(.caption)
                     .foregroundColor(.secondary)
+                Button {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        isExpanded.toggle()
+                    }
+                } label: {
+                    Label(
+                        isExpanded ? "Hide Details" : "Show Details",
+                        systemImage: isExpanded ? "chevron.up.circle" : "chevron.down.circle"
+                    )
+                    .font(.caption.weight(.semibold))
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel(isExpanded ? "Hide tool details" : "Show tool details")
+                .accessibilityHint("Reveals the tool input, output, and approval details")
             }
-            .contentShape(Rectangle())
-            .onTapGesture { isExpanded.toggle() }
+            VStack(alignment: .leading, spacing: 6) {
+                ActivityPreviewField(
+                    title: "Input",
+                    content: entry.input,
+                    lineLimit: isExpanded ? 3 : 1
+                )
+                ActivityPreviewField(
+                    title: "Output",
+                    content: entry.output,
+                    lineLimit: isExpanded ? 4 : 2
+                )
+            }
 
             if isExpanded {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Input:")
-                        .font(.caption.bold())
-                    Text(entry.input)
-                        .font(.system(.caption, design: .monospaced))
-                        .lineLimit(5)
-
-                    Text("Output:")
-                        .font(.caption.bold())
-                    Text(entry.output)
-                        .font(.system(.caption, design: .monospaced))
-                        .lineLimit(10)
+                    ActivityExpandedField(title: "Input", content: entry.input, maxHeight: 120)
+                    ActivityExpandedField(title: "Output", content: entry.output, maxHeight: 180)
 
                     HStack {
                         Text("Approval: \(entry.approval.rawValue)")
@@ -64,6 +80,7 @@ struct ToolActivityRow: View {
                     }
                     .font(.caption)
                     .foregroundColor(.secondary)
+                    .accessibilityLabel("Approval \(entry.approval.rawValue). Approved \(entry.approved ? "yes" : "no")")
                 }
                 .padding(.leading, 24)
             }
@@ -82,8 +99,63 @@ struct ToolActivityRow: View {
         if !entry.approved { return .orange }
         return .green
     }
-
     private var timeString: String {
         entry.timestamp.formatted(date: .omitted, time: .shortened)
+    }
+}
+
+private struct ActivityPreviewField: View {
+    let title: String
+    let content: String
+    let lineLimit: Int
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.caption.bold())
+                .foregroundColor(.secondary)
+            Text(trimmedContent)
+                .font(.system(.caption, design: .monospaced))
+                .foregroundColor(.secondary)
+                .lineLimit(lineLimit)
+                .textSelection(.enabled)
+                .accessibilityLabel("\(title) preview")
+                .accessibilityValue(trimmedContent)
+        }
+    }
+
+    private var trimmedContent: String {
+        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "No \(title.lowercased())" : trimmed
+    }
+}
+
+private struct ActivityExpandedField: View {
+    let title: String
+    let content: String
+    let maxHeight: CGFloat
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption.bold())
+            ScrollView(.vertical, showsIndicators: true) {
+                Text(trimmedContent)
+                    .font(.system(.caption, design: .monospaced))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .textSelection(.enabled)
+                    .padding(8)
+            }
+            .frame(maxHeight: maxHeight)
+            .background(Color.secondary.opacity(0.08))
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .accessibilityLabel(title)
+            .accessibilityValue(trimmedContent)
+        }
+    }
+
+    private var trimmedContent: String {
+        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "No \(title.lowercased())" : trimmed
     }
 }

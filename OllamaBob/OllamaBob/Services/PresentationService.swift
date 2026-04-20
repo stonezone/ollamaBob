@@ -119,6 +119,9 @@ final class PresentationService: ObservableObject {
 
     @discardableResult
     func reopenHTML(id: String) throws -> String {
+        // Rich HTML presentations are stored in RichHTMLState by a stable
+        // presentation id so transcript chips can reopen the same document
+        // after the companion window has been closed.
         guard AppSettings.shared.richPresentationEnabled else {
             throw PresentationError.richPresentationDisabled
         }
