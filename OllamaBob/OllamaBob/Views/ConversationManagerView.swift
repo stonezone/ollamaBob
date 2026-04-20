@@ -67,7 +67,7 @@ struct ConversationManagerView: View {
             }
 
             ConversationSearchBar(query: $searchQuery)
-                .onChange(of: searchQuery) { newValue in
+                .onChange(of: searchQuery) { _, newValue in
                     let token = newValue
                     Task {
                         try? await Task.sleep(nanoseconds: 200_000_000)

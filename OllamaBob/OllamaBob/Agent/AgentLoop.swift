@@ -743,7 +743,7 @@ final class AgentLoop: ObservableObject {
 
         if turnHadToolFailure,
            let lastFailedToolResult,
-           contentAcknowledgesFailure(trimmed) == false {
+           (contentAcknowledgesFailure(trimmed) == false || finalFailureReplyShouldOverride(content: trimmed, userMessage: userMessage, result: lastFailedToolResult)) {
             return conciseFailureReply(for: userMessage, from: lastFailedToolResult)
         }
 
@@ -807,6 +807,19 @@ final class AgentLoop: ObservableObject {
         return contentAcknowledgesOpenSuccess(content) == false
     }
 
+    private static func finalFailureReplyShouldOverride(content: String, userMessage: String, result: ToolResult) -> Bool {
+        guard isOpenIntent(userMessage) else { return false }
+        let lowerDetail = result.content.lowercased()
+        let lowerContent = content.lowercased()
+
+        if lowerDetail.contains("command timed out after"),
+           lowerContent.contains("command timed out after") {
+            return true
+        }
+
+        return false
+    }
+
     private static func isOpenIntent(_ userMessage: String) -> Bool {
         let lower = userMessage.lowercased()
         return ["open ", "launch ", "show ", "in preview", "in browser", "in my browser", "default app", "proper window"]
@@ -838,6 +851,15 @@ final class AgentLoop: ObservableObject {
         if detail.localizedCaseInsensitiveContains("path not allowed"),
            let path = extractAbsoluteOrTildePath(from: userMessage) {
             return "I couldn't open \(path) because that path is not allowed."
+        }
+
+        if detail.localizedCaseInsensitiveContains("command timed out after"),
+           isOpenIntent(userMessage) {
+            if let path = extractAbsoluteOrTildePath(from: userMessage),
+               likelyTriggersMacOSFilePrompt(path: path) {
+                return "I hit a macOS file-access prompt while opening \(path). Approve it and retry."
+            }
+            return "I hit a macOS prompt while opening that. Approve it and retry."
         }
 
         if detail.isEmpty {
@@ -888,6 +910,16 @@ final class AgentLoop: ObservableObject {
             return String(text[capture]).trimmingCharacters(in: CharacterSet(charactersIn: ".,!?;:)]}\"'"))
         }
         return nil
+    }
+
+    private static func likelyTriggersMacOSFilePrompt(path: String) -> Bool {
+        let expanded = NSString(string: path).expandingTildeInPath
+        let protectedRoots = [
+            "\(NSHomeDirectory())/Desktop",
+            "\(NSHomeDirectory())/Documents",
+            "\(NSHomeDirectory())/Downloads"
+        ]
+        return protectedRoots.contains { expanded == $0 || expanded.hasPrefix($0 + "/") }
     }
 
     private static func firstNonEmptyLine(in content: String) -> String {

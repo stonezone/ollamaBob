@@ -12,6 +12,11 @@ The app is live as a single macOS menu-bar product with:
 - V2.10 rich presentation
 - Naughty Bob v1 as a feature inside the current app, not a separate app
 
+Latest polish after the main release commits:
+
+- `open ~/Desktop/...` / `open ~/Documents/...` fallback failures now normalize to a macOS-permission-prompt explanation instead of a generic shell-timeout sentence
+- deprecated `onChange` usage in `ConversationManagerView` was modernized to keep the build warning-free in that area
+
 The current app bundle should be built from `OllamaBob/` with:
 
 ```bash

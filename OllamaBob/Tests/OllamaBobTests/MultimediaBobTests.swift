@@ -340,6 +340,18 @@ final class MultimediaBobTests: XCTestCase {
         XCTAssertEqual(normalized, "I opened ~/Desktop/m3-test.png in Preview.")
     }
 
+    func testNormalizedFinalAssistantContentExplainsMacOSFilePromptTimeoutForDesktopOpen() {
+        let normalized = AgentLoop.normalizedFinalAssistantContent(
+            "I couldn't complete that request: command timed out after 30s",
+            for: "Open ~/Desktop/m3-test.png in Preview for me.",
+            turnHadToolFailure: true,
+            lastFailedToolResult: .failure(tool: "shell", error: "Command timed out after 30s", durationMs: 0),
+            lastToolResult: .failure(tool: "shell", error: "Command timed out after 30s", durationMs: 0)
+        )
+
+        XCTAssertEqual(normalized, "I hit a macOS file-access prompt while opening ~/Desktop/m3-test.png. Approve it and retry.")
+    }
+
     func testRichHTMLNavigationDecisionOpensClickedHTTPLinksExternally() {
         let decision = RichHTMLView.navigationDecision(
             url: URL(string: "https://example.com/docs"),
