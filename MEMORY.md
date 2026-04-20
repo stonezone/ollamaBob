@@ -6,6 +6,7 @@
 - The user prefers direct execution over extended discussion once the plan is clear.
 - The user wants docs kept current at each major phase, especially `README.md`, handoff docs, and plan docs.
 - The user wants each major overnight phase committed and pushed instead of accumulating a large local delta.
+- The user is comfortable with long autonomous overnight execution as long as progress is bounded, verified, and documented.
 
 ## Execution Guardrails
 - For multi-phase work, define hard no-drift guardrails before implementation.
@@ -25,8 +26,11 @@
 - Leave unrelated modified and untracked files alone unless the user explicitly asks otherwise.
 - After code phases that affect the live app, rebuild and relaunch `OllamaBob.app` from `OllamaBob/build/OllamaBob.app`.
 - After doc phases, keep `docs/CURRENT_HANDOFF.md` synchronized with the actual local operator state when that state materially changed.
+- At major phase boundaries, run a `vibe_check` before choosing the next slice of work.
+- Before compaction or a hard session stop, run reflection and persist the durable learnings into `MEMORY.md`.
 
 ## Known Operational Failure Mode
 - Multiple active Codex/SwiftPM processes in this repo can cause lock contention or "too many open files" behavior. Check running processes and terminate stale repo-local Codex sessions before retrying builds or agent work.
 - For `open ~/Desktop/...` and similar file-open fallbacks, a `shell` timeout can mean macOS TCC is waiting on a Desktop/Documents/Downloads permission prompt, not that the open path is fundamentally broken.
 - Secondary UI surfaces can lag behind the main desk view if they use message-count-only transcript refresh logic; use a refresh token that includes last-message growth when pinning transcript scroll.
+- When rich presentation is disabled, simple local file-open requests should route to `shell open ...` fallback rather than lingering on `present` or Preview-specific AppleScript attempts.
