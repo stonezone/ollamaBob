@@ -75,17 +75,15 @@ final class ToolRuntime: ObservableObject {
 
         let entries = catalog.tools.filter { !$0.bundled }
 
-        // Probe concurrently but bounded — we're spawning cheap short-lived
-        // processes, so a TaskGroup is sufficient without manual throttling.
-        let results: [(String, ToolState)] = await withTaskGroup(of: (String, ToolState).self) { group in
-            for entry in entries {
-                group.addTask { await Self.probe(entry: entry) }
-            }
-            var collected: [(String, ToolState)] = []
-            for await pair in group {
-                collected.append(pair)
-            }
-            return collected
+        // Keep startup probes sequential for now. `ProcessRunner.run()` still
+        // blocks a worker thread internally, so spawning one task per catalog
+        // entry can starve the cooperative executor and hang the full test
+        // suite. If we want parallel probing again, it should come back with a
+        // truly async process runner or an explicit bounded queue.
+        var results: [(String, ToolState)] = []
+        results.reserveCapacity(entries.count)
+        for entry in entries {
+            results.append(await Self.probe(entry: entry))
         }
 
         for (name, state) in results {
@@ -191,42 +189,13 @@ final class ToolRuntime: ObservableObject {
     /// policy, never logs to the activity log, and has a hard 3s
     /// timeout because `which` / `--version` should be instantaneous.
     private static func runProcess(executable: String, arguments: [String]) async -> (stdout: String, exitCode: Int32) {
-        await withCheckedContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async {
-                let process = Process()
-                process.executableURL = URL(fileURLWithPath: executable)
-                process.arguments = arguments
-
-                let stdoutPipe = Pipe()
-                let stderrPipe = Pipe()
-                process.standardOutput = stdoutPipe
-                process.standardError = stderrPipe
-
-                let timeoutItem = DispatchWorkItem {
-                    if process.isRunning { process.terminate() }
-                }
-                DispatchQueue.global().asyncAfter(deadline: .now() + 3.0, execute: timeoutItem)
-
-                do {
-                    try process.run()
-                    process.waitUntilExit()
-                    timeoutItem.cancel()
-
-                    let outData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
-                    let errData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
-                    let stdout = String(data: outData, encoding: .utf8) ?? ""
-                    let stderr = String(data: errData, encoding: .utf8) ?? ""
-                    // Some tools (fd, bat) print --version to stdout; others
-                    // (java, nmap) use stderr. Concat both so the parser sees
-                    // whichever the tool picked.
-                    let merged = stdout.isEmpty ? stderr : stdout
-                    continuation.resume(returning: (merged, process.terminationStatus))
-                } catch {
-                    timeoutItem.cancel()
-                    continuation.resume(returning: ("", -1))
-                }
-            }
-        }
+        let result = await ProcessRunner.run(
+            executable: executable,
+            arguments: arguments,
+            timeout: 3.0
+        )
+        let merged = result.stdout.isEmpty ? result.stderr : result.stdout
+        return (merged, result.exitCode)
     }
 
     // MARK: - Convenience accessors

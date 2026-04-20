@@ -36,4 +36,17 @@ final class PolicyRegressionTests: XCTestCase {
             .forbidden
         )
     }
+
+    func testShellToolReturnsFailureWhenShellCannotLaunch() async {
+        let result = await ShellTool.execute(
+            command: "echo hello",
+            timeout: 1,
+            executable: "/definitely/not/a/real/zsh"
+        )
+
+        XCTAssertFalse(result.success)
+        XCTAssertEqual(result.toolName, "shell")
+        XCTAssertFalse(result.content.contains("[exit code: -1]"))
+        XCTAssertFalse(result.content.isEmpty)
+    }
 }

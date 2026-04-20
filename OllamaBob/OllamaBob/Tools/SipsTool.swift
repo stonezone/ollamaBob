@@ -27,49 +27,24 @@ enum SipsTool {
         }
         arguments += [inputPath, "--out", outputPath]
 
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/sips")
-        process.arguments = arguments
-
-        let stdoutPipe = Pipe()
-        let stderrPipe = Pipe()
-        process.standardOutput = stdoutPipe
-        process.standardError = stderrPipe
-
-        var timedOut = false
-        let timeoutItem = DispatchWorkItem {
-            timedOut = true
-            if process.isRunning {
-                process.terminate()
-            }
-        }
-        DispatchQueue.global().asyncAfter(deadline: .now() + 30, execute: timeoutItem)
-
-        do {
-            try process.run()
-            process.waitUntilExit()
-            timeoutItem.cancel()
-        } catch {
-            timeoutItem.cancel()
-            let durationMs = Int(Date().timeIntervalSince(start) * 1000)
-            return .failure(tool: "image_convert", error: error.localizedDescription, durationMs: durationMs)
-        }
-
-        let stdout = String(data: stdoutPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-        let stderr = String(data: stderrPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-        let trimmedStderr = stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+        let result = await ProcessRunner.run(
+            executable: "/usr/bin/sips",
+            arguments: arguments,
+            timeout: 30
+        )
+        let trimmedStderr = result.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
         let durationMs = Int(Date().timeIntervalSince(start) * 1000)
 
-        if timedOut {
+        if result.timedOut {
             return .failure(tool: "image_convert", error: "Command timed out after 30s", durationMs: durationMs)
         }
 
-        if process.terminationStatus != 0 || trimmedStderr.contains("Error:") {
+        if result.exitCode != 0 || trimmedStderr.contains("Error:") {
             let message = trimmedStderr.isEmpty ? "sips failed." : trimmedStderr
             return .failure(tool: "image_convert", error: message, durationMs: durationMs)
         }
 
-        if stdout.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        if result.stdout.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return .failure(tool: "image_convert", error: "sips produced no output.", durationMs: durationMs)
         }
 

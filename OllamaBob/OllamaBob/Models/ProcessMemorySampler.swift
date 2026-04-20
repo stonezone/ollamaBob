@@ -77,40 +77,11 @@ enum ProcessMemorySampler {
     }
 
     private static func runProcess(executable: String, arguments: [String]) async -> String {
-        await withCheckedContinuation { continuation in
-            DispatchQueue.global(qos: .utility).async {
-                let process = Process()
-                process.executableURL = URL(fileURLWithPath: executable)
-                process.arguments = arguments
-
-                let stdoutPipe = Pipe()
-                let stderrPipe = Pipe()
-                process.standardOutput = stdoutPipe
-                process.standardError = stderrPipe
-
-                let timeoutItem = DispatchWorkItem {
-                    if process.isRunning {
-                        process.terminate()
-                    }
-                }
-                DispatchQueue.global().asyncAfter(deadline: .now() + 2.0, execute: timeoutItem)
-
-                do {
-                    try process.run()
-                    process.waitUntilExit()
-                } catch {
-                    timeoutItem.cancel()
-                    continuation.resume(returning: "")
-                    return
-                }
-
-                timeoutItem.cancel()
-                let outData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
-                let errData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
-                let stdout = String(data: outData, encoding: .utf8) ?? ""
-                let stderr = String(data: errData, encoding: .utf8) ?? ""
-                continuation.resume(returning: stdout.isEmpty ? stderr : stdout)
-            }
-        }
+        let result = await ProcessRunner.run(
+            executable: executable,
+            arguments: arguments,
+            timeout: 2.0
+        )
+        return result.stdout.isEmpty ? result.stderr : result.stdout
     }
 }

@@ -14,14 +14,14 @@ enum YouTubeTool {
             return .failure(tool: "youtube_search", error: "Query is empty.", durationMs: durationMs)
         }
 
-        guard let ytdlp = whichYtDlp() else {
+        guard let ytdlp = await whichYtDlp() else {
             let durationMs = Int(Date().timeIntervalSince(start) * 1000)
             return .failure(tool: "youtube_search", error: installHint, durationMs: durationMs)
         }
 
         let clamped = max(1, min(10, limit ?? 5))
         let term = "ytsearch\(clamped):\(trimmed)"
-        let run = runProcess(executable: ytdlp, arguments: ["--dump-json", "--no-warnings", term], timeoutSeconds: 30)
+        let run = await ProcessRunner.run(executable: ytdlp, arguments: ["--dump-json", "--no-warnings", term], timeout: 30)
         let durationMs = Int(Date().timeIntervalSince(start) * 1000)
 
         if run.timedOut {
@@ -66,7 +66,7 @@ enum YouTubeTool {
             let durationMs = Int(Date().timeIntervalSince(start) * 1000)
             return .failure(tool: "youtube_download", error: "Unsupported format '\(format)'. Allowed: mp3, m4a, mp4, bestaudio, bestvideo.", durationMs: durationMs)
         }
-        guard let ytdlp = whichYtDlp() else {
+        guard let ytdlp = await whichYtDlp() else {
             let durationMs = Int(Date().timeIntervalSince(start) * 1000)
             return .failure(tool: "youtube_download", error: installHint, durationMs: durationMs)
         }
@@ -98,7 +98,7 @@ enum YouTubeTool {
             args = ["-f", "bestvideo", "-o", outputTemplate, trimmedURL]
         }
 
-        let run = runProcess(executable: ytdlp, arguments: args, timeoutSeconds: 300)
+        let run = await ProcessRunner.run(executable: ytdlp, arguments: args, timeout: 300)
         let durationMs = Int(Date().timeIntervalSince(start) * 1000)
         if run.timedOut {
             return .failure(tool: "youtube_download", error: "Command timed out after 300s", durationMs: durationMs)
@@ -122,8 +122,10 @@ enum YouTubeTool {
         return .success(tool: "youtube_download", content: "Downloaded to \(finalPath)", durationMs: durationMs)
     }
 
-    private static func whichYtDlp() -> String? {
-        let result = runProcess(executable: "/usr/bin/which", arguments: ["yt-dlp"], timeoutSeconds: 5)
+    private static func whichYtDlp() async -> String? {
+        // Use /bin/zsh -lc so PATH includes Homebrew even when the app
+        // is launched from Finder (which doesn't source ~/.zshrc).
+        let result = await ProcessRunner.run(executable: "/bin/zsh", arguments: ["-lc", "which yt-dlp"], timeout: 5)
         guard !result.timedOut, result.exitCode == 0 else { return nil }
         let path = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
         return path.isEmpty ? nil : path
@@ -145,40 +147,5 @@ enum YouTubeTool {
         return String(format: "%d:%02d", mins, secs)
     }
 
-    private struct ProcessRun {
-        let exitCode: Int32
-        let stdout: String
-        let stderr: String
-        let timedOut: Bool
-    }
 
-    private static func runProcess(executable: String, arguments: [String], timeoutSeconds: TimeInterval) -> ProcessRun {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: executable)
-        process.arguments = arguments
-        let stdoutPipe = Pipe()
-        let stderrPipe = Pipe()
-        process.standardOutput = stdoutPipe
-        process.standardError = stderrPipe
-
-        var timedOut = false
-        let timeoutItem = DispatchWorkItem {
-            timedOut = true
-            if process.isRunning { process.terminate() }
-        }
-        DispatchQueue.global().asyncAfter(deadline: .now() + timeoutSeconds, execute: timeoutItem)
-
-        do {
-            try process.run()
-            process.waitUntilExit()
-            timeoutItem.cancel()
-        } catch {
-            timeoutItem.cancel()
-            return ProcessRun(exitCode: -1, stdout: "", stderr: error.localizedDescription, timedOut: false)
-        }
-
-        let stdout = String(data: stdoutPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-        let stderr = String(data: stderrPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-        return ProcessRun(exitCode: process.terminationStatus, stdout: stdout, stderr: stderr, timedOut: timedOut)
-    }
 }
