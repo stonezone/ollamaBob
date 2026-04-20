@@ -75,13 +75,13 @@ Behavior:
 - `dolphin3:8b` is the safer backup if the qwen abliterated model proves unstable or unavailable.
 
 ### Important local state right now
-As of planning time, the machine does **not** currently have an uncensored model installed.
-Installed models include:
-- `gemma4:e4b`
-- `qwen3:14b`
-- others
+V1 was intentionally designed to handle a missing uncensored model without guessing:
+- if the configured uncensored model is absent, the app shows a banner with the exact `ollama pull ...` command
+- it does **not** silently fall back to the standard model stack
 
-So V1 must assume the uncensored model may be missing and handle that explicitly.
+Operator note as of 2026-04-20:
+- the default uncensored model was pulled locally
+- the user confirmed uncensored-mode conversations are working on this machine
 
 ## Settings Surface
 
@@ -293,6 +293,18 @@ Build this as a feature V1 inside the current app with this exact shape:
 - no compaction in uncensored mode
 - persistent visible mode badge
 - prompt override, not a separate persona file
+
+## Implemented V1 Status
+
+Shipped in the current app:
+- master settings toggle for uncensored mode availability
+- per-conversation sticky `UNCENSORED` mode
+- visible `UNCENSORED` badge/toggle in chat UI
+- configurable uncensored model tag
+- explicit missing-model banner with `ollama pull ...` guidance
+- tools forced OFF while uncensored mode is on
+- no silent fallback to the standard model stack
+- compaction skipped while uncensored mode is on
 
 ## Follow-On Work After V1
 

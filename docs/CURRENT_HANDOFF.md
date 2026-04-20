@@ -40,6 +40,7 @@ Uncensored mode:
 - tools: disabled
 - compaction: disabled
 - fallback to the normal stack: disallowed
+- current operator note: the default uncensored model was pulled locally and the user reported the mode is working as intended on this machine
 
 ## How To Enable Uncensored Bob
 
