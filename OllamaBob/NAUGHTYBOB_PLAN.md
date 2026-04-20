@@ -1,5 +1,9 @@
 # Naughty Bob — Feature V1 Plan
 
+**Status:** Implemented in the current app (`OllamaBob.app`)
+**Current default uncensored tag:** `huihui_ai/qwen3-abliterated:8b`
+**Current backup recommendation:** `dolphin3:8b`
+
 ## Product Decision
 
 This ships as a feature inside `OllamaBob.app`, not as a separate app.

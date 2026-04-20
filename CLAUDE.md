@@ -6,9 +6,9 @@ OllamaBob is a native macOS menu bar AI assistant that runs entirely locally on 
 
 ## Current State
 
-- **Phase:** Shipping incremental V2.x releases. V1 feature set is complete; V2.0–V2.9.1 layered on voice, personas, tools, onboarding, UI polish, and native tool expansion.
-- **Latest shipped:** V2.9.1 (`fc67ca1`) — Built-in Tools section in Preferences + landing-page refresh, on top of V2.9 Phase A (OCR, speak, weather, unit_convert, image_convert, youtube_search, youtube_download).
-- **In-flight (uncommitted):** V2.9.2 — AppleScript/TCC fix: `NSAppleEventsUsageDescription` added to Info.plist, new `AutomationProbe` service, Permissions step added to onboarding, Mac App Permissions section added to Preferences → Tools. See `docs/OLLAMABOB_V2.9.2_HANDOFF.md`.
+- **Phase:** Shipping incremental V2.x releases. V1 feature set is complete; V2.0–V2.10 layered on voice, personas, tools, onboarding, UI polish, native tool expansion, rich presentation, and Naughty Bob v1.
+- **Latest committed features:** V2.10 rich presentation pipeline plus Naughty Bob v1. Rich presentation adds the `present` tool, `PresentationService`, the rich HTML companion window, and assistant artifact chips that reopen URLs/files/rich views through the same pipeline. Naughty Bob v1 adds a master uncensored-mode setting, per-conversation `UNCENSORED` toggle/badge, forced tools-off behavior in uncensored mode, explicit missing-model messaging, and no silent fallback to the standard stack.
+- **Current handoff:** `docs/CURRENT_HANDOFF.md` is the authoritative starting point for new sessions and current model-switch guidance. `docs/OLLAMABOB_V2.9.2_HANDOFF.md` is historical context for the older AppleScript/avatar-only pass.
 - **V1.1 plan** (`docs/OLLAMABOB_V1.1_PLAN.md`) remains the architectural source of truth for the core agent loop and wire format. Features layered on top live in the V2 plan docs.
 - **V2 plans:** `docs/OLLAMABOB_V2_PLAN_FINAL.md` (committed V2 scope). The earlier V2 draft, Phase-0 results write-up, and V2.9 Phase A plan are archived under `archive/`.
 - **Historical docs** (original V1 kickoff prompt, V2.5 orchestration plan, phase-0 investigations) are preserved under `archive/`.
@@ -19,9 +19,13 @@ OllamaBob is a native macOS menu bar AI assistant that runs entirely locally on 
 |------|---------|
 | `CLAUDE.md` | **This file** — operating rules and current state for Claude Code sessions. |
 | `AGENTS.md` | Repo layout, commands, style conventions — keep this in sync with structure changes. |
+| `README.md` | Human-facing project overview, setup, and uncensored-mode enable flow. |
+| `docs/CURRENT_HANDOFF.md` | **Most recent handoff brief** — current state, current models, model-switch instructions, verification commands, and outstanding backlog. Read first in a fresh session. |
 | `docs/OLLAMABOB_V1.1_PLAN.md` | Core architecture, wire format, schema, acceptance tests. Still authoritative for the agent loop. |
 | `docs/OLLAMABOB_V2_PLAN_FINAL.md` | V2 scope that shipped on top of V1 (voice, personas, tools, memory, onboarding). |
-| `docs/OLLAMABOB_V2.9.2_HANDOFF.md` | **Most recent handoff brief** — current state, uncommitted V2.9.2 diff, backlog, build/test. Read first in a fresh session. |
+| `docs/OLLAMABOB_V2.9.2_HANDOFF.md` | Historical handoff for the V2.9.2 AppleScript/avatar-only pass. |
+| `docs/MULTIMEDIA_BOB.md` | Rich presentation design/spec, acceptance matrix, and current implementation notes. |
+| `OllamaBob/NAUGHTYBOB_PLAN.md` | Naughty Bob v1 product plan and shipped constraints. |
 | `docs/ARCHITECTURE_NOTES.md` | Running notes on architectural decisions as they're made. |
 | `docs/personas.txt` | 14 voice personas for Bob's personality. |
 | `images/` | Avatar/icon assets and source prompts. |
@@ -43,13 +47,13 @@ These are final. Do not change without explicit user approval AND documented evi
 - **`stream: false`** for all Ollama requests
 - **Flat tool parameter schemas only** (single-level properties)
 
-### What's Still Out Of Scope (as of V2.9.2)
-The original V1 "do not build" list has partially dissolved — voice clips, structured write tools, multi-conversation UI, and cartoon avatars all shipped in V2.x. These remain out of scope:
+### What's Still Out Of Scope
+The original V1 "do not build" list has partially dissolved — voice clips, structured write tools, multi-conversation UI, cartoon avatars, the rich HTML companion window, and per-conversation uncensored mode all shipped in V2.x. These remain out of scope:
 
 - No Python subprocess or external IPC (the Swift agent loop owns everything)
 - No Hermes Agent, Open Interpreter, LangChain, LangGraph
 - No MCP servers or MCP client (direct tool implementations only)
-- No Electron, web views, Node.js, Docker in the runtime
+- No Electron, Node.js, Docker in the runtime
 - No streaming responses (Gemma 4 + streaming + tool calls is still broken)
 - No screenshot/vision analysis, no browser automation
 - No plugin/extension system (all tools are first-party)
@@ -87,15 +91,16 @@ Use **`/api/chat`** (Ollama native), NOT `/v1/chat/completions` (OpenAI-compatib
 | Setting | Value |
 |---------|-------|
 | Primary model | `gemma4:e4b` |
-| Fallback model | `qwen2.5:14b` |
+| Fallback model | `qwen3:14b` |
+| Uncensored default | `huihui_ai/qwen3-abliterated:8b` |
 | Minimum Ollama version | 0.20.2 |
-| Context size | `num_ctx: 8192` (passed in `options`) |
+| Context size | `num_ctx: 32768` default, user-configurable snap points `8192/16384/24576/32768` |
 | Stream | `false` (always) |
 | Fallback trigger | 3 consecutive tool parse failures |
 | Fallback scope | Per-session (resets on restart) |
 | User notification | Always notify when model switches |
 
-If Gemma 4 E4B fails tool calling during initial testing (Saturday morning gate), switch to `qwen2.5:14b` immediately. Same API, same tool format, one config value change.
+Standard-mode fallback is `qwen3:14b`. Uncensored-mode conversations do **not** silently fall back to the standard stack.
 
 ---
 
@@ -275,6 +280,8 @@ ollamaBob/                        # repo root
 | 2026-04-17 | V2.9.1 — built-in tools promoted above external CLI tools in Preferences | The built-in set is the core product; the external CLI list is opt-in depth. Surface ordering now reflects that. |
 | 2026-04-18 | V2.9.2 — `NSAppleEventsUsageDescription` is required for AppleScript to honor TCC grants | Without it, macOS accepts the user's "Allow" on the Automation prompt but the subsequent Apple-event send still fails with `-1743`. `build.sh` now inlines the Apple-events, Contacts, Calendar, and Reminders usage strings. |
 | 2026-04-18 | V2.9.2 — Permissions are a dedicated onboarding step + a Preferences section | Discovery pattern for first-launch users: fire every TCC prompt up front via `AutomationProbe.probeAll()` rather than letting Bob stumble into each one mid-conversation. `AutomationProbe` lives in `Services/` (it's app infrastructure, not a model-callable tool). |
+| 2026-04-19 | V2.10 — rich presentation shipped behind one `present` tool and one `PresentationService` | `html` opens Bob's rich HTML companion window, `url` opens the browser, `file` opens the default macOS app, and assistant artifact chips route through the same pipeline. |
+| 2026-04-20 | Naughty Bob v1 ships inside the current app, not as a separate app | The feature is a mode/routing change, not a product split: per-conversation `UNCENSORED`, tools forced off, no silent fallback to censored models, and compaction skipped while uncensored mode is on. |
 
 ---
 
@@ -294,7 +301,7 @@ When CLAUDE.md and other docs conflict, **CLAUDE.md wins.**
 
 The V1 implementation is complete and V2.x features have been layering on top. When picking up a new task:
 
-1. Read **`docs/OLLAMABOB_V2.9.2_HANDOFF.md`** first — it's the most recent snapshot (current state, uncommitted work, backlog).
+1. Read **`docs/CURRENT_HANDOFF.md`** first — it's the most recent snapshot (current state, current models, switch-model instructions, verification commands, backlog).
 2. Read **AGENTS.md** for the current repo layout, build/test commands, and style conventions.
 3. Read the **Decision Log** above — decisions are sticky and should not be revisited without documented cause.
 4. Check `archive/` if you need to understand why something is the way it is.

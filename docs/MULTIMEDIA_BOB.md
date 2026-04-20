@@ -1,9 +1,16 @@
 # MULTIMEDIA_BOB — Rich Presentation for Bob's Responses
 
-**Status:** Design (not implemented)
-**Target release:** V2.10 (first release after V2.9.2 ships)
-**Date:** 2026-04-19
+**Status:** Implemented in V2.10
+**Target release:** V2.10
+**Date:** 2026-04-20
 **Author workflow:** Brainstormed + vibe_checked + peer-reviewed architecture
+
+Implementation notes:
+- `present` is live and routes through `PresentationService`
+- `html` rich views can be reopened from assistant artifact chips
+- `url` opens the default browser
+- `file` opens the default app after `PathPolicy` checks
+- assistant artifact chips share the same presentation pipeline as Bob-initiated tool calls
 
 ---
 

@@ -14,6 +14,7 @@ but no longer part of the active project. Everything here is still useful as a
 | `OLLAMABOB_V2_PLAN_DRAFT.md` | Earlier V2 scope draft, kept for context. **Superseded by `docs/OLLAMABOB_V2_PLAN_FINAL.md`.** | V2 planning | Delta-reading against `_FINAL` if you want the backstory of the cut items (`sqlite-vec`, etc.). |
 | `OLLAMA_CLAUDE_V2.5_plan.md` | Autonomous orchestration plan used to ship V2.5 "Make Bob Sing". | V2.5 | Reference only — V2.5 is shipped. |
 | `OLLAMABOB_V2.9_PHASE_A_PLAN.md` | Handoff plan that shipped V2.9 Phase A (OCR / speak / weather / units / sips / yt-dlp). | V2.9 Phase A | Copy its structure if you're writing a new Codex handoff — it's the canonical "how we hand off bounded work" template. |
+| `FINDINGS_TO_REVIEW_2026-04-20.md` | Blind peer-review memo for the post-V2.10 chat/rendering pass. | V2.10 hardening | Historical record of the findings sweep that fed the rendering/performance cleanup. |
 | `future_features/` | Parked feature ideas. Currently just `generate_images.txt` (prompts for future image-gen tool). | Ongoing | Reactivate when a feature's turn comes up. |
 
 ## Why these are archived, not deleted

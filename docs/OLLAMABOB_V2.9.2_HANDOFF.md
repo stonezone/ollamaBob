@@ -1,5 +1,7 @@
 # OllamaBob V2.9.2 — Handoff Brief
 
+> Superseded by `docs/CURRENT_HANDOFF.md` for current project state. Keep this file for historical context on the AppleScript/TCC + avatar-only pass only.
+
 **Audience:** an autonomous coding agent (Codex CLI) picking this project up in a fresh session.
 **Snapshot date:** 2026-04-18 (updated after chromeless-window redesign + multi-peer blind review pass).
 **Previous shipped release:** V2.9.1 (`fc67ca1`). **V2.9.2 status:** AutomationProbe + avatar-only mode polish **checkpoint-committed as WIP `9310b0b`**; in-flight chromeless redesign + bubble-sizing fixes **uncommitted** in the working tree (BobsDeskView.swift is the only modified file).

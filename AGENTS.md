@@ -1,7 +1,7 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-The active app lives in `OllamaBob/`, a Swift Package targeting macOS 14. Source is split by responsibility under `OllamaBob/OllamaBob/`: `Agent/` for the loop, approvals, and prompt budgeting; `Tools/` for structured local actions and shell execution; `Views/` for SwiftUI UI (including transcript chips and the rich HTML companion window); `Persistence/` for GRDB-backed storage; `Models/` for shared state/controllers (including `RichHTMLState`); `Services/` for app-level infrastructure that isn't a model-callable tool (e.g. `PromptComposerMemoryStore`, `AutomationProbe`, `PresentationService`); `Personality/` for prompt/persona logic; `Sound/` for audio playback; and `Resources/` for bundled assets. `ChatSessionController` owns transcript/session flow, while `ConversationStoreController` owns conversation list/search/pin/load/rename/delete behavior. Planning docs live in `docs/`, JSON contract samples in `samples/`, and design assets in `images/`. Treat `OllamaBob/.build/` and `OllamaBob/build/` as generated output.
+The active app lives in `OllamaBob/`, a Swift Package targeting macOS 14. Source is split by responsibility under `OllamaBob/OllamaBob/`: `Agent/` for the loop, approvals, routing, and prompt budgeting; `Tools/` for structured local actions and shell execution; `Views/` for SwiftUI UI (including transcript chips, the rich HTML companion window, and the per-conversation `UNCENSORED` controls); `Persistence/` for GRDB-backed storage; `Models/` for shared state/controllers (including `RichHTMLState` and conversation-level uncensored-mode state); `Services/` for app-level infrastructure that isn't a model-callable tool (e.g. `PromptComposerMemoryStore`, `AutomationProbe`, `PresentationService`); `Personality/` for prompt/persona logic; `Sound/` for audio playback; and `Resources/` for bundled assets. `ChatSessionController` owns transcript/session flow, while `ConversationStoreController` owns conversation list/search/pin/load/rename/delete behavior. Planning docs live in `docs/`, JSON contract samples in `samples/`, and design assets in `images/`. Treat `OllamaBob/.build/` and `OllamaBob/build/` as generated output.
 
 ## Build, Test, and Development Commands
 Run commands from `OllamaBob/`.
@@ -14,7 +14,14 @@ Run commands from `OllamaBob/`.
 
 The app expects a local Ollama server at `http://localhost:11434`. `BRAVE_API_KEY` is optional and only affects web search.
 
+Current model defaults:
+- primary: `gemma4:e4b`
+- fallback: `qwen3:14b`
+- uncensored default tag: `huihui_ai/qwen3-abliterated:8b` (user-installed separately if needed)
+
 Secrets live in a gitignored `.env` at the repo root. Use `.env.example` as the template when onboarding a new clone. `ELEVENLABS_API_KEY` + `OLLAMABOB_VOICE_ID` are only needed if you re-render the voice clips in `tools/render-bob-sayings.py`; the shipping app reads the pre-rendered audio from `Resources/Audio/`.
+
+Current handoff doc: `docs/CURRENT_HANDOFF.md`
 
 ## Coding Style & Naming Conventions
 Follow the existing Swift style: 4-space indentation, `UpperCamelCase` for types, `lowerCamelCase` for properties and methods, and one primary type per file. Keep files focused and grouped by feature folder. Prefer clear Swift over clever abstractions, avoid force unwraps in production paths, and use `// MARK:` sections where they improve navigation. No formatter or linter is configured in this repo, so match surrounding code before introducing new patterns.
