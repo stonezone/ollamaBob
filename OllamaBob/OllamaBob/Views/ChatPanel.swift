@@ -10,6 +10,13 @@ struct ChatPanel: View {
         _session = StateObject(wrappedValue: ChatSessionController(agentLoop: agentLoop))
     }
 
+    private var transcriptRefreshToken: String {
+        let lastMessageToken = session.messages.last.map {
+            "\($0.id)|\($0.content.count)|\($0.timestamp.timeIntervalSince1970)"
+        } ?? "none"
+        return "\(session.conversationId ?? "nil")|\(session.messages.count)|\(lastMessageToken)|\(agentLoop.isProcessing)"
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
@@ -58,7 +65,7 @@ struct ChatPanel: View {
                     }
                     .padding(.vertical, 8)
                 }
-                .onChange(of: session.messages.count) {
+                .onChange(of: transcriptRefreshToken) {
                     withAnimation {
                         proxy.scrollTo(session.messages.last?.id ?? "thinking", anchor: .bottom)
                     }
