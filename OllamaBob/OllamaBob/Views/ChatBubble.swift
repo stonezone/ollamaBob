@@ -598,10 +598,22 @@ struct ChatBubble: View {
     }
 
     private var displayableToolContent: String {
-        message.content
-            .replacingOccurrences(of: "<untrusted>", with: "")
-            .replacingOccurrences(of: "</untrusted>", with: "")
+        stripUntrustedWrapperTags(from: message.content)
             .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func stripUntrustedWrapperTags(from content: String) -> String {
+        guard content.localizedCaseInsensitiveContains("<untrusted") else {
+            return content
+        }
+
+        let pattern = #"</?\s*untrusted\b[^>]*>"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
+            return content
+        }
+
+        let range = NSRange(content.startIndex..<content.endIndex, in: content)
+        return regex.stringByReplacingMatches(in: content, options: [], range: range, withTemplate: "")
     }
 
     private func openArtifact(_ artifact: DetectedArtifact) {

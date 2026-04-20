@@ -362,6 +362,16 @@ final class MultimediaBobTests: XCTestCase {
         XCTAssertEqual(decision, .openExternal)
     }
 
+    func testRichHTMLNavigationDecisionOpensClickedMailtoLinksExternally() {
+        let decision = RichHTMLView.navigationDecision(
+            url: URL(string: "mailto:bob@example.com"),
+            navigationType: .linkActivated,
+            isMainFrame: true
+        )
+
+        XCTAssertEqual(decision, .openExternal)
+    }
+
     func testRichHTMLNavigationDecisionCancelsAutomaticTopLevelNavigation() {
         let decision = RichHTMLView.navigationDecision(
             url: URL(string: "https://example.com/redirect"),

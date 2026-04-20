@@ -48,6 +48,22 @@ struct ArtifactChip: View {
     }
 
     private var helpText: String {
-        "\(artifact.label): \(artifact.content)"
+        switch artifact.kind {
+        case .file:
+            if let title = artifact.title, title.isEmpty == false {
+                return "Open \(title) in its default macOS app."
+            }
+            return "Open this file in its default macOS app."
+        case .url:
+            if let title = artifact.title, title.isEmpty == false {
+                return "Open \(title) in your default browser."
+            }
+            return "Open this link in your default browser."
+        case .html:
+            if let title = artifact.title, title.isEmpty == false {
+                return "Reopen \(title) in Bob's rich view window."
+            }
+            return "Reopen Bob's rich view window."
+        }
     }
 }

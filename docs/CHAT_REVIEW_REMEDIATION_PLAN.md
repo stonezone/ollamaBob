@@ -117,6 +117,15 @@ Why fourth:
 
 - Important, but lower urgency than state correctness and avatar-only parity.
 
+### Phase 4 Status
+
+Completed on 2026-04-20:
+
+- `ChatBubble` now strips `<untrusted>` wrapper tags with a tag-aware regex helper instead of brittle literal substring replacement
+- `ArtifactChip` tooltips no longer expose raw artifact payloads such as full local file paths
+- `RichHTMLView` now opens safe user-activated `mailto:` and `tel:` links externally instead of silently canceling them
+- the broader sanitizer rewrite remains intentionally deferred; this phase did not widen into a full HTML-sanitizer replacement project
+
 ## Verification Strategy
 
 For each phase:

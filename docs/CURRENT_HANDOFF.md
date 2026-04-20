@@ -31,6 +31,9 @@ Latest polish after the main release commits:
 - `BobsDeskView` now uses one `toolActivity` observer instead of separate count/change watchers
 - `ChatBubbleRendering` now uses digest-backed cache keys, stable block-entry ids, and memoized assistant metadata / HTML reopen artifacts to reduce avoidable transcript recomputation
 - `ChatSessionControllerTests` now waits deterministically for async tool-output clearing, so the suite no longer flakes on `startFreshConversation`
+- `ChatBubble` now strips `<untrusted>` wrapper tags with a tag-aware helper instead of brittle literal substring replacement
+- `ArtifactChip` tooltips no longer expose raw artifact payloads such as full local file paths
+- `RichHTMLView` now opens safe clicked `mailto:` and `tel:` links externally
 
 The current app bundle should be built from `OllamaBob/` with:
 

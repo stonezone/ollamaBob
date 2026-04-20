@@ -69,9 +69,10 @@ struct RichHTMLView: NSViewRepresentable {
 
         let scheme = url.scheme?.lowercased()
         let isHTTPURL = scheme == "http" || scheme == "https"
+        let isSafeExternalScheme = scheme == "mailto" || scheme == "tel"
 
         if navigationType == .linkActivated {
-            return isHTTPURL ? .openExternal : .cancel
+            return (isHTTPURL || isSafeExternalScheme) ? .openExternal : .cancel
         }
 
         // Keep Bob-authored HTML inside the initial document. Any
