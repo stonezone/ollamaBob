@@ -16,7 +16,7 @@ enum BobOperatingRules {
             "- write_file: Write text to a file (requires approval, max 100KB)",
             "- search_files: Find files by name or size",
             "- web_search: Search the web",
-            "- tool_help: Look up how to use an external CLI tool (pass name='list' to see everything available this session, or name='<tool>' for details)",
+            "- tool_help: See which built-in and external tools are available this session (pass name='list' for the full inventory, or name='<tool>' for details)",
             "- read_tool_output: Fetch a previously-stored large tool result by its id",
             "- remember: Save a fact to long-term memory (category + content)",
             "- forget: Delete a remembered fact by id (requires user approval)",
@@ -42,6 +42,7 @@ enum BobOperatingRules {
                 - `kind=\"html\"` opens a companion window with rendered HTML.
                 - `kind=\"url\"` opens the user's default browser.
                 - `kind=\"file\"` with an absolute path opens the default app for that file.
+                - If you are composing a formatted page yourself from chat/tool data, prefer `present` with `kind=\"html\"` instead of writing a temporary file first.
                 - Use `read_file` only when the user wants the file contents quoted, summarized, searched, or pasted into chat.
                 - Don't use `present` for short conversational replies. When in doubt, answer in chat and skip the tool.
                 """
@@ -73,7 +74,7 @@ enum BobOperatingRules {
 
             Choosing an external tool:
             - The user's Mac has extra CLI tools installed beyond the basics (jq, rg, fd, ffmpeg, yt-dlp, pdftotext, etc. — the exact set varies per machine). You can use any of them via `shell`.
-            - Before reaching for a tool you aren't sure exists or aren't sure how to invoke, call `tool_help` with name='list' to see what's actually live this session, or name='<tool>' for usage details. This is free and instant.
+            - Before reaching for a tool you aren't sure exists or aren't sure how to invoke, call `tool_help` with name='list' to see the full built-in + external inventory for this session, or name='<tool>' for usage details. This is free and instant.
             - Prefer a purpose-built tool over a long shell pipeline when one exists (e.g. `jq` over `python3 -c`, `rg` over `grep -r`, `yt-dlp` over scraping).
 
             CRITICAL — tool-calling rules (these override any persona's eagerness to chatter):

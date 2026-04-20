@@ -136,6 +136,14 @@ Primary files:
 - [ChatBubble.swift](/Users/zack/ollamaBob/OllamaBob/OllamaBob/Views/ChatBubble.swift)
 - [ArtifactDetector.swift](/Users/zack/ollamaBob/OllamaBob/OllamaBob/Views/ArtifactDetector.swift)
 
+## Public Site Notes
+
+- Confirmed live public page: `https://cleardeskshop.com/ollamabob/`
+- Relevant section anchor used in discussion/testing: `https://cleardeskshop.com/ollamabob/#bobs`
+- Confirmed live page title on 2026-04-20: `OllamaBob — Your Mac's new best mate.`
+- Confirmed live description on 2026-04-20 advertises a native macOS menu-bar AI agent with `25 built-in tools`
+- Exact local source path for that public page is still not verified inside this repo; `/Users/zack/ollama-chat` was checked and did not clearly map to the deployed `cleardeskshop.com/ollamabob` page
+
 ## Key Files
 
 - [AGENTS.md](/Users/zack/ollamaBob/AGENTS.md): repo layout and commands

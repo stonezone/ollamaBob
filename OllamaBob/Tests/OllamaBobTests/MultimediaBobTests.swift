@@ -149,6 +149,19 @@ final class MultimediaBobTests: XCTestCase {
         XCTAssertEqual(workspace.openedURLs, [fileURL])
     }
 
+    func testPresentationServiceOpensFileURLInputs() throws {
+        let workspace = FakeWorkspace()
+        let service = PresentationService(workspace: workspace, richHTMLState: RichHTMLState())
+        let fileURL = URL(fileURLWithPath: "/tmp").appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: fileURL) }
+        try "hello".write(to: fileURL, atomically: true, encoding: .utf8)
+
+        let result = try service.present(kind: .file, content: fileURL.absoluteString)
+
+        XCTAssertEqual(result, "Opened file: \(fileURL.path)")
+        XCTAssertEqual(workspace.openedURLs, [fileURL])
+    }
+
     func testPresentationServiceRejectsSensitiveFiles() {
         let service = PresentationService(workspace: FakeWorkspace(), richHTMLState: RichHTMLState())
 
@@ -219,8 +232,24 @@ final class MultimediaBobTests: XCTestCase {
         let prompt = BobOperatingRules.systemPrompt
 
         XCTAssertTrue(prompt.contains("include real clickable `<a href=\"...\">` links"))
+        XCTAssertTrue(prompt.contains("prefer `present` with `kind=\"html\"` instead of writing a temporary file first"))
         XCTAssertTrue(prompt.contains("If a tool returns an error, denial, or refusal"))
         XCTAssertTrue(prompt.contains("say what was refused and why in one short sentence"))
+    }
+
+    func testToolHelpListIncludesBuiltInInventory() {
+        let help = ToolRuntime.shared.renderToolHelpList()
+
+        XCTAssertTrue(help.contains("Built-in tools:"))
+        XCTAssertTrue(help.contains("read_file — Read a file's contents into chat by absolute path"))
+    }
+
+    func testToolHelpReturnsBuiltInToolDetails() {
+        let help = ToolRuntime.shared.renderToolHelp(name: "read_file")
+
+        XCTAssertTrue(help.contains("read_file — Read a file's contents into chat by absolute path"))
+        XCTAssertTrue(help.contains("category: files"))
+        XCTAssertTrue(help.contains("approval: auto"))
     }
 
     func testAgentLoopRedirectsOpenIntentAwayFromReadFile() {

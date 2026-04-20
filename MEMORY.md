@@ -34,3 +34,9 @@
 - For `open ~/Desktop/...` and similar file-open fallbacks, a `shell` timeout can mean macOS TCC is waiting on a Desktop/Documents/Downloads permission prompt, not that the open path is fundamentally broken.
 - Secondary UI surfaces can lag behind the main desk view if they use message-count-only transcript refresh logic; use a refresh token that includes last-message growth when pinning transcript scroll.
 - When rich presentation is disabled, simple local file-open requests should route to `shell open ...` fallback rather than lingering on `present` or Preview-specific AppleScript attempts.
+
+## Public Site Notes
+- Confirmed public OllamaBob page URL: `https://cleardeskshop.com/ollamabob/` with section anchor `#bobs`.
+- Confirmed live page title on 2026-04-20: `OllamaBob — Your Mac's new best mate.`
+- Confirmed live page description on 2026-04-20 mentions a native macOS menu-bar AI agent and `25 built-in tools`.
+- The exact local source file for the public `cleardeskshop.com/ollamabob` page is still not verified inside `/Users/zack/ollamaBob`; a quick check of `/Users/zack/ollama-chat` did not confirm ownership of that page.

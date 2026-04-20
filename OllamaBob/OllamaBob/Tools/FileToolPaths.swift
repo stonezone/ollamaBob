@@ -6,6 +6,10 @@ enum FileToolPaths {
         let trimmed = rawPath.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
 
+        if let url = URL(string: trimmed), url.isFileURL {
+            return url.standardizedFileURL.resolvingSymlinksInPath()
+        }
+
         let expanded = NSString(string: trimmed).expandingTildeInPath
         let baseURL: URL
         if expanded.hasPrefix("/") {

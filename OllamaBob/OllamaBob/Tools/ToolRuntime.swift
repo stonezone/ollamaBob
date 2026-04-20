@@ -262,24 +262,47 @@ final class ToolRuntime: ObservableObject {
     // MARK: - tool_help rendering
 
     /// Render the `tool_help("list")` response: every live tool grouped
-    /// by category, one line per tool. Kept deliberately terse — this
-    /// is what Bob reads when he's uncertain which tool to pick, not
-    /// a user-facing doc page.
+    /// by category, one line per tool. Includes both first-class built-in
+    /// tools and external CLI tools that are actually live this session.
+    /// Kept deliberately terse — this is what Bob reads when he's uncertain
+    /// which tool to pick, not a user-facing doc page.
     func renderToolHelpList() -> String {
-        let live = liveEntries
-        guard !live.isEmpty else {
-            return "No external tools are detected in this session. Bob still has shell, read_file, search_files, and web_search available."
+        let builtins = liveBuiltinEntries()
+        let external = liveEntries
+        guard !builtins.isEmpty || !external.isEmpty else {
+            return "No tools are available in this session."
         }
-        let grouped = Dictionary(grouping: live, by: { $0.category })
-        let orderedCategories = grouped.keys.sorted()
-        var lines: [String] = ["Live tools this session (grouped by category):"]
-        for cat in orderedCategories {
+
+        var lines: [String] = ["Tools available this session:"]
+        if !builtins.isEmpty {
             lines.append("")
-            lines.append("[\(cat)]")
-            for entry in grouped[cat, default: []] {
-                let betaTag = entry.beta ? " (beta)" : ""
-                lines.append("  \(entry.name)\(betaTag) — \(entry.shortDescription)")
+            lines.append("Built-in tools:")
+            let grouped = Dictionary(grouping: builtins, by: { $0.category })
+            for category in BuiltinToolsCatalog.categoryOrder where grouped[category]?.isEmpty == false {
+                lines.append("[\(category)]")
+                for entry in grouped[category, default: []] {
+                    lines.append("  \(entry.name) — \(entry.description)")
+                }
+                lines.append("")
             }
+        }
+
+        if !external.isEmpty {
+            let grouped = Dictionary(grouping: external, by: { $0.category })
+            let orderedCategories = grouped.keys.sorted()
+            lines.append("External CLI tools on PATH:")
+            for cat in orderedCategories {
+                lines.append("[\(cat)]")
+                for entry in grouped[cat, default: []] {
+                    let betaTag = entry.beta ? " (beta)" : ""
+                    lines.append("  \(entry.name)\(betaTag) — \(entry.shortDescription)")
+                }
+                lines.append("")
+            }
+        }
+
+        if lines.last == "" {
+            lines.removeLast()
         }
         return lines.joined(separator: "\n")
     }
@@ -289,6 +312,17 @@ final class ToolRuntime: ObservableObject {
     /// is unknown OR if the tool isn't live in this session (so the
     /// model doesn't try to call something that will just 404).
     func renderToolHelp(name: String) -> String {
+        if let builtin = BuiltinToolsCatalog.entries.first(where: { $0.name == name }) {
+            let registry = ToolRegistry(braveKeyAvailable: !AppConfig.braveAPIKey.isEmpty)
+            guard registry.has(builtin.name) else {
+                return "Tool '\(name)' is built in but not usable in this session."
+            }
+            return [
+                "\(builtin.name) — \(builtin.description)",
+                "category: \(builtin.category), approval: \(builtin.posture.rawValue)"
+            ].joined(separator: "\n")
+        }
+
         guard let entry = catalog.tools.first(where: { $0.name == name }) else {
             return "No catalog entry for '\(name)'. Call tool_help with name='list' to see what's available."
         }
@@ -324,5 +358,10 @@ final class ToolRuntime: ObservableObject {
             }
         }
         return lines.joined(separator: "\n")
+    }
+
+    private func liveBuiltinEntries() -> [BuiltinToolsCatalog.Entry] {
+        let registry = ToolRegistry(braveKeyAvailable: !AppConfig.braveAPIKey.isEmpty)
+        return BuiltinToolsCatalog.entries.filter { registry.has($0.name) }
     }
 }

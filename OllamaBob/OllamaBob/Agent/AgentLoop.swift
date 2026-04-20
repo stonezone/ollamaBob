@@ -544,6 +544,9 @@ final class AgentLoop: ObservableObject {
     /// Leaves small results untouched. Failures fall through with the
     /// original result so a broken filesystem does not block the chat.
     private func spilloutIfNeeded(_ result: ToolResult) async -> ToolResult {
+        if result.toolName == "tool_help", result.content.count <= 12_000 {
+            return result
+        }
         guard result.content.count > AppConfig.toolInlineMax,
               let convoId = currentConversationId else {
             return result
