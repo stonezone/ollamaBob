@@ -79,12 +79,54 @@ final class JarvisPhoneV1Tests: XCTestCase {
         XCTAssertTrue(result.content.contains("Queued"), result.content)
     }
 
+    func testPhoneToolDefaultsUnknownPersonaToBob() async {
+        let originalKey = UserDefaults.standard.string(forKey: AppSettings.jarvisAPIKeyKey)
+        defer {
+            if let originalKey {
+                UserDefaults.standard.set(originalKey, forKey: AppSettings.jarvisAPIKeyKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: AppSettings.jarvisAPIKeyKey)
+            }
+        }
+
+        UserDefaults.standard.set("unit-test-key", forKey: AppSettings.jarvisAPIKeyKey)
+
+        JarvisURLProtocol.requestHandler = { request in
+            let body = try XCTUnwrap(Self.requestBodyData(from: request))
+            let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body, options: []) as? [String: Any])
+            XCTAssertEqual(object["caller"] as? String, "bob")
+            XCTAssertEqual(object["to"] as? String, "808-292-5669")
+            XCTAssertEqual(object["missionBrief"] as? String, "Ask how the day is going")
+
+            let responseJSON = Data(#"{"callSid":"call_456","status":"queued","message":"Queued"}"#.utf8)
+            let response = HTTPURLResponse(
+                url: try XCTUnwrap(request.url),
+                statusCode: 200,
+                httpVersion: "HTTP/1.1",
+                headerFields: ["Content-Type": "application/json"]
+            )!
+            return (response, responseJSON)
+        }
+        defer { JarvisURLProtocol.requestHandler = nil }
+
+        let result = await PhoneTool.execute(
+            persona: "friend",
+            to: "808-292-5669",
+            purpose: "Ask how the day is going",
+            maxMinutes: nil
+        )
+
+        XCTAssertTrue(result.success, result.content)
+        XCTAssertTrue(result.content.contains("persona=bob"), result.content)
+        XCTAssertTrue(result.content.contains("callSid=call_456"), result.content)
+    }
+
     func testPhoneToolRejectsMissingInputsBeforeNetwork() async {
         let result = await PhoneTool.execute(persona: " ", to: "", purpose: "", maxMinutes: nil)
 
         XCTAssertFalse(result.success)
         XCTAssertEqual(result.toolName, "phone_call")
-        XCTAssertTrue(result.content.contains("Missing persona, to, or purpose."))
+        XCTAssertTrue(result.content.contains("Missing destination or purpose."))
     }
 
     func testPhoneToolHangupAndStatusRequestsSummarizeJarvisResponses() async {
@@ -177,6 +219,7 @@ final class JarvisPhoneV1Tests: XCTestCase {
         for name in phoneToolNames {
             XCTAssertTrue(enabledRegistry.has(name), "\(name) should become visible once Jarvis is enabled")
         }
+        XCTAssertTrue(enabledRegistry.validateArgs("phone_call", ["to": "Glennel", "purpose": "Pickup"]))
 
         XCTAssertEqual(
             ApprovalPolicy.check(
@@ -198,6 +241,26 @@ final class JarvisPhoneV1Tests: XCTestCase {
             ApprovalPolicy.check(toolName: "phone_status", arguments: ["call_id": "call_123"]),
             .none
         )
+    }
+
+    func testPhoneRulesDefaultPersonaToBobInPromptAndCatalog() throws {
+        let originalEnabled = AppSettings.shared.jarvisPhoneEnabled
+        let originalKey = AppSettings.shared.jarvisAPIKey
+        defer {
+            AppSettings.shared.jarvisPhoneEnabled = originalEnabled
+            AppSettings.shared.jarvisAPIKey = originalKey
+        }
+
+        AppSettings.shared.jarvisPhoneEnabled = true
+        AppSettings.shared.jarvisAPIKey = "local-test-key"
+
+        let prompt = BobOperatingRules.systemPrompt
+        XCTAssertTrue(prompt.contains("omit `persona` or set it to `bob`"), prompt)
+        XCTAssertTrue(prompt.contains("Never invent unsupported caller labels"), prompt)
+
+        let catalog = try ToolCatalog.loadFromBundle()
+        let phoneEntry = try XCTUnwrap(catalog.tools.first { $0.name == "phone_call" })
+        XCTAssertTrue(phoneEntry.whenToUse.contains("omit persona to call as bob by default"))
     }
 
     private static func phoneToolEntriesExist(named names: [String]) -> Bool {

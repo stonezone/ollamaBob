@@ -54,7 +54,10 @@ enum BobOperatingRules {
 
                 Phone calls:
                 - If the user asks you to make a phone call, use `phone_call`.
+                - If the user does not specify a caller persona, omit `persona` or set it to `bob`.
+                - Never invent unsupported caller labels like `friend`, `assistant`, or `default`.
                 - Always include a clear purpose when placing a call.
+                - If the user answers a follow-up question with the missing phone number or missing purpose, keep the other call details from the current request instead of starting over.
                 - If the destination is ambiguous, ask the user to confirm it before calling.
                 - Use `phone_status` to report the call state and `phone_hangup` to end an active call.
                 """

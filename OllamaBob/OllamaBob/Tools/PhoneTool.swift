@@ -1,6 +1,8 @@
 import Foundation
 
 enum PhoneTool {
+    static let defaultCaller = "bob"
+
     static var isConfigured: Bool {
         UserDefaults.standard.bool(forKey: "jarvisPhoneEnabled") &&
         JarvisConfiguration.apiKey.isEmpty == false &&
@@ -10,16 +12,15 @@ enum PhoneTool {
     static func execute(persona: String, to: String, purpose: String, maxMinutes: Int?) async -> ToolResult {
         let start = Date()
         let request = PhoneCallRequest(
-            caller: normalizeCallerLabel(persona),
+            caller: resolvedCallerLabel(persona),
             to: to.trimmingCharacters(in: .whitespacesAndNewlines),
             missionBrief: purpose.trimmingCharacters(in: .whitespacesAndNewlines),
             maxDurationSeconds: (maxMinutes ?? 10) * 60
         )
 
-        guard request.caller.isEmpty == false,
-              request.to.isEmpty == false,
+        guard request.to.isEmpty == false,
               request.missionBrief.isEmpty == false else {
-            return .failure(tool: "phone_call", error: "Missing persona, to, or purpose.", durationMs: 0)
+            return .failure(tool: "phone_call", error: "Missing destination or purpose.", durationMs: 0)
         }
 
         let client = JarvisClient()
@@ -211,7 +212,7 @@ enum PhoneTool {
         return String(format: "%.2f", value)
     }
 
-    private static func normalizeCallerLabel(_ persona: String) -> String {
+    static func resolvedCallerLabel(_ persona: String) -> String {
         switch persona.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
         case "jarvis", "bob":
             return "bob"
@@ -224,7 +225,7 @@ enum PhoneTool {
         case "glennel_naggy", "glennel naggy", "naggy":
             return "glennel_naggy"
         default:
-            return ""
+            return defaultCaller
         }
     }
 

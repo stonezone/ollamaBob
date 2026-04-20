@@ -37,6 +37,9 @@ Latest polish after the main release commits:
 - `RichHTMLView` now opens safe clicked `mailto:` and `tel:` links externally
 - active icon-only send controls now expose accessibility labels and hints in both input surfaces
 - `ToolActivityView` now uses an explicit details toggle, selectable preview text, and clearer expanded input/output panels
+- `phone_call` now defaults unsupported or omitted caller personas to `bob` instead of failing locally, so Bob no longer invents labels like `friend` and then trips the tool contract
+- `ShellTool` now returns a real failure when the shell executable cannot launch, instead of surfacing a fake success with `[exit code: -1]`
+- `ToolRuntime` now probes external CLI tools sequentially; the earlier unbounded fan-out could stall the full Swift test suite because `ProcessRunner` still blocks worker threads internally
 
 The current app bundle should be built from `OllamaBob/` with:
 

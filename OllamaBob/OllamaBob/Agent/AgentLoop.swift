@@ -1186,7 +1186,8 @@ final class AgentLoop: ObservableObject {
         case "web_search":
             return "Web search: \(args["query"] as? String ?? "unknown")"
         case "phone_call":
-            let persona = args["persona"] as? String ?? "unknown"
+            let rawPersona = args["persona"] as? String ?? ""
+            let persona = PhoneTool.resolvedCallerLabel(rawPersona)
             let to = args["to"] as? String ?? "unknown"
             let purpose = (args["purpose"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             let shortPurpose = String(purpose.prefix(200))

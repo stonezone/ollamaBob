@@ -113,16 +113,16 @@ struct ToolRegistry {
         if PhoneTool.isConfigured {
             defs["phone_call"] = .tool(
                 name: "phone_call",
-                description: "Place a real phone call through the Jarvis phone service daemon. Requires persona, destination, and purpose.",
+                description: "Place a real phone call through the Jarvis phone service daemon. Requires destination and purpose. If persona is omitted or unsupported, Bob calls as 'bob'.",
                 properties: [
-                    "persona": ("string", "Persona label to pass through to the daemon."),
+                    "persona": ("string", "Optional caller label. Supported values: bob, jarvis, buddy, zack, glennel, glennel_naggy. Defaults to bob."),
                     "to": ("string", "Address-book name or E.164 destination."),
                     "purpose": ("string", "Short reason for the call."),
                     "max_minutes": ("integer", "Optional call length cap in minutes.")
                 ],
-                required: ["persona", "to", "purpose"]
+                required: ["to", "purpose"]
             )
-            reqs["phone_call"] = ["persona", "to", "purpose"]
+            reqs["phone_call"] = ["to", "purpose"]
 
             defs["phone_hangup"] = .tool(
                 name: "phone_hangup",

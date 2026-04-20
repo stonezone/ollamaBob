@@ -95,7 +95,7 @@ Current caller normalization:
 - `glennel` -> `glennel`
 - `glennel_naggy` / `glennel naggy` / `naggy` -> `glennel_naggy`
 
-Any unsupported persona string is rejected locally before network.
+Any unsupported or blank persona string now defaults locally to `bob` before network.
 
 ### Response Rendering
 
@@ -116,13 +116,15 @@ Automated:
 - `swift test` -> passed
 
 Current suite result at handoff time:
-- `89` tests
+- `95` tests
 - `0` failures
 
 Important regression that was fixed during integration:
 - worker output initially listed the phone tools but did not actually dispatch them in `AgentLoop.executeTool`
 - worker output initially used the wrong daemon routes/body shape
 - worker tests initially leaked to the live daemon; the test harness was corrected to read streamed request bodies and the phone client was aligned to the real contract
+- the shell/process runner refactor briefly made shell launch failures look like successful commands with `[exit code: -1]`; `ShellTool` now restores the original failure behavior
+- the external tool probe path briefly hung the full suite; `ToolRuntime` now probes sequentially until `ProcessRunner` grows a truly non-blocking implementation
 
 ## Manual QA Still Recommended
 
