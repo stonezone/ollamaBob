@@ -10,6 +10,7 @@ final class ConversationStoreControllerTests: XCTestCase {
             id: "convo-1",
             title: "Original",
             isPinned: false,
+            uncensoredMode: false,
             createdAt: createdAt,
             updatedAt: updatedAt
         )
@@ -17,6 +18,7 @@ final class ConversationStoreControllerTests: XCTestCase {
             id: "convo-1",
             title: "Original",
             isPinned: false,
+            uncensoredMode: false,
             messages: [ChatMessage(role: .user, content: "hello")],
             createdAt: createdAt,
             updatedAt: updatedAt
@@ -115,5 +117,20 @@ private final class FakeConversationStore: ConversationStoring {
         conversations.removeAll { $0.id == id }
         snapshots[id] = nil
         return true
+    }
+
+    func setConversationUncensoredMode(id: String, isEnabled: Bool) throws -> ConversationSummary? {
+        guard let index = conversations.firstIndex(where: { $0.id == id }) else {
+            return nil
+        }
+
+        conversations[index].uncensoredMode = isEnabled
+        conversations[index].updatedAt = Date(timeIntervalSince1970: 5_000)
+        if var snapshot = snapshots[id] {
+            snapshot.uncensoredMode = isEnabled
+            snapshot.updatedAt = conversations[index].updatedAt
+            snapshots[id] = snapshot
+        }
+        return conversations[index]
     }
 }

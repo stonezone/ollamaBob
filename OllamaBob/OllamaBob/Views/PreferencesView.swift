@@ -87,7 +87,16 @@ struct PreferencesView: View {
     }
 
     private var generalTab: some View {
-        toggleRows
+        VStack(alignment: .leading, spacing: 0) {
+            toggleRows
+
+            Divider()
+                .background(PreferencesView.phosphorGreen.opacity(0.2))
+                .padding(.horizontal, 24)
+                .padding(.top, 12)
+
+            uncensoredModeSection
+        }
     }
 
     // MARK: Sections
@@ -184,6 +193,83 @@ struct PreferencesView: View {
 
     private static func formatNumCtx(_ value: Int) -> String {
         "\(value / 1024)K"
+    }
+
+    private var uncensoredModeSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("UNCENSORED MODE")
+                    .font(.system(.caption, design: .monospaced).weight(.bold))
+                    .foregroundColor(PreferencesView.phosphorGreen)
+                Text("Master-enable Naughty Bob UI and choose the Ollama tag reserved for uncensored conversations.")
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundColor(PreferencesView.textGrey)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .lineSpacing(2)
+            }
+            .padding(.horizontal, 24)
+            .padding(.top, 12)
+
+            HStack(alignment: .center, spacing: 16) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Enable uncensored mode")
+                        .font(.system(.caption, design: .monospaced).weight(.medium))
+                        .foregroundColor(.white)
+                    Text("When off, chat hides the per-conversation uncensored toggle and badge.")
+                        .font(.system(.caption2, design: .monospaced))
+                        .foregroundColor(PreferencesView.textGrey)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer()
+                Toggle("", isOn: $settings.uncensoredModeAvailable)
+                    .toggleStyle(.switch)
+                    .tint(.orange)
+                    .labelsHidden()
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 10)
+            .background(PreferencesView.bgPanel)
+
+            VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Uncensored model tag")
+                        .font(.system(.caption, design: .monospaced).weight(.medium))
+                        .foregroundColor(.white)
+                    Text("Used by uncensored conversations when the chat is in that mode.")
+                        .font(.system(.caption2, design: .monospaced))
+                        .foregroundColor(PreferencesView.textGrey)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                TextField(AppSettings.defaultUncensoredModelName, text: $settings.uncensoredModelName)
+                    .textFieldStyle(.plain)
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .background(
+                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            .fill(PreferencesView.bgBlack)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            .stroke(PreferencesView.phosphorGreen.opacity(0.35), lineWidth: 1)
+                    )
+
+                Text("Tools are disabled in uncensored mode in V1. Approval and path safety still apply.")
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundColor(PreferencesView.textGrey)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Text("If you still need the model locally, pull it with: `ollama pull \(settings.effectiveUncensoredModelName)`")
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundColor(PreferencesView.textGrey)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 14)
+            .background(PreferencesView.bgPanel)
+        }
     }
 
     // MARK: - Tools Tab

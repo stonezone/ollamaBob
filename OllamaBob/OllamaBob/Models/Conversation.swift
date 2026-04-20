@@ -3,13 +3,15 @@ import Foundation
 struct Conversation: Identifiable, Sendable {
     let id: String
     var title: String
+    var uncensoredMode: Bool
     var messages: [ChatMessage]
     let createdAt: Date
     var updatedAt: Date
 
-    init(id: String = UUID().uuidString, title: String = "New Chat") {
+    init(id: String = UUID().uuidString, title: String = "New Chat", uncensoredMode: Bool = false) {
         self.id = id
         self.title = title
+        self.uncensoredMode = uncensoredMode
         self.messages = []
         self.createdAt = Date()
         self.updatedAt = Date()

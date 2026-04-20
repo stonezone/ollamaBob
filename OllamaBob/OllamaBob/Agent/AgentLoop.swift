@@ -4,6 +4,7 @@ enum AgentLoopError: Error, LocalizedError {
     case maxIterationsReached
     case totalTimeoutReached
     case ollamaUnavailable(String)
+    case uncensoredModelUnavailable(String)
 
     var errorDescription: String? {
         switch self {
@@ -13,6 +14,8 @@ enum AgentLoopError: Error, LocalizedError {
             return "Agent loop timed out after \(Int(AppConfig.agentLoopTimeoutSeconds))s"
         case .ollamaUnavailable(let msg):
             return msg
+        case .uncensoredModelUnavailable(let model):
+            return "Uncensored mode is enabled for this conversation, but model '\(model)' is not installed. Run: ollama pull \(model)"
         }
     }
 }
@@ -56,6 +59,7 @@ final class AgentLoop: ObservableObject {
     /// per conversation.
     private var currentConversationId: String?
     private var currentUserMessage: String?
+    private var currentUncensoredMode = false
 
     var approvalHandler: ApprovalHandler?
     var modelSwitchHandler: ModelSwitchHandler?
@@ -86,26 +90,36 @@ final class AgentLoop: ObservableObject {
     func process(
         userMessage: String,
         history: [OllamaMessage],
-        conversationId: String
+        conversationId: String,
+        uncensoredMode: Bool
     ) async throws -> [OllamaMessage] {
         isProcessing = true
         bobMood = .thinking
         consecutiveFailures = 0
-        if currentModel == AppConfig.fallbackModel {
-            let oldModel = currentModel
-            currentModel = AppConfig.primaryModel
-            modelSwitchNotice = ModelSwitchNotice(from: oldModel, to: currentModel, at: Date())
-            if let handler = modelSwitchHandler {
-                await handler(oldModel, currentModel)
-            }
-        }
         currentConversationId = conversationId
         currentUserMessage = userMessage
+        currentUncensoredMode = uncensoredMode
         defer {
             isProcessing = false
             currentConversationId = nil
             currentUserMessage = nil
+            currentUncensoredMode = false
         }
+
+        let effectiveModel = uncensoredMode
+            ? AppSettings.shared.effectiveUncensoredModelName
+            : AppConfig.primaryModel
+        let effectiveTools: [OllamaToolDef] = uncensoredMode ? [] : registry.toolDefs
+
+        if uncensoredMode {
+            let installedModels = await client.installedModels()
+            guard installedModels.contains(effectiveModel) else {
+                bobMood = .confused
+                throw AgentLoopError.uncensoredModelUnavailable(effectiveModel)
+            }
+        }
+
+        await updateCurrentModelForTurn(effectiveModel, notify: currentModel != effectiveModel)
 
         let loopStart = Date()
         var turnHadToolFailure = false
@@ -121,14 +135,19 @@ final class AgentLoop: ObservableObject {
         // Check BEFORE adding the new user message and system prompt so
         // the compactor sees the existing history as-is.
         let numCtx = AppSettings.shared.numCtx
-        if ConversationCompactor.shouldCompact(messages: messages, numCtx: numCtx) {
+        if uncensoredMode == false,
+           ConversationCompactor.shouldCompact(messages: messages, numCtx: numCtx) {
             let before = ConversationCompactor.approxTokens(messages)
             messages = await ConversationCompactor.compact(messages: messages, client: client)
             let after = ConversationCompactor.approxTokens(messages)
             logCompaction(beforeTokens: before, afterTokens: after, numCtx: numCtx)
         }
 
-        let composed = PromptComposer.composeWithBreakdown(persona: PersonaStore.shared.activePersona)
+        let composed = PromptComposer.composeWithBreakdown(
+            persona: PersonaStore.shared.activePersona,
+            includeCheatSheet: uncensoredMode == false,
+            uncensoredMode: uncensoredMode
+        )
         messages.insert(.system(composed.prompt), at: 0)
         messages.append(.user(userMessage))
         logPromptBreakdown(composed.breakdown)
@@ -144,9 +163,9 @@ final class AgentLoop: ObservableObject {
             let response: OllamaChatResponse
             do {
                 response = try await client.chat(
-                    model: currentModel,
+                    model: effectiveModel,
                     messages: messages,
-                    tools: registry.toolDefs,
+                    tools: effectiveTools,
                     numCtx: AppSettings.shared.numCtx
                 )
             } catch {
@@ -1005,6 +1024,7 @@ final class AgentLoop: ObservableObject {
     // MARK: - Model Fallback
 
     private func checkFallback() async {
+        guard currentUncensoredMode == false else { return }
         if consecutiveFailures >= AppConfig.maxConsecutiveFailures && currentModel != AppConfig.fallbackModel {
             let oldModel = currentModel
             currentModel = AppConfig.fallbackModel
@@ -1013,6 +1033,17 @@ final class AgentLoop: ObservableObject {
             if let handler = modelSwitchHandler {
                 await handler(oldModel, currentModel)
             }
+        }
+    }
+
+    private func updateCurrentModelForTurn(_ model: String, notify: Bool) async {
+        guard currentModel != model else { return }
+        let oldModel = currentModel
+        currentModel = model
+        guard notify else { return }
+        modelSwitchNotice = ModelSwitchNotice(from: oldModel, to: model, at: Date())
+        if let handler = modelSwitchHandler {
+            await handler(oldModel, model)
         }
     }
 

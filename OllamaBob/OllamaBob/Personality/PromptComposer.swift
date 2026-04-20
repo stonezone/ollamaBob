@@ -68,21 +68,23 @@ enum PromptComposer {
     /// breakdown for activity-log visibility. Call site: AgentLoop.
     static func composeWithBreakdown(
         persona: Persona,
-        includeCheatSheet: Bool = true
+        includeCheatSheet: Bool = true,
+        uncensoredMode: Bool = false
     ) -> (prompt: String, breakdown: Breakdown) {
         let operatingRules = BobOperatingRules.systemPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
         let personaText = persona.systemPromptMarkdown.trimmingCharacters(in: .whitespacesAndNewlines)
+        let modeOverride = uncensoredMode ? uncensoredModePromptOverride : ""
         let cheatSheet = includeCheatSheet ? (renderCheatSheet() ?? "") : ""
         let userProfile = renderUserProfile() ?? ""
 
-        let segments = [operatingRules, personaText, userProfile, cheatSheet].filter { !$0.isEmpty }
+        let segments = [operatingRules, personaText, modeOverride, userProfile, cheatSheet].filter { !$0.isEmpty }
         let prompt = segments.joined(separator: "\n\n")
 
         let budget = budgetTokens(forNumCtx: AppSettings.shared.numCtx)
         let tokens = approxTokens(prompt)
         let breakdown = Breakdown(
             operatingRulesChars: operatingRules.count,
-            personaChars: personaText.count,
+            personaChars: personaText.count + modeOverride.count,
             cheatSheetChars: cheatSheet.count,
             totalChars: prompt.count,
             approxTokens: tokens,
@@ -92,6 +94,15 @@ enum PromptComposer {
         )
         return (prompt, breakdown)
     }
+
+    private static let uncensoredModePromptOverride = """
+        UNFILTERED CONVERSATION MODE:
+        - The user intentionally enabled a more candid mode for this conversation.
+        - Answer directly and without preachy moralizing for consensual adult topics, explicit language, and sexual questions.
+        - Stay concise, honest, and useful.
+        - No tools are available in this mode. Do not claim you can open files, browse, run commands, or perform actions on the user's Mac.
+        - Do not bypass approval, path, or command safety rules. If the user asks for dangerous real-world wrongdoing, credential theft, malware, or evasion help, refuse briefly and plainly.
+        """
 
     /// Render the USER PROFILE block from stored facts.
     ///

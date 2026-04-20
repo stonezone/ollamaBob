@@ -5,6 +5,7 @@ struct ConversationSummary: Identifiable, Sendable {
     let id: String
     var title: String
     var isPinned: Bool
+    var uncensoredMode: Bool
     let createdAt: Date
     var updatedAt: Date
 }
@@ -13,6 +14,7 @@ struct ConversationSnapshot: Identifiable, Sendable {
     let id: String
     var title: String
     var isPinned: Bool
+    var uncensoredMode: Bool
     var messages: [ChatMessage]
     let createdAt: Date
     var updatedAt: Date
@@ -34,6 +36,7 @@ protocol ConversationStoring: AnyObject {
     func loadConversation(id: String) throws -> ConversationSnapshot?
     func renameConversation(id: String, title: String) throws -> ConversationSummary?
     func setConversationPinned(id: String, isPinned: Bool) throws -> ConversationSummary?
+    func setConversationUncensoredMode(id: String, isEnabled: Bool) throws -> ConversationSummary?
     func deleteConversation(id: String) throws -> Bool
 }
 

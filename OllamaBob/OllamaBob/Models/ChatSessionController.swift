@@ -7,6 +7,7 @@ final class ChatSessionController: ObservableObject {
     @Published private(set) var errorMessage: String?
     @Published private(set) var conversationId: String?
     @Published private(set) var conversationTitle = "New Chat"
+    @Published private(set) var conversationUncensoredMode = false
     @Published private(set) var conversations: [ConversationSummary] = []
 
     private let agentLoop: ChatSessionAgentLooping
@@ -64,6 +65,7 @@ final class ChatSessionController: ObservableObject {
             applyConversation(
                 id: convo.id,
                 title: convo.title,
+                uncensoredMode: convo.uncensoredMode,
                 messages: stored
             )
         } catch {
@@ -75,6 +77,7 @@ final class ChatSessionController: ObservableObject {
         applyConversation(
             id: snapshot.id,
             title: snapshot.title,
+            uncensoredMode: snapshot.uncensoredMode,
             messages: snapshot.messages
         )
         inputText = ""
@@ -101,6 +104,25 @@ final class ChatSessionController: ObservableObject {
 
     func updateConversationTitle(_ title: String) {
         conversationTitle = title
+    }
+
+    func setConversationUncensoredMode(_ isEnabled: Bool) {
+        conversationUncensoredMode = isEnabled
+
+        guard let conversationId else { return }
+        do {
+            guard let updated = try database.setConversationUncensoredMode(id: conversationId, isEnabled: isEnabled) else {
+                errorMessage = "Conversation not found."
+                return
+            }
+            conversations = conversations.map { $0.id == updated.id ? updated : $0 }
+        } catch {
+            errorMessage = "Failed to update conversation mode: \(error.localizedDescription)"
+        }
+    }
+
+    func toggleConversationUncensoredMode() {
+        setConversationUncensoredMode(!conversationUncensoredMode)
     }
 
     func renameSelectedConversation() {
@@ -162,8 +184,8 @@ final class ChatSessionController: ObservableObject {
         }
 
         do {
-            let new = try database.createConversation(title: "New Chat")
-            applyConversation(id: new.id, title: new.title, messages: [])
+            let new = try database.createConversation(title: "New Chat", uncensoredMode: false)
+            applyConversation(id: new.id, title: new.title, uncensoredMode: new.uncensoredMode, messages: [])
             inputText = ""
             errorMessage = nil
             refreshConversations()
@@ -186,7 +208,7 @@ final class ChatSessionController: ObservableObject {
             if let existing = conversationId {
                 convoId = existing
             } else {
-                let new = try database.createConversation(title: "New Chat")
+                let new = try database.createConversation(title: "New Chat", uncensoredMode: conversationUncensoredMode)
                 conversationId = new.id
                 convoId = new.id
             }
@@ -214,7 +236,8 @@ final class ChatSessionController: ObservableObject {
                 let updatedHistory = try await agentLoop.process(
                     userMessage: text,
                     history: ollamaHistory,
-                    conversationId: convoId
+                    conversationId: convoId,
+                    uncensoredMode: conversationUncensoredMode
                 )
 
                 appendNewMessages(from: updatedHistory, startingAt: previousHistoryCount + 1, conversationId: convoId)
@@ -289,13 +312,15 @@ final class ChatSessionController: ObservableObject {
     private func clearCurrentConversationState() {
         conversationId = nil
         conversationTitle = "New Chat"
+        conversationUncensoredMode = false
         messages = []
         ollamaHistory = []
     }
 
-    private func applyConversation(id: String, title: String, messages: [ChatMessage]) {
+    private func applyConversation(id: String, title: String, uncensoredMode: Bool, messages: [ChatMessage]) {
         conversationId = id
         conversationTitle = title
+        conversationUncensoredMode = uncensoredMode
         self.messages = messages
         ollamaHistory = messages.compactMap(Self.toOllamaMessage(_:))
     }

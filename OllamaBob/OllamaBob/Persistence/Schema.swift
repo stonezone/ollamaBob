@@ -7,6 +7,7 @@ enum AppDatabase {
             t.column("id", .text).primaryKey()
             t.column("title", .text)
             t.column("isPinned", .boolean).notNull().defaults(to: false)
+            t.column("uncensoredMode", .boolean).notNull().defaults(to: false)
             t.column("createdAt", .datetime).defaults(sql: "CURRENT_TIMESTAMP")
             t.column("updatedAt", .datetime).defaults(sql: "CURRENT_TIMESTAMP")
         }

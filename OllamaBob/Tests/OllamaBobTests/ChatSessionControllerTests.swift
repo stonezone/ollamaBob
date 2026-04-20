@@ -8,6 +8,7 @@ final class ChatSessionControllerTests: XCTestCase {
             id: "convo-1",
             title: "Existing",
             isPinned: false,
+            uncensoredMode: true,
             createdAt: Date(),
             updatedAt: Date()
         )
@@ -25,6 +26,7 @@ final class ChatSessionControllerTests: XCTestCase {
         controller.loadExistingConversationIfNeeded()
 
         XCTAssertEqual(controller.conversationId, "convo-1")
+        XCTAssertTrue(controller.conversationUncensoredMode)
         XCTAssertEqual(controller.messages.map { $0.content }, ["hello", "hi"])
         XCTAssertEqual(controller.history.map { $0.role }, ["user", "assistant"])
     }
@@ -34,6 +36,7 @@ final class ChatSessionControllerTests: XCTestCase {
             id: "convo-old",
             title: "Existing",
             isPinned: false,
+            uncensoredMode: true,
             createdAt: Date(),
             updatedAt: Date()
         )
@@ -44,6 +47,7 @@ final class ChatSessionControllerTests: XCTestCase {
                 id: "convo-new",
                 title: "New Chat",
                 isPinned: false,
+                uncensoredMode: false,
                 createdAt: Date(),
                 updatedAt: Date()
             )
@@ -62,6 +66,7 @@ final class ChatSessionControllerTests: XCTestCase {
 
         XCTAssertEqual(toolOutputStore.clearedConversationIDs, ["convo-old"])
         XCTAssertEqual(controller.conversationId, "convo-new")
+        XCTAssertFalse(controller.conversationUncensoredMode)
         XCTAssertTrue(controller.messages.isEmpty)
         XCTAssertTrue(controller.history.isEmpty)
         XCTAssertEqual(controller.inputText, "")
@@ -75,13 +80,15 @@ final class ChatSessionControllerTests: XCTestCase {
                 id: "convo-new",
                 title: "New Chat",
                 isPinned: false,
+                uncensoredMode: true,
                 createdAt: Date(),
                 updatedAt: Date()
             )
         )
         let agentLoop = FakeAgentLoop()
-        agentLoop.onProcess = { message, history, conversationId in
+        agentLoop.onProcess = { message, history, conversationId, uncensoredMode in
             processExpectation.fulfill()
+            XCTAssertTrue(uncensoredMode)
             agentLoop.toolActivity = [
                 AgentLoop.ToolLogEntry(
                     toolName: "shell",
@@ -106,6 +113,7 @@ final class ChatSessionControllerTests: XCTestCase {
             database: database,
             toolOutputStore: FakeToolOutputStore()
         )
+        controller.setConversationUncensoredMode(true)
         controller.inputText = "pwd"
 
         controller.sendCurrentInput(allowsLocalCommands: false)
@@ -126,6 +134,7 @@ final class ChatSessionControllerTests: XCTestCase {
                 id: "convo-disk",
                 title: "New Chat",
                 isPinned: false,
+                uncensoredMode: false,
                 createdAt: Date(),
                 updatedAt: Date()
             )
@@ -139,8 +148,9 @@ final class ChatSessionControllerTests: XCTestCase {
                 arguments: .object(["command": .string("df -h")])
             )
         )
-        agentLoop.onProcess = { message, history, conversationId in
+        agentLoop.onProcess = { message, history, conversationId, uncensoredMode in
             processExpectation.fulfill()
+            XCTAssertFalse(uncensoredMode)
             return [
                 .system("system"),
                 .user(message),
@@ -192,6 +202,7 @@ final class ChatSessionControllerTests: XCTestCase {
             id: "convo-1",
             title: "Existing",
             isPinned: false,
+            uncensoredMode: false,
             createdAt: Date(timeIntervalSince1970: 1_000),
             updatedAt: Date(timeIntervalSince1970: 2_000)
         )
@@ -199,6 +210,7 @@ final class ChatSessionControllerTests: XCTestCase {
             id: "convo-2",
             title: "Changed",
             isPinned: false,
+            uncensoredMode: true,
             createdAt: Date(timeIntervalSince1970: 3_000),
             updatedAt: Date(timeIntervalSince1970: 4_000)
         )
@@ -233,6 +245,7 @@ final class ChatSessionControllerTests: XCTestCase {
             id: "convo-42",
             title: "Renamed Thread",
             isPinned: false,
+            uncensoredMode: true,
             messages: [
                 ChatMessage(role: .user, content: "first"),
                 ChatMessage(role: .assistant, content: "second")
@@ -246,10 +259,38 @@ final class ChatSessionControllerTests: XCTestCase {
 
         XCTAssertEqual(controller.conversationId, "convo-42")
         XCTAssertEqual(controller.conversationTitle, "Renamed Thread")
+        XCTAssertTrue(controller.conversationUncensoredMode)
         XCTAssertEqual(controller.messages.map(\.content), ["first", "second"])
         XCTAssertEqual(controller.history.map(\.role), ["user", "assistant"])
         XCTAssertEqual(controller.inputText, "")
         XCTAssertNil(controller.errorMessage)
+    }
+
+    func testToggleConversationUncensoredModePersistsForExistingConversation() {
+        let conversation = ConversationRecord(
+            id: "convo-1",
+            title: "Existing",
+            isPinned: false,
+            uncensoredMode: false,
+            createdAt: Date(),
+            updatedAt: Date()
+        )
+        let database = FakeDatabase(
+            currentConversation: conversation,
+            loadedMessages: [ChatMessage(role: .user, content: "hello")]
+        )
+        let controller = ChatSessionController(
+            agentLoop: FakeAgentLoop(),
+            database: database,
+            toolOutputStore: FakeToolOutputStore()
+        )
+
+        controller.loadExistingConversationIfNeeded()
+        controller.setConversationUncensoredMode(true)
+
+        XCTAssertTrue(controller.conversationUncensoredMode)
+        XCTAssertEqual(database.lastSetConversationUncensoredMode?.id, "convo-1")
+        XCTAssertEqual(database.lastSetConversationUncensoredMode?.isEnabled, true)
     }
 }
 
@@ -259,6 +300,7 @@ private final class FakeDatabase: ChatSessionDatabaseManaging {
     var createdConversationStub: ConversationRecord
     var savedMessages: [ChatMessage] = []
     var savedToolLogs: [(conversationId: String, toolName: String)] = []
+    var lastSetConversationUncensoredMode: (id: String, isEnabled: Bool)?
     var currentConversationCallCount = 0
     var loadMessagesCallCount = 0
 
@@ -269,6 +311,7 @@ private final class FakeDatabase: ChatSessionDatabaseManaging {
             id: UUID().uuidString,
             title: "New Chat",
             isPinned: false,
+            uncensoredMode: false,
             createdAt: Date(),
             updatedAt: Date()
         )
@@ -288,8 +331,9 @@ private final class FakeDatabase: ChatSessionDatabaseManaging {
         return loadedMessagesStub
     }
 
-    func createConversation(title: String) throws -> ConversationRecord {
-        createdConversationStub
+    func createConversation(title: String, uncensoredMode: Bool) throws -> ConversationRecord {
+        createdConversationStub.uncensoredMode = uncensoredMode
+        return createdConversationStub
     }
 
     func saveMessage(_ msg: ChatMessage, conversationId: String) throws {
@@ -307,16 +351,32 @@ private final class FakeDatabase: ChatSessionDatabaseManaging {
     ) throws {
         savedToolLogs.append((conversationId, toolName))
     }
+
+    func setConversationUncensoredMode(id: String, isEnabled: Bool) throws -> ConversationSummary? {
+        lastSetConversationUncensoredMode = (id, isEnabled)
+        guard let currentConversationStub, currentConversationStub.id == id else {
+            return nil
+        }
+        self.currentConversationStub?.uncensoredMode = isEnabled
+        return ConversationSummary(
+            id: currentConversationStub.id,
+            title: currentConversationStub.title,
+            isPinned: currentConversationStub.isPinned,
+            uncensoredMode: isEnabled,
+            createdAt: currentConversationStub.createdAt,
+            updatedAt: currentConversationStub.updatedAt
+        )
+    }
 }
 
 @MainActor
 private final class FakeAgentLoop: ChatSessionAgentLooping {
     var toolActivity: [AgentLoop.ToolLogEntry] = []
-    var onProcess: ((String, [OllamaMessage], String) async throws -> [OllamaMessage])?
+    var onProcess: ((String, [OllamaMessage], String, Bool) async throws -> [OllamaMessage])?
 
-    func process(userMessage: String, history: [OllamaMessage], conversationId: String) async throws -> [OllamaMessage] {
+    func process(userMessage: String, history: [OllamaMessage], conversationId: String, uncensoredMode: Bool) async throws -> [OllamaMessage] {
         if let onProcess {
-            return try await onProcess(userMessage, history, conversationId)
+            return try await onProcess(userMessage, history, conversationId, uncensoredMode)
         }
         return history
     }

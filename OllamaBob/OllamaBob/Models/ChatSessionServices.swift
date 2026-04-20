@@ -6,14 +6,15 @@ protocol ChatSessionAgentLooping: AnyObject {
     func process(
         userMessage: String,
         history: [OllamaMessage],
-        conversationId: String
+        conversationId: String,
+        uncensoredMode: Bool
     ) async throws -> [OllamaMessage]
 }
 
 protocol ChatSessionDatabaseManaging: AnyObject {
     func currentConversation() throws -> ConversationRecord?
     func loadMessages(conversationId: String) throws -> [ChatMessage]
-    func createConversation(title: String) throws -> ConversationRecord
+    func createConversation(title: String, uncensoredMode: Bool) throws -> ConversationRecord
     func saveMessage(_ msg: ChatMessage, conversationId: String) throws
     func saveToolLog(
         conversationId: String,
@@ -24,6 +25,7 @@ protocol ChatSessionDatabaseManaging: AnyObject {
         approved: Bool,
         durationMs: Int
     ) throws
+    func setConversationUncensoredMode(id: String, isEnabled: Bool) throws -> ConversationSummary?
 }
 
 protocol ChatSessionToolOutputStoring: AnyObject {

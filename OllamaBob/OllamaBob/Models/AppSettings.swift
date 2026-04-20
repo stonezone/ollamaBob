@@ -7,6 +7,7 @@ import Combine
 final class AppSettings: ObservableObject {
 
     static let shared = AppSettings()
+    static let defaultUncensoredModelName = "huihui_ai/qwen3-abliterated:8b"
 
     @Published var showBob: Bool {
         didSet { UserDefaults.standard.set(showBob, forKey: Keys.showBob) }
@@ -90,6 +91,19 @@ final class AppSettings: ObservableObject {
         didSet { UserDefaults.standard.set(richPresentationArtifactChipsEnabled, forKey: Keys.richPresentationArtifactChipsEnabled) }
     }
 
+    /// Master gate for Naughty Bob UI. When disabled, chat surfaces hide the
+    /// per-conversation uncensored toggle and any visible mode badge.
+    @Published var uncensoredModeAvailable: Bool {
+        didSet { UserDefaults.standard.set(uncensoredModeAvailable, forKey: Keys.uncensoredModeAvailable) }
+    }
+
+    /// Configurable Ollama tag for the uncensored model path. The raw string is
+    /// preserved as typed so the Preferences text field behaves naturally;
+    /// callers that need a usable tag should read `effectiveUncensoredModelName`.
+    @Published var uncensoredModelName: String {
+        didSet { UserDefaults.standard.set(uncensoredModelName, forKey: Keys.uncensoredModelName) }
+    }
+
     private enum Keys {
         static let showBob               = "showBob"
         static let chatWindowOpacity     = "chatWindowOpacity"
@@ -104,6 +118,8 @@ final class AppSettings: ObservableObject {
         static let richPresentationEnabled = "richPresentationEnabled"
         static let richPresentationRemoteResourcesEnabled = "richPresentationRemoteResourcesEnabled"
         static let richPresentationArtifactChipsEnabled = "richPresentationArtifactChipsEnabled"
+        static let uncensoredModeAvailable = "uncensoredModeAvailable"
+        static let uncensoredModelName = "uncensoredModelName"
     }
 
     private init() {
@@ -144,6 +160,12 @@ final class AppSettings: ObservableObject {
         if defaults.object(forKey: Keys.richPresentationArtifactChipsEnabled) == nil {
             defaults.set(true, forKey: Keys.richPresentationArtifactChipsEnabled)
         }
+        if defaults.object(forKey: Keys.uncensoredModeAvailable) == nil {
+            defaults.set(false, forKey: Keys.uncensoredModeAvailable)
+        }
+        if defaults.object(forKey: Keys.uncensoredModelName) == nil {
+            defaults.set(Self.defaultUncensoredModelName, forKey: Keys.uncensoredModelName)
+        }
 
         self.showBob               = defaults.bool(forKey: Keys.showBob)
         self.chatWindowOpacity     = defaults.double(forKey: Keys.chatWindowOpacity)
@@ -157,8 +179,15 @@ final class AppSettings: ObservableObject {
         self.richPresentationEnabled = defaults.bool(forKey: Keys.richPresentationEnabled)
         self.richPresentationRemoteResourcesEnabled = defaults.bool(forKey: Keys.richPresentationRemoteResourcesEnabled)
         self.richPresentationArtifactChipsEnabled = defaults.bool(forKey: Keys.richPresentationArtifactChipsEnabled)
+        self.uncensoredModeAvailable = defaults.bool(forKey: Keys.uncensoredModeAvailable)
+        self.uncensoredModelName = defaults.string(forKey: Keys.uncensoredModelName) ?? Self.defaultUncensoredModelName
 
         let storedCtx = defaults.integer(forKey: Keys.numCtx)
         self.numCtx = AppConfig.numCtxAllowed.contains(storedCtx) ? storedCtx : AppConfig.numCtx
+    }
+
+    var effectiveUncensoredModelName: String {
+        let trimmed = uncensoredModelName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? Self.defaultUncensoredModelName : trimmed
     }
 }

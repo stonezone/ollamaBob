@@ -446,6 +446,22 @@ struct BobsDeskView: View {
         min(1.0, settings.chatWindowOpacity + 0.1)
     }
 
+    private var uncensoredModeEnabled: Bool {
+        settings.uncensoredModeAvailable && session.conversationUncensoredMode
+    }
+
+    private var uncensoredModeToggleDisabled: Bool {
+        agentLoop.isProcessing
+    }
+
+    private var uncensoredModeHelpText: String {
+        if session.conversationId == nil {
+            return "Toggle uncensored mode for the next conversation. Configured tag: \(settings.effectiveUncensoredModelName)"
+        }
+        let action = uncensoredModeEnabled ? "Turn off" : "Turn on"
+        return "\(action) uncensored mode for this conversation. Configured tag: \(settings.effectiveUncensoredModelName)"
+    }
+
     // F7 — persona sprite tint
     private var spriteAccent: Color {
         let rgb = GreetingLines.accentColor(for: personaStore.activePersonaID)
@@ -495,7 +511,16 @@ struct BobsDeskView: View {
         }
         .background(Color.clear)
         .background(WindowTransparencyConfigurator(avatarOnly: settings.avatarOnlyMode))
-        .task { session.loadExistingConversationIfNeeded() }
+        .task {
+            session.loadExistingConversationIfNeeded()
+            enforceMasterUncensoredSetting()
+        }
+        .onChange(of: session.conversationId) {
+            enforceMasterUncensoredSetting()
+        }
+        .onChange(of: settings.uncensoredModeAvailable) {
+            enforceMasterUncensoredSetting()
+        }
         // Sync bubble visibility whenever messages change
         .onChange(of: session.messages.count) {
             withAnimation(.easeInOut(duration: 0.3)) {
@@ -666,6 +691,12 @@ struct BobsDeskView: View {
 
                 draggablePortrait
                     .layoutPriority(2)
+
+                if uncensoredModeEnabled {
+                    uncensoredConversationBadge
+                        .padding(.top, 8)
+                        .layoutPriority(1)
+                }
 
                 Spacer().frame(height: gapBobToInput)
 
@@ -873,6 +904,8 @@ struct BobsDeskView: View {
                 .focused($inputFocused)
                 .onSubmit { sendWithSound() }
 
+            uncensoredTogglePill(compact: true, darkText: true)
+
             Button(action: { sendWithSound() }) {
                 Image(systemName: canSend ? "arrow.up.circle.fill" : "mic.circle.fill")
                     .font(.system(size: 16, weight: .regular))
@@ -890,6 +923,69 @@ struct BobsDeskView: View {
         .shadow(color: .black.opacity(0.15 * surfaceOpacity), radius: 8, x: 0, y: 3)
         .fixedSize(horizontal: false, vertical: true)
         .frame(minWidth: 180, idealWidth: 240, maxWidth: 300)
+    }
+
+    private var uncensoredConversationBadge: some View {
+        Text("UNCENSORED")
+            .font(.system(size: 9, design: .monospaced).weight(.bold))
+            .foregroundColor(.black.opacity(0.82))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(Color(red: 1.0, green: 0.60, blue: 0.22))
+            )
+            .overlay(
+                Capsule(style: .continuous)
+                    .stroke(Color.black.opacity(0.15), lineWidth: 0.6)
+            )
+            .fixedSize()
+            .help("This conversation is marked uncensored. Configured tag: \(settings.effectiveUncensoredModelName)")
+    }
+
+    @ViewBuilder
+    private func uncensoredTogglePill(compact: Bool = false, darkText: Bool = false) -> some View {
+        if settings.uncensoredModeAvailable {
+            let active = uncensoredModeEnabled
+            let foreground = darkText
+                ? Color.black.opacity(active ? 0.82 : 0.62)
+                : (active ? Color.black.opacity(0.82) : Self.phosphorGreen.opacity(textOpacity))
+            let stroke = darkText
+                ? Color.black.opacity(active ? 0.12 : 0.20)
+                : Self.phosphorGreen.opacity(active ? 0.15 : 0.30)
+
+            Button {
+                session.toggleConversationUncensoredMode()
+            } label: {
+                HStack(spacing: compact ? 4 : 5) {
+                    Image(systemName: active ? "flame.fill" : "flame")
+                        .font(.system(size: compact ? 10 : 11, weight: .semibold))
+                    Text("UNCENSORED")
+                        .font(.system(size: compact ? 9 : 10, design: .monospaced).weight(.bold))
+                }
+                .foregroundColor(foreground)
+                .padding(.horizontal, compact ? 8 : 10)
+                .padding(.vertical, compact ? 5 : 6)
+                .background(
+                    Capsule(style: .continuous)
+                        .fill(
+                            active
+                                ? Color(red: 1.0, green: 0.60, blue: 0.22)
+                                : (darkText
+                                    ? Color.white.opacity(0.16)
+                                    : Self.bgPanel.opacity(surfaceOpacity))
+                        )
+                )
+                .overlay(
+                    Capsule(style: .continuous)
+                        .stroke(stroke, lineWidth: 0.8)
+                )
+            }
+            .buttonStyle(.plain)
+            .disabled(uncensoredModeToggleDisabled)
+            .opacity(uncensoredModeToggleDisabled ? 0.5 : 1.0)
+            .help(uncensoredModeHelpText)
+        }
     }
 
     // MARK: - Speech Bubble
@@ -959,6 +1055,12 @@ struct BobsDeskView: View {
             Text(agentLoop.currentModel)
                 .font(.system(size: 11, design: .monospaced))
                 .foregroundColor(Self.phosphorGreen.opacity(textOpacity))
+            if uncensoredModeEnabled {
+                Text("  ")
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundColor(Self.phosphorGreen.opacity(textOpacity))
+                uncensoredConversationBadge
+            }
             Text("  \u{2022}  ")
                 .font(.system(size: 11, design: .monospaced))
                 .foregroundColor(Self.phosphorGreen.opacity(textOpacity))
@@ -1209,6 +1311,8 @@ struct BobsDeskView: View {
                 .padding(.vertical, 8)
                 .focused($inputFocused)                              // F5 — focus binding
 
+            uncensoredTogglePill()
+
             Button(action: { sendWithSound() }) {
                 Image(systemName: "arrow.up.circle.fill")
                     .font(.title2)
@@ -1244,6 +1348,11 @@ struct BobsDeskView: View {
             Heartbeat.shared.registerActivity()
         }
         session.sendCurrentInput(allowsLocalCommands: true)
+    }
+
+    private func enforceMasterUncensoredSetting() {
+        guard settings.uncensoredModeAvailable == false, session.conversationUncensoredMode else { return }
+        session.setConversationUncensoredMode(false)
     }
 
     // MARK: - F1 Greeting

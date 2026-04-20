@@ -18,6 +18,7 @@ struct ConversationRecord: Codable, FetchableRecord, PersistableRecord {
     var id: String
     var title: String
     var isPinned: Bool
+    var uncensoredMode: Bool
     var createdAt: Date
     var updatedAt: Date
 }
@@ -104,12 +105,13 @@ final class DatabaseManager {
 
     // MARK: - Conversations
 
-    func createConversation(title: String = "New Chat") throws -> ConversationRecord {
+    func createConversation(title: String = "New Chat", uncensoredMode: Bool = false) throws -> ConversationRecord {
         let queue = try requireQueue()
         let record = ConversationRecord(
             id: UUID().uuidString,
             title: title,
             isPinned: false,
+            uncensoredMode: uncensoredMode,
             createdAt: Date(),
             updatedAt: Date()
         )
@@ -139,6 +141,7 @@ final class DatabaseManager {
                     id: $0.id,
                     title: $0.title,
                     isPinned: $0.isPinned,
+                    uncensoredMode: $0.uncensoredMode,
                     createdAt: $0.createdAt,
                     updatedAt: $0.updatedAt
                 )
@@ -157,6 +160,7 @@ final class DatabaseManager {
                 id: record.id,
                 title: record.title,
                 isPinned: record.isPinned,
+                uncensoredMode: record.uncensoredMode,
                 messages: try loadMessages(in: db, conversationId: id),
                 createdAt: record.createdAt,
                 updatedAt: record.updatedAt
@@ -180,6 +184,7 @@ final class DatabaseManager {
                     id: record.id,
                     title: record.title,
                     isPinned: record.isPinned,
+                    uncensoredMode: record.uncensoredMode,
                     createdAt: record.createdAt,
                     updatedAt: record.updatedAt
                 )
@@ -196,6 +201,7 @@ final class DatabaseManager {
                     id: $0.id,
                     title: $0.title,
                     isPinned: $0.isPinned,
+                    uncensoredMode: $0.uncensoredMode,
                     createdAt: $0.createdAt,
                     updatedAt: $0.updatedAt
                 )
@@ -220,6 +226,32 @@ final class DatabaseManager {
                     id: $0.id,
                     title: $0.title,
                     isPinned: $0.isPinned,
+                    uncensoredMode: $0.uncensoredMode,
+                    createdAt: $0.createdAt,
+                    updatedAt: $0.updatedAt
+                )
+            }
+        }
+    }
+
+    func setConversationUncensoredMode(id: String, isEnabled: Bool) throws -> ConversationSummary? {
+        let queue = try requireQueue()
+        return try queue.write { db in
+            guard try ConversationRecord.fetchOne(db, key: id) != nil else {
+                return nil
+            }
+
+            try db.execute(
+                sql: "UPDATE conversations SET uncensoredMode = ?, updatedAt = ? WHERE id = ?",
+                arguments: [isEnabled, Date(), id]
+            )
+
+            return try ConversationRecord.fetchOne(db, key: id).map {
+                ConversationSummary(
+                    id: $0.id,
+                    title: $0.title,
+                    isPinned: $0.isPinned,
+                    uncensoredMode: $0.uncensoredMode,
                     createdAt: $0.createdAt,
                     updatedAt: $0.updatedAt
                 )
@@ -395,6 +427,9 @@ final class DatabaseManager {
         let columns = try db.columns(in: "conversations").map(\.name)
         if columns.contains("isPinned") == false {
             try db.execute(sql: "ALTER TABLE conversations ADD COLUMN isPinned BOOLEAN NOT NULL DEFAULT 0")
+        }
+        if columns.contains("uncensoredMode") == false {
+            try db.execute(sql: "ALTER TABLE conversations ADD COLUMN uncensoredMode BOOLEAN NOT NULL DEFAULT 0")
         }
     }
 
