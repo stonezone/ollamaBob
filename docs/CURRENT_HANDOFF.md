@@ -124,6 +124,7 @@ Primary files:
 - [README.md](/Users/zack/ollamaBob/README.md): human-facing overview
 - [MULTIMEDIA_BOB.md](/Users/zack/ollamaBob/docs/MULTIMEDIA_BOB.md): rich presentation plan/spec
 - [NAUGHTYBOB_PLAN.md](/Users/zack/ollamaBob/OllamaBob/NAUGHTYBOB_PLAN.md): uncensored-mode plan/spec
+- [CHAT_REVIEW_REMEDIATION_PLAN.md](/Users/zack/ollamaBob/docs/CHAT_REVIEW_REMEDIATION_PLAN.md): active phased plan for the remaining validated chat/UI review findings
 
 ## Verification Commands
 
