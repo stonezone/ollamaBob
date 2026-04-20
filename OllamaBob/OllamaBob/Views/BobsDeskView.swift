@@ -389,6 +389,7 @@ struct BobsDeskView: View {
     // F6 — real-time tool feedback
     @State private var currentToolName: String? = nil
     @State private var autoScrollEnabled = true
+    @State private var cachedContextTokensUsed = 0
 
     // F8 — sound: true once the user has dispatched at least one message
     @State private var hasProcessed = false
@@ -477,7 +478,7 @@ struct BobsDeskView: View {
 
     // MARK: - Context Budget
 
-    private var contextTokensUsed: Int {
+    private func computeContextTokensUsed() -> Int {
         let persona = PersonaStore.shared.activePersona
         var chars = PromptComposer.compose(persona: persona).count
         for msg in session.history where msg.role != "system" {
@@ -490,6 +491,14 @@ struct BobsDeskView: View {
             }
         }
         return chars / 4
+    }
+
+    private func refreshContextTokensUsed() {
+        cachedContextTokensUsed = computeContextTokensUsed()
+    }
+
+    private var contextTokensUsed: Int {
+        cachedContextTokensUsed
     }
 
     private var contextFraction: Double {
@@ -522,11 +531,13 @@ struct BobsDeskView: View {
             session.loadExistingConversationIfNeeded()
             enforceMasterUncensoredSetting()
             rebuildInterleavedItems()
+            refreshContextTokensUsed()
         }
         .onChange(of: session.conversationId) {
             resetConversationScopedNoticeState()
             enforceMasterUncensoredSetting()
             rebuildInterleavedItems()
+            refreshContextTokensUsed()
             withAnimation(.easeInOut(duration: 0.3)) {
                 bubbleVisible = shouldShowBubble
             }
@@ -537,11 +548,15 @@ struct BobsDeskView: View {
         .onChange(of: settings.uncensoredModeAvailable) {
             enforceMasterUncensoredSetting()
         }
+        .onChange(of: personaStore.activePersonaID) {
+            refreshContextTokensUsed()
+        }
         .onChange(of: transcriptRefreshToken) {
             rebuildInterleavedItems()
         }
         // Sync bubble visibility whenever the transcript actually changes.
         .onChange(of: session.transcriptRevision) {
+            refreshContextTokensUsed()
             awaitingTurnTranscript = false
             withAnimation(.easeInOut(duration: 0.3)) {
                 bubbleVisible = shouldShowBubble
@@ -596,13 +611,10 @@ struct BobsDeskView: View {
                 turnStartedAt = nil
             }
         }
-        // F4 — watch toolActivity for compaction events
+        // F4/F6 — watch toolActivity for compaction events and in-progress tool names
         .onReceive(agentLoop.$toolActivity) { activity in
             checkForCompaction(in: activity)
-        }
-        // F6 — watch toolActivity for in-progress tool names
-        .onChange(of: agentLoop.toolActivity.count) {
-            if agentLoop.isProcessing, let last = agentLoop.toolActivity.last {
+            if agentLoop.isProcessing, let last = activity.last {
                 currentToolName = last.toolName
             }
         }

@@ -77,6 +77,22 @@ final class ChatBubbleRenderingTests: XCTestCase {
         }
     }
 
+    func testBlockEntriesUseStableIDsAcrossCalls() {
+        let content = """
+        Here is **bold** text.
+
+        ```bash
+        cat ~/.zshrc
+        ```
+        """
+
+        let first = ChatBubbleRendering.blockEntries(for: content, cacheIdentity: "message-123")
+        let second = ChatBubbleRendering.blockEntries(for: content, cacheIdentity: "message-123")
+
+        XCTAssertEqual(first.map(\.id), second.map(\.id))
+        XCTAssertEqual(first.count, 2)
+    }
+
     func testBlocksPreserveMarkdownAroundImageSyntax() {
         let blocks = ChatBubbleRendering.blocks(
             for: """

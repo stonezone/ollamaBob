@@ -62,7 +62,9 @@ final class ChatSessionControllerTests: XCTestCase {
         controller.inputText = "draft"
 
         controller.startFreshConversation()
-        await Task.yield()
+        for _ in 0..<10 where toolOutputStore.clearedConversationIDs.isEmpty {
+            await Task.yield()
+        }
 
         XCTAssertEqual(toolOutputStore.clearedConversationIDs, ["convo-old"])
         XCTAssertEqual(controller.conversationId, "convo-new")

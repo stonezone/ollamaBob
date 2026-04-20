@@ -92,6 +92,17 @@ Why third:
 
 - Safe performance work after correctness issues are settled.
 
+### Phase 3 Status
+
+Completed on 2026-04-20:
+
+- `BobsDeskView` now caches context-budget token estimates instead of walking the full prompt + history on every recomposition
+- `BobsDeskView` now uses a single `toolActivity` observer for both compaction checks and in-flight tool-label updates
+- `ChatBubbleRendering` now uses digest-backed in-memory cache keys instead of full message bodies as `NSCache` keys
+- assistant transcript blocks now render through stable block-entry ids instead of array offsets
+- assistant-body metadata and synthesized rich-HTML reopen artifacts are now memoized per message/settings combination inside `ChatBubbleRendering`
+- the flaky `startFreshConversation` controller test was made deterministic so the full suite stays trustworthy
+
 ## Phase 4 — Trust-Boundary and UI Polish
 
 Target findings:

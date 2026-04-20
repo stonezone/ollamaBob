@@ -1,11 +1,17 @@
 import SwiftUI
 import AppKit
+import CryptoKit
 
 @MainActor
 enum ChatBubbleRendering {
     enum Block {
         case markdown(AttributedString)
         case code(language: String?, content: String)
+    }
+
+    struct BlockEntry: Identifiable {
+        let id: String
+        let block: Block
     }
 
     struct AvatarPreview {
@@ -17,11 +23,26 @@ enum ChatBubbleRendering {
         let isTruncated: Bool
     }
 
+    struct AssistantMetadata {
+        let shouldShowBody: Bool
+        let synthesizedHTMLArtifact: DetectedArtifact?
+    }
+
     private final class BlockBox: NSObject {
         let blocks: [Block]
+        let entries: [BlockEntry]
 
-        init(blocks: [Block]) {
+        init(blocks: [Block], entries: [BlockEntry]) {
             self.blocks = blocks
+            self.entries = entries
+        }
+    }
+
+    private final class AssistantMetadataBox: NSObject {
+        let metadata: AssistantMetadata
+
+        init(metadata: AssistantMetadata) {
+            self.metadata = metadata
         }
     }
 
@@ -31,15 +52,48 @@ enum ChatBubbleRendering {
         return cache
     }()
 
-    static func blocks(for content: String) -> [Block] {
-        let cacheKey = content as NSString
+    private static let assistantMetadataCache: NSCache<NSString, AssistantMetadataBox> = {
+        let cache = NSCache<NSString, AssistantMetadataBox>()
+        cache.countLimit = 512
+        return cache
+    }()
+
+    static func blocks(for content: String, cacheIdentity: String? = nil) -> [Block] {
+        blockBox(for: content, cacheIdentity: cacheIdentity).blocks
+    }
+
+    static func blockEntries(for content: String, cacheIdentity: String? = nil) -> [BlockEntry] {
+        blockBox(for: content, cacheIdentity: cacheIdentity).entries
+    }
+
+    static func assistantMetadata(for message: ChatMessage, allowRemoteResources: Bool) -> AssistantMetadata {
+        let cacheKey = assistantMetadataCacheKey(for: message, allowRemoteResources: allowRemoteResources)
+        if let cached = assistantMetadataCache.object(forKey: cacheKey) {
+            return cached.metadata
+        }
+
+        let metadata = AssistantMetadata(
+            shouldShowBody: shouldShowAssistantBody(content: message.content, toolCalls: message.toolCalls),
+            synthesizedHTMLArtifact: synthesizedHTMLArtifact(
+                for: message,
+                allowRemoteResources: allowRemoteResources
+            )
+        )
+        assistantMetadataCache.setObject(AssistantMetadataBox(metadata: metadata), forKey: cacheKey)
+        return metadata
+    }
+
+    private static func blockBox(for content: String, cacheIdentity: String?) -> BlockBox {
+        let cacheKey = blockCacheKey(for: content, cacheIdentity: cacheIdentity)
         if let cached = blockCache.object(forKey: cacheKey) {
-            return cached.blocks
+            return cached
         }
 
         let parsed = parseBlocks(from: content)
-        blockCache.setObject(BlockBox(blocks: parsed), forKey: cacheKey)
-        return parsed
+        let entries = makeBlockEntries(from: parsed)
+        let box = BlockBox(blocks: parsed, entries: entries)
+        blockCache.setObject(box, forKey: cacheKey)
+        return box
     }
 
     static func shouldShowAssistantBody(content: String, toolCalls: [OllamaToolCall]?) -> Bool {
@@ -75,7 +129,7 @@ enum ChatBubbleRendering {
             return AvatarPreview(blocks: [.markdown(AttributedString("Opened rich view."))])
         }
 
-        let previewBlocks = blocks(for: trimmed).compactMap { block -> Block? in
+        let previewBlocks = blocks(for: trimmed, cacheIdentity: "avatar-\(stableDigest(for: trimmed))").compactMap { block -> Block? in
             switch block {
             case .markdown(let attributed):
                 let text = String(attributed.characters).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -160,6 +214,65 @@ enum ChatBubbleRendering {
         let limitedByLines = lines.prefix(maxLines).joined(separator: "\n")
         let limitedText = String(limitedByLines.prefix(maxCharacters)).trimmingCharacters(in: .whitespacesAndNewlines)
         return TranscriptPreview(text: limitedText + "\n…", isTruncated: true)
+    }
+
+    private static func blockCacheKey(for content: String, cacheIdentity: String?) -> NSString {
+        let identity = cacheIdentity ?? "content"
+        return "blocks:\(identity):\(stableDigest(for: content))" as NSString
+    }
+
+    private static func assistantMetadataCacheKey(for message: ChatMessage, allowRemoteResources: Bool) -> NSString {
+        let toolCallSignature = toolCallSignatureDigest(message.toolCalls)
+        return "assistant:\(message.id):\(stableDigest(for: message.content)):\(toolCallSignature):remote=\(allowRemoteResources ? 1 : 0)" as NSString
+    }
+
+    private static func toolCallSignatureDigest(_ toolCalls: [OllamaToolCall]?) -> String {
+        guard let toolCalls, toolCalls.isEmpty == false else { return "none" }
+
+        let signatureText: String = toolCalls.map { call in
+            let arguments = canonicalized(call.function.parsedArguments)
+            return "\(call.id ?? "no-id")|\(call.function.name)|\(arguments)"
+        }
+        .joined(separator: "||")
+        return stableDigest(for: signatureText)
+    }
+
+    private static func canonicalized(_ value: Any) -> String {
+        switch value {
+        case let string as String:
+            return "\"\(string)\""
+        case let number as NSNumber:
+            return number.stringValue
+        case let bool as Bool:
+            return bool ? "true" : "false"
+        case let array as [Any]:
+            return "[" + array.map(canonicalized).joined(separator: ",") + "]"
+        case let dict as [String: Any]:
+            return "{" + dict.keys.sorted().map { key in
+                "\"\(key)\":\(canonicalized(dict[key]!))"
+            }.joined(separator: ",") + "}"
+        default:
+            return String(describing: value)
+        }
+    }
+
+    private static func makeBlockEntries(from blocks: [Block]) -> [BlockEntry] {
+        var seenCounts: [String: Int] = [:]
+        return blocks.map { block in
+            let fingerprint = blockFingerprint(for: block)
+            let occurrence = seenCounts[fingerprint, default: 0]
+            seenCounts[fingerprint] = occurrence + 1
+            return BlockEntry(id: "\(fingerprint):\(occurrence)", block: block)
+        }
+    }
+
+    private static func blockFingerprint(for block: Block) -> String {
+        switch block {
+        case .markdown(let attributed):
+            return "markdown:\(stableDigest(for: String(attributed.characters)))"
+        case .code(let language, let content):
+            return "code:\(language ?? ""):\(stableDigest(for: content))"
+        }
     }
 
     private static func parseBlocks(from content: String) -> [Block] {
@@ -250,6 +363,41 @@ enum ChatBubbleRendering {
             options: [.regularExpression, .caseInsensitive]
         ) != nil
     }
+
+    private static func synthesizedHTMLArtifact(for message: ChatMessage, allowRemoteResources: Bool) -> DetectedArtifact? {
+        guard let toolCalls = message.toolCalls else { return nil }
+
+        for call in toolCalls where call.function.name == "present" {
+            let args = call.function.parsedArguments
+            guard (args["kind"] as? String)?.lowercased() == "html",
+                  let rawContent = (args["content"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  rawContent.isEmpty == false else {
+                continue
+            }
+
+            let effectiveTitle = ((args["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap {
+                $0.isEmpty ? nil : $0
+            } ?? "Bob's View"
+            let sanitized = PresentationService.sanitizeHTML(rawContent, allowRemoteResources: allowRemoteResources)
+            let document = PresentationService.injectDocumentDefaults(into: sanitized, allowRemoteResources: allowRemoteResources)
+            let presentationID = RichHTMLState.presentationID(title: effectiveTitle, html: document)
+
+            return DetectedArtifact(
+                kind: .html,
+                content: presentationID,
+                title: effectiveTitle,
+                label: "Reopen rich view",
+                systemImage: "doc.richtext"
+            )
+        }
+
+        return nil
+    }
+
+    private static func stableDigest(for value: String) -> String {
+        let digest = SHA256.hash(data: Data(value.utf8))
+        return digest.compactMap { String(format: "%02x", $0) }.joined()
+    }
 }
 
 struct ChatBubble: View {
@@ -262,10 +410,16 @@ struct ChatBubble: View {
     @State private var isThinkingPanelExpanded = false
 
     var body: some View {
-        let artifacts = resolvedArtifacts
+        let assistantMetadata = message.role == .assistant
+            ? ChatBubbleRendering.assistantMetadata(
+                for: message,
+                allowRemoteResources: AppSettings.shared.richPresentationRemoteResourcesEnabled
+            )
+            : nil
+        let artifacts = resolvedArtifacts(assistantMetadata: assistantMetadata)
         let assistantCalls = message.role == .assistant ? (message.toolCalls ?? []) : []
         let showAssistantText = message.role == .assistant
-            ? ChatBubbleRendering.shouldShowAssistantBody(content: message.content, toolCalls: message.toolCalls)
+            ? (assistantMetadata?.shouldShowBody ?? false)
             : message.role != .tool
 
         HStack {
@@ -316,8 +470,8 @@ struct ChatBubble: View {
 
     private var assistantTextContent: some View {
         VStack(alignment: .leading, spacing: 8) {
-            ForEach(Array(ChatBubbleRendering.blocks(for: message.content).enumerated()), id: \.offset) { _, block in
-                switch block {
+            ForEach(ChatBubbleRendering.blockEntries(for: message.content, cacheIdentity: message.id)) { entry in
+                switch entry.block {
                 case .markdown(let attributed):
                     if String(attributed.characters).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
                         Text(attributed)
@@ -414,7 +568,7 @@ struct ChatBubble: View {
         return trimmed?.isEmpty == false ? trimmed : nil
     }
 
-    private var resolvedArtifacts: [DetectedArtifact] {
+    private func resolvedArtifacts(assistantMetadata: ChatBubbleRendering.AssistantMetadata?) -> [DetectedArtifact] {
         guard message.role == .assistant,
               richPresentationEnabled,
               richPresentationArtifactChipsEnabled else {
@@ -422,7 +576,7 @@ struct ChatBubble: View {
         }
 
         var artifacts = ArtifactDetector.detect(in: message.content)
-        if let htmlArtifact = synthesizedHTMLArtifact,
+        if let htmlArtifact = assistantMetadata?.synthesizedHTMLArtifact,
            artifacts.contains(where: { $0.id == htmlArtifact.id }) == false {
             artifacts.insert(htmlArtifact, at: 0)
         }
@@ -461,37 +615,6 @@ struct ChatBubble: View {
             NSSound.beep()
             print("[ArtifactChip] \(error.localizedDescription)")
         }
-    }
-
-    private var synthesizedHTMLArtifact: DetectedArtifact? {
-        guard let toolCalls = message.toolCalls else { return nil }
-
-        for call in toolCalls where call.function.name == "present" {
-            let args = call.function.parsedArguments
-            guard (args["kind"] as? String)?.lowercased() == "html",
-                  let rawContent = (args["content"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
-                  rawContent.isEmpty == false else {
-                continue
-            }
-
-            let effectiveTitle = ((args["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap {
-                $0.isEmpty ? nil : $0
-            } ?? "Bob's View"
-            let allowRemoteResources = AppSettings.shared.richPresentationRemoteResourcesEnabled
-            let sanitized = PresentationService.sanitizeHTML(rawContent, allowRemoteResources: allowRemoteResources)
-            let document = PresentationService.injectDocumentDefaults(into: sanitized, allowRemoteResources: allowRemoteResources)
-            let presentationID = RichHTMLState.presentationID(title: effectiveTitle, html: document)
-
-            return DetectedArtifact(
-                kind: .html,
-                content: presentationID,
-                title: effectiveTitle,
-                label: "Reopen rich view",
-                systemImage: "doc.richtext"
-            )
-        }
-
-        return nil
     }
 
     private func transcriptPanel(title: String?, content: String, isExpanded: Binding<Bool>) -> some View {

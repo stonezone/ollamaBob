@@ -27,6 +27,10 @@ Latest polish after the main release commits:
 - `ChatSessionController` now publishes `transcriptRevision`, and `BobsDeskView` consumes it to avoid the old turn-completion bubble timing race
 - avatar-only mode now shows the same model-switch and error banners as the full transcript layout
 - avatar-only speech-bubble previews now use constrained rendered blocks, so markdown-image syntax and raw HTML payloads no longer leak directly into Bob's top bubble
+- `BobsDeskView` now caches context-budget estimates instead of recomputing them from full history on every body render
+- `BobsDeskView` now uses one `toolActivity` observer instead of separate count/change watchers
+- `ChatBubbleRendering` now uses digest-backed cache keys, stable block-entry ids, and memoized assistant metadata / HTML reopen artifacts to reduce avoidable transcript recomputation
+- `ChatSessionControllerTests` now waits deterministically for async tool-output clearing, so the suite no longer flakes on `startFreshConversation`
 
 The current app bundle should be built from `OllamaBob/` with:
 
