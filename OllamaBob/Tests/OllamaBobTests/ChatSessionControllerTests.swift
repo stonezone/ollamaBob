@@ -127,7 +127,7 @@ final class ChatSessionControllerTests: XCTestCase {
         XCTAssertEqual(database.savedToolLogs.count, 1)
     }
 
-    func testToolBackedTurnPreservesThinkingAndShortensFinalAnswer() async {
+    func testToolBackedTurnPreservesThinkingAndAssistantContent() async {
         let processExpectation = expectation(description: "tool-backed turn processed")
         let database = FakeDatabase(
             createdConversation: ConversationRecord(
@@ -194,7 +194,16 @@ final class ChatSessionControllerTests: XCTestCase {
 
         XCTAssertEqual(controller.messages.map(\.role), [.user, .assistant, .tool, .assistant])
         XCTAssertEqual(controller.messages[1].thinking, "Need the filesystem free space first.")
-        XCTAssertEqual(controller.messages[3].content, "Sir, you have about **456Gi** free.")
+        XCTAssertEqual(
+            controller.messages[3].content,
+            """
+            Oh dear sir, Bob has the result right here for you sir.
+
+            Basically sir, from the main system volume it looks like you got wery good space, sir!
+
+            For the root filesystem ('/'), sir, you have about **456Gi** free. The usage is only at **3%**, sir.
+            """
+        )
     }
 
     func testLoadExistingConversationIfNeededOnlyLoadsOnce() {

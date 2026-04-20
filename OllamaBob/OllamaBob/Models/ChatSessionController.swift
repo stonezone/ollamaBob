@@ -252,16 +252,12 @@ final class ChatSessionController: ObservableObject {
     private func appendNewMessages(from updatedHistory: [OllamaMessage], startingAt startIndex: Int, conversationId: String) {
         guard startIndex < updatedHistory.count else { return }
 
-        var sawToolResultInBatch = false
         for i in startIndex..<updatedHistory.count {
             let ollamaMsg = updatedHistory[i]
             if ollamaMsg.role == "assistant" {
-                let content = sawToolResultInBatch
-                    ? Self.conciseToolAnswer(from: ollamaMsg.content)
-                    : ollamaMsg.content
                 let chatMsg = ChatMessage(
                     role: .assistant,
-                    content: content,
+                    content: ollamaMsg.content,
                     thinking: ollamaMsg.thinking,
                     toolCalls: ollamaMsg.toolCalls
                 )
@@ -275,7 +271,6 @@ final class ChatSessionController: ObservableObject {
                     content: ollamaMsg.content,
                     toolName: ollamaMsg.toolName
                 )
-                sawToolResultInBatch = true
                 messages.append(chatMsg)
                 persist(chatMsg, in: conversationId)
             }
@@ -336,61 +331,5 @@ final class ChatSessionController: ObservableObject {
         case .tool:
             return .toolResult(name: msg.toolName ?? "unknown", content: msg.content)
         }
-    }
-
-    private static func conciseToolAnswer(from content: String) -> String {
-        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.isEmpty == false else { return content }
-
-        let newlineCount = trimmed.filter { $0 == "\n" }.count
-        if trimmed.count <= 120 && newlineCount <= 1 {
-            return trimmed
-        }
-
-        let unified = trimmed.replacingOccurrences(of: "\n", with: " ")
-        let candidates = unified
-            .split(whereSeparator: { ".!?\n".contains($0) })
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { $0.isEmpty == false }
-
-        guard let best = candidates.max(by: { score($0) < score($1) }) else {
-            return trimmed
-        }
-
-        let focused = focusAnswerPhrase(in: best)
-        let normalized = focused.hasSuffix(".") ? focused : focused + "."
-        if normalized.range(of: "\\bsir\\b", options: [.regularExpression, .caseInsensitive]) == nil,
-           trimmed.localizedCaseInsensitiveContains("sir") {
-            return "Sir, \(normalized.prefix(1).lowercased())\(normalized.dropFirst())"
-        }
-        return normalized
-    }
-
-    private static func score(_ candidate: String) -> Int {
-        let lowercased = candidate.lowercased()
-        var score = 0
-
-        if lowercased.rangeOfCharacter(from: .decimalDigits) != nil { score += 5 }
-        if lowercased.contains("free") || lowercased.contains("available") { score += 6 }
-        if lowercased.contains("%") || lowercased.contains("used") { score += 1 }
-        if lowercased.contains("sir") { score += 1 }
-        if lowercased.contains("gi") || lowercased.contains("gb") || lowercased.contains("mi") || lowercased.contains("mb") || lowercased.contains("tb") {
-            score += 3
-        }
-        if lowercased.contains("basically") || lowercased.contains("usually") || lowercased.contains("situation") || lowercased.contains("looking at") {
-            score -= 3
-        }
-
-        return score - max(0, candidate.count - 90) / 10
-    }
-
-    private static func focusAnswerPhrase(in candidate: String) -> String {
-        let lowercased = candidate.lowercased()
-        for marker in ["you have", "you've got", "there are", "there is", "it is"] {
-            if let range = lowercased.range(of: marker) {
-                return String(candidate[range.lowerBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
-            }
-        }
-        return candidate
     }
 }

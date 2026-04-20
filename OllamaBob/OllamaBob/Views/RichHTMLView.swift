@@ -103,7 +103,7 @@ struct RichHTMLView: NSViewRepresentable {
             let decision = RichHTMLView.navigationDecision(
                 url: navigationAction.request.url,
                 navigationType: navigationAction.navigationType,
-                isMainFrame: navigationAction.targetFrame?.isMainFrame ?? true
+                isMainFrame: navigationAction.targetFrame?.isMainFrame ?? false
             )
 
             switch decision {

@@ -13,15 +13,28 @@ enum ChatBubbleRendering {
         let isTruncated: Bool
     }
 
-    private static var blockCache: [String: [Block]] = [:]
+    private final class BlockBox: NSObject {
+        let blocks: [Block]
+
+        init(blocks: [Block]) {
+            self.blocks = blocks
+        }
+    }
+
+    private static let blockCache: NSCache<NSString, BlockBox> = {
+        let cache = NSCache<NSString, BlockBox>()
+        cache.countLimit = 512
+        return cache
+    }()
 
     static func blocks(for content: String) -> [Block] {
-        if let cached = blockCache[content] {
-            return cached
+        let cacheKey = content as NSString
+        if let cached = blockCache.object(forKey: cacheKey) {
+            return cached.blocks
         }
 
         let parsed = parseBlocks(from: content)
-        blockCache[content] = parsed
+        blockCache.setObject(BlockBox(blocks: parsed), forKey: cacheKey)
         return parsed
     }
 
@@ -44,10 +57,6 @@ enum ChatBubbleRendering {
         }
 
         return true
-    }
-
-    static func shouldRenderAssistantContentLiterally(_ content: String) -> Bool {
-        containsMarkdownImageSyntax(content)
     }
 
     static func avatarBubblePreviewText(for content: String) -> String {
@@ -264,14 +273,7 @@ struct ChatBubble: View {
     private var textBubble: some View {
         Group {
             if message.role == .assistant {
-                if ChatBubbleRendering.shouldRenderAssistantContentLiterally(message.content) {
-                    Text(message.content)
-                        .font(.system(.body, design: .monospaced))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .fixedSize(horizontal: false, vertical: true)
-                } else {
-                    assistantTextContent
-                }
+                assistantTextContent
             } else {
                 Text(message.content)
                     .fixedSize(horizontal: false, vertical: true)
@@ -454,6 +456,7 @@ struct ChatBubble: View {
                     .buttonStyle(.plain)
                     .font(.caption2.bold())
                     .foregroundColor(.accentColor)
+                    .accessibilityLabel(isExpanded.wrappedValue ? "Collapse transcript" : "Expand transcript")
                 }
             } else if isExpanded.wrappedValue {
                 HStack {
@@ -464,6 +467,7 @@ struct ChatBubble: View {
                     .buttonStyle(.plain)
                     .font(.caption2.bold())
                     .foregroundColor(.accentColor)
+                    .accessibilityLabel("Collapse transcript")
                 }
             }
         }
@@ -494,15 +498,16 @@ private struct _WrappingChipFlowLayout: Layout {
         cache: inout ()
     ) -> CGSize {
         let maxWidth = proposal.width ?? .greatestFiniteMagnitude
-        var x: CGFloat = 0
+        let originX: CGFloat = 0
+        var x = originX
         var y: CGFloat = 0
         var rowHeight: CGFloat = 0
         var usedWidth: CGFloat = 0
 
         for subview in subviews {
             let size = subview.sizeThatFits(.unspecified)
-            if x > 0, x + size.width > maxWidth {
-                x = 0
+            if x > originX, x + size.width > maxWidth {
+                x = originX
                 y += rowHeight + spacing
                 rowHeight = 0
             }

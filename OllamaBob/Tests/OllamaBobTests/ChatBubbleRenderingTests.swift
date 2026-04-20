@@ -77,12 +77,23 @@ final class ChatBubbleRenderingTests: XCTestCase {
         }
     }
 
-    func testShouldRenderAssistantContentLiterallyForMarkdownImages() {
-        XCTAssertTrue(
-            ChatBubbleRendering.shouldRenderAssistantContentLiterally(
-                "![m3-test](/Users/zack/Desktop/m3-test.png)"
-            )
+    func testBlocksPreserveMarkdownAroundImageSyntax() {
+        let blocks = ChatBubbleRendering.blocks(
+            for: """
+            Here is a chart: ![chart](https://example.com/chart.png)
+
+            **Summary:** Sales up 12%.
+            """
         )
+
+        XCTAssertEqual(blocks.count, 1)
+        if case .markdown(let attributed) = blocks[0] {
+            let rendered = String(attributed.characters)
+            XCTAssertTrue(rendered.contains("Here is a chart"))
+            XCTAssertTrue(rendered.contains("Summary"))
+        } else {
+            XCTFail("Expected markdown block")
+        }
     }
 
     func testAvatarBubblePreviewStripsFenceMarkersButKeepsCode() {

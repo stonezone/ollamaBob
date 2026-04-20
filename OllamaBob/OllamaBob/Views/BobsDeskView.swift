@@ -379,6 +379,7 @@ struct BobsDeskView: View {
 
     // F4 — compaction notices (and greeting) rendered inline
     @State private var systemNotices: [SystemNotice] = []
+    @State private var interleavedItemsCache: [InterleavedItem] = []
     @State private var lastSeenToolActivityIndex = 0
 
     // F5 — keyboard focus
@@ -444,6 +445,12 @@ struct BobsDeskView: View {
 
     private var textOpacity: Double {
         min(1.0, settings.chatWindowOpacity + 0.1)
+    }
+
+    private var transcriptRefreshToken: String {
+        let lastMessageToken = session.messages.last.map { "\($0.id)|\($0.content.count)|\($0.timestamp.timeIntervalSince1970)" } ?? "none"
+        let lastNoticeToken = systemNotices.last.map { "\($0.id.uuidString)|\($0.text.count)|\($0.at.timeIntervalSince1970)" } ?? "none"
+        return "\(session.conversationId ?? "nil")|\(session.messages.count)|\(lastMessageToken)|\(systemNotices.count)|\(lastNoticeToken)"
     }
 
     private var uncensoredModeEnabled: Bool {
@@ -514,12 +521,17 @@ struct BobsDeskView: View {
         .task {
             session.loadExistingConversationIfNeeded()
             enforceMasterUncensoredSetting()
+            rebuildInterleavedItems()
         }
         .onChange(of: session.conversationId) {
             enforceMasterUncensoredSetting()
+            rebuildInterleavedItems()
         }
         .onChange(of: settings.uncensoredModeAvailable) {
             enforceMasterUncensoredSetting()
+        }
+        .onChange(of: transcriptRefreshToken) {
+            rebuildInterleavedItems()
         }
         // Sync bubble visibility whenever messages change
         .onChange(of: session.messages.count) {
@@ -1115,7 +1127,7 @@ struct BobsDeskView: View {
             ZStack(alignment: .bottomTrailing) {
                 ScrollView {
                     LazyVStack(spacing: 4) {
-                        ForEach(interleavedItems) { item in
+                        ForEach(interleavedItemsCache) { item in
                             switch item.content {
                             case .message(let msg):
                                 if Self.shouldShowInTranscript(msg) {
@@ -1137,19 +1149,11 @@ struct BobsDeskView: View {
                             autoScrollEnabled = false
                         }
                 )
-                .onChange(of: session.messages.count) {
+                .onChange(of: transcriptRefreshToken) {
                     guard autoScrollEnabled else { return }
                     withAnimation {
-                        if let lastID = interleavedItems.last?.id {
+                        if let lastID = interleavedItemsCache.last?.id {
                             proxy.scrollTo(lastID, anchor: .bottom)
-                        }
-                    }
-                }
-                .onChange(of: systemNotices.count) {
-                    guard autoScrollEnabled else { return }
-                    withAnimation {
-                        if let last = interleavedItems.last?.id {
-                            proxy.scrollTo(last, anchor: .bottom)
                         }
                     }
                 }
@@ -1158,7 +1162,7 @@ struct BobsDeskView: View {
                     Button {
                         autoScrollEnabled = true
                         withAnimation {
-                            if let lastID = interleavedItems.last?.id {
+                            if let lastID = interleavedItemsCache.last?.id {
                                 proxy.scrollTo(lastID, anchor: .bottom)
                             }
                         }
@@ -1218,15 +1222,16 @@ struct BobsDeskView: View {
         let content: ItemContent
     }
 
-    private var interleavedItems: [InterleavedItem] {
+    private func rebuildInterleavedItems() {
         var items: [InterleavedItem] = []
+        items.reserveCapacity(session.messages.count + systemNotices.count)
         for msg in session.messages {
             items.append(InterleavedItem(id: msg.id, timestamp: msg.timestamp, content: .message(msg)))
         }
         for notice in systemNotices {
             items.append(InterleavedItem(id: notice.id.uuidString, timestamp: notice.at, content: .notice(notice)))
         }
-        return items.sorted { $0.timestamp < $1.timestamp }
+        interleavedItemsCache = items.sorted { $0.timestamp < $1.timestamp }
     }
 
     @ViewBuilder
