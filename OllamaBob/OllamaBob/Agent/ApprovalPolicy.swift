@@ -37,6 +37,15 @@ enum ApprovalPolicy {
             let path = arguments["path"] as? String ?? NSHomeDirectory()
             return pathToApproval(path, defaultForAllowed: .none)
 
+        case "phone_call":
+            return .modal
+
+        case "phone_hangup":
+            return .none
+
+        case "phone_status":
+            return .none
+
         case "web_search":
             return .none
 

@@ -11,6 +11,7 @@ The app is live as a single macOS menu-bar product with:
 - V2.9.2 AppleScript/TCC permissions flow and avatar-only mode
 - V2.10 rich presentation
 - Naughty Bob v1 as a feature inside the current app, not a separate app
+- complete first-party tool set (20+ tools across files, shell, git, web, phone, presentation, media, utility, YouTube, clipboard, automation, memory)
 
 Runtime UI note:
 
@@ -144,6 +145,8 @@ Primary files:
 - [NAUGHTYBOB_PLAN.md](/Users/zack/ollamaBob/OllamaBob/NAUGHTYBOB_PLAN.md): uncensored-mode plan/spec
 - [CHAT_REVIEW_REMEDIATION_PLAN.md](/Users/zack/ollamaBob/docs/CHAT_REVIEW_REMEDIATION_PLAN.md): active phased plan for the remaining validated chat/UI review findings
 - [OPERATOR_QA.md](/Users/zack/ollamaBob/docs/OPERATOR_QA.md): manual QA checklist and operator gotchas
+- [JARVIS_BOB_CALLS.md](/Users/zack/ollamaBob/JARVIS_BOB_CALLS.md): Jarvis phone integration implementation plan
+- [CODEX-JARVIS-CALL-HANDOFF.md](/Users/zack/ollamaBob/CODEX-JARVIS-CALL-HANDOFF.md): current Codex session handoff for phone tool tests
 
 ## Verification Commands
 

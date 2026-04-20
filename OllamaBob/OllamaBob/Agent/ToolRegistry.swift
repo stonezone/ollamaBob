@@ -109,6 +109,42 @@ struct ToolRegistry {
         )
         reqs["search_files"] = ["pattern"]
 
+        // phone_call / phone_hangup / phone_status
+        if PhoneTool.isConfigured {
+            defs["phone_call"] = .tool(
+                name: "phone_call",
+                description: "Place a real phone call through the Jarvis phone service daemon. Requires persona, destination, and purpose.",
+                properties: [
+                    "persona": ("string", "Persona label to pass through to the daemon."),
+                    "to": ("string", "Address-book name or E.164 destination."),
+                    "purpose": ("string", "Short reason for the call."),
+                    "max_minutes": ("integer", "Optional call length cap in minutes.")
+                ],
+                required: ["persona", "to", "purpose"]
+            )
+            reqs["phone_call"] = ["persona", "to", "purpose"]
+
+            defs["phone_hangup"] = .tool(
+                name: "phone_hangup",
+                description: "End an active Jarvis phone call by call id.",
+                properties: [
+                    "call_id": ("string", "The callSid returned by phone_call.")
+                ],
+                required: ["call_id"]
+            )
+            reqs["phone_hangup"] = ["call_id"]
+
+            defs["phone_status"] = .tool(
+                name: "phone_status",
+                description: "Fetch the current status for a Jarvis phone call by call id.",
+                properties: [
+                    "call_id": ("string", "The callSid returned by phone_call.")
+                ],
+                required: ["call_id"]
+            )
+            reqs["phone_status"] = ["call_id"]
+        }
+
         // web_search (only if Brave key available)
         if braveKeyAvailable {
             defs["web_search"] = .tool(
@@ -345,6 +381,8 @@ struct ToolRegistry {
         switch name {
         case "present":
             return AppSettings.shared.richPresentationEnabled
+        case "phone_call", "phone_hangup", "phone_status":
+            return PhoneTool.isConfigured
         default:
             return true
         }

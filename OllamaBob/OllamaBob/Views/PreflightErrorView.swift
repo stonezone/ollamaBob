@@ -53,6 +53,14 @@ struct PreflightErrorView: View {
                         note: "Web search will be disabled. Set BRAVE_API_KEY to enable."
                     )
                 }
+
+                if status.jarvisPhoneEnabled && !status.jarvisAPIKeyPresent {
+                    infoRow(
+                        icon: "phone.badge.exclamationmark",
+                        title: "Jarvis phone service key missing",
+                        note: "Phone integration is enabled, but Bob cannot talk to the local Jarvis daemon until you add its API key."
+                    )
+                }
             }
 
             Button("Retry", action: onRetry)

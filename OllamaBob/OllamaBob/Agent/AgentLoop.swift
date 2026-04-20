@@ -352,6 +352,21 @@ final class AgentLoop: ObservableObject {
             }
             return await WebSearchTool.execute(query: query, provider: provider)
 
+        case "phone_call":
+            let persona = args["persona"] as? String ?? ""
+            let to = args["to"] as? String ?? ""
+            let purpose = args["purpose"] as? String ?? ""
+            let maxMinutes = Self.parseInt(args["max_minutes"])
+            return await PhoneTool.execute(persona: persona, to: to, purpose: purpose, maxMinutes: maxMinutes)
+
+        case "phone_hangup":
+            let callID = args["call_id"] as? String ?? ""
+            return await PhoneTool.hangup(callID: callID)
+
+        case "phone_status":
+            let callID = args["call_id"] as? String ?? ""
+            return await PhoneTool.status(callID: callID)
+
         case "present":
             let kind = args["kind"] as? String ?? ""
             let content = args["content"] as? String ?? ""
@@ -1167,6 +1182,17 @@ final class AgentLoop: ObservableObject {
             return "Search files: \(args["pattern"] as? String ?? "unknown")"
         case "web_search":
             return "Web search: \(args["query"] as? String ?? "unknown")"
+        case "phone_call":
+            let persona = args["persona"] as? String ?? "unknown"
+            let to = args["to"] as? String ?? "unknown"
+            let purpose = (args["purpose"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let shortPurpose = String(purpose.prefix(200))
+            let ellipsis = purpose.count > 200 ? "…" : ""
+            return "Bob wants to place a phone call to \(to) as \(persona).\nPurpose: \(shortPurpose)\(ellipsis)"
+        case "phone_hangup":
+            return "Hang up call: \(args["call_id"] as? String ?? "unknown")"
+        case "phone_status":
+            return "Check call status: \(args["call_id"] as? String ?? "unknown")"
         case "present":
             let kind = args["kind"] as? String ?? "?"
             let title = (args["title"] as? String).flatMap { $0.isEmpty ? nil : $0 }

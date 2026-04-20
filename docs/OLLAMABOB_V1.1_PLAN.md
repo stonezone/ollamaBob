@@ -6,6 +6,8 @@
 **Platform:** M1 Mac, 32GB unified memory, macOS 14+
 **Model:** Gemma 4 E4B via Ollama (Qwen 2.5 14B fallback)
 
+> **Current-state note (2026-04-20):** This doc describes the original V1 architecture. The shipped app now runs 20+ first-party tools, includes Naughty Bob v1 (uncensored mode), rich presentation, and Jarvis phone integration. See `AGENTS.md`, `docs/CURRENT_HANDOFF.md`, and `README.md` for the current tool set and feature list.
+
 ---
 
 ## Changes from V1.0

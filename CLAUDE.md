@@ -41,7 +41,7 @@ These are final. Do not change without explicit user approval AND documented evi
 - **Native SwiftUI/AppKit macOS app** — menu bar + floating avatar + chat panel
 - **Direct HTTP to Ollama** at `localhost:11434` using the **native `/api/chat` endpoint** (NOT `/v1/chat/completions`)
 - **Agent loop in Swift** — no external agent runtime
-- **4 tools in v1:** `shell`, `read_file`, `search_files`, `web_search`
+- **Current tool set (20+ first-party tools):** `shell`, `read_file`, `write_file`, `move_file`, `create_directory`, `list_directory`, `search_files`, `git_status`, `git_diff`, `web_search`, `present`, `ocr`, `speak`, `image_convert`, `weather`, `unit_convert`, `youtube_search`, `youtube_download`, `clipboard_read`, `clipboard_write`, `applescript`, `remember`, `list_facts`, `forget`, `phone_call`, `phone_hangup`, `phone_status`
 - **SQLite via GRDB.swift** for persistence
 - **Native NSAlert** for approval dialogs
 - **`stream: false`** for all Ollama requests
@@ -110,9 +110,9 @@ Standard-mode fallback is `qwen3:14b`. Uncensored-mode conversations do **not** 
 
 | Level | Behavior | When |
 |-------|----------|------|
-| `none` | Execute silently, log only | Read-only: ls, cat, find, ping, df, ps, read_file, search_files, web_search |
-| `modal` | NSAlert blocks until user approves or denies | Any write: rm, mv, cp, mkdir, chmod, brew install, kill, etc. |
-| `forbidden` | Never execute, tell model "not allowed" | sudo, su, mkfs, dd, curl\|sh, rm -rf / |
+| `none` | Execute silently, log only | Read-only: `read_file`, `list_directory`, `search_files`, `web_search`, `git_status`, `git_diff`, `weather`, `unit_convert`, `ocr`, `speak`, `clipboard_read`, `remember`, `list_facts`, `phone_status` |
+| `modal` | NSAlert blocks until user approves or denies | Writes/moves: `write_file`, `move_file`, `create_directory`, `image_convert`, `clipboard_write`, `forget`, `applescript`, `phone_call`, `youtube_download` |
+| `forbidden` | Never execute, tell model "not allowed" | `sudo`, `su`, `mkfs`, `dd`, `curl\|sh`, `rm -rf /`, `phone_call` in uncensored mode |
 
 The approval classifier also checks a **path policy**:
 - `~/`, `/tmp`, `/var/tmp`, `/Applications`, `/usr/local` — allowed

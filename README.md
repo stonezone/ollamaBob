@@ -41,9 +41,18 @@ Optional for uncensored-mode conversations:
 ollama pull huihui_ai/qwen3-abliterated:8b
 ```
 
-Optional web search:
+Optional external services:
 
-- set `BRAVE_API_KEY` in the repo-root `.env`
+- `BRAVE_API_KEY` — enables the `web_search` tool
+- `JARVIS_API_KEY` — enables the Jarvis phone call tools (`phone_call`, `phone_hangup`, `phone_status`)
+
+External CLI dependencies (install separately via Homebrew):
+
+```bash
+brew install yt-dlp   # required for youtube_search / youtube_download
+```
+
+Built-in tools that use macOS native binaries (`sips`, `units`, `osascript`) require no extra installs.
 
 ## Build And Run
 
@@ -61,6 +70,25 @@ Useful commands:
 swift run OllamaBob
 ./build.sh
 ```
+
+## Tools
+
+Bob ships with 20+ first-party tools across these categories:
+
+| Category | Tools |
+|----------|-------|
+| Files | `read_file`, `write_file`, `move_file`, `create_directory`, `list_directory`, `search_files` |
+| Shell | `shell` (approval depends on command) |
+| Git | `git_status`, `git_diff` |
+| Web | `web_search` |
+| Phone | `phone_call`, `phone_hangup`, `phone_status` *(gated by Jarvis settings)* |
+| Presentation | `present` (html, url, file) |
+| Media | `ocr`, `speak`, `image_convert` |
+| Utility | `weather`, `unit_convert` |
+| YouTube | `youtube_search`, `youtube_download` *(requires `yt-dlp` on PATH)* |
+| Clipboard | `clipboard_read`, `clipboard_write` |
+| Automation | `applescript` |
+| Memory | `remember`, `list_facts`, `forget` |
 
 ## Enabling Uncensored Bob
 

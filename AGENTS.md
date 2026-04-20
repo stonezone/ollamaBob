@@ -66,7 +66,7 @@ ollamaBob/
 ### Source Folder Responsibilities
 
 - **`Agent/`** — `AgentLoop` (core turn processing), `ApprovalPolicy`, `PathPolicy`, `ToolRegistry`, `OllamaClient`, `Preflight`, `ConversationCompactor`, `OutputLimits`, `UntrustedWrapper`.
-- **`Tools/`** — Individual tool implementations (`ShellTool`, `FileReadTool`, `FileWriteTool`, `DirectoryListTool`, `DirectoryCreateTool`, `FileMoveTool`, `FileSearchTool`, `GitStatusTool`, `GitDiffTool`, `WebSearchTool`, `PresentTool`, `AppleScriptTool`, `ClipboardTool`, `OCRTool`, `SayTool`, `WeatherTool`, `UnitsTool`, `SipsTool`, `YouTubeTool`), plus `ToolCatalog`, `ToolRuntime`, `ToolOutputStore`, `BuiltinToolsCatalog`, `SearchProvider`.
+- **`Tools/`** — Individual tool implementations (`ShellTool`, `FileReadTool`, `FileWriteTool`, `DirectoryListTool`, `DirectoryCreateTool`, `FileMoveTool`, `FileSearchTool`, `GitStatusTool`, `GitDiffTool`, `WebSearchTool`, `PresentTool`, `AppleScriptTool`, `ClipboardTool`, `OCRTool`, `SayTool`, `WeatherTool`, `UnitsTool`, `SipsTool`, `YouTubeTool`, `PhoneTool`), plus `ToolCatalog`, `ToolRuntime`, `ToolOutputStore`, `BuiltinToolsCatalog`, `SearchProvider`.
 - **`Views/`** — `BobsDeskView` (live chat surface), `ChatPanel`, `ChatBubble`, `ConversationManagerView`, `PreferencesView`, `OnboardingView`, `ToolActivityView`, `RichHTMLView`, `ApprovalAlert`, `ArtifactChip`, `ArtifactDetector`, `MemoryIOPanel`, `PreflightErrorView`, `PersonaQuickSwapMenu`, `ConversationSearchBar`.
 - **`Models/`** — `ChatSessionController`, `ConversationStoreController`, `AppSettings`, `Conversation`, `Message`, `ToolCall`, `ToolResult`, `ApprovalLevel`, `AvatarStore`, `AvatarPack`, `RichHTMLState`, `JSONValue`, `ProcessMemorySampler`.
 - **`Services/`** — `PresentationService`, `AutomationProbe`, `PromptComposerMemoryStore`.
@@ -140,8 +140,8 @@ Store secrets in a gitignored `.env` at the repo root. Use `.env.example` as the
 ### Approval Policy
 
 Three levels (defined in `ApprovalLevel.swift`):
-- `none` — execute silently (read-only tools: `read_file`, `list_directory`, `search_files`, `web_search`, `git_status`, `git_diff`, etc.).
-- `modal` — show NSAlert blocking until user approves or denies (writes, moves, AppleScript, clipboard write, etc.).
+- `none` — execute silently (read-only tools: `read_file`, `list_directory`, `search_files`, `web_search`, `git_status`, `git_diff`, `weather`, `unit_convert`, `ocr`, `speak`, `clipboard_read`, `remember`, `list_facts`, `phone_status`, etc.).
+- `modal` — show NSAlert blocking until user approves or denies (`write_file`, `move_file`, `create_directory`, `image_convert`, `clipboard_write`, `forget`, `applescript`, `phone_call`, `youtube_download`, etc.).
 - `forbidden` — never execute, return "not allowed" to the model (`sudo`, `rm -rf /`, download-and-execute chains, etc.).
 
 Path policy (`PathPolicy.swift`) adds filesystem restrictions:

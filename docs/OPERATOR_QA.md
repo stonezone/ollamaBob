@@ -23,6 +23,14 @@
    - compaction is off
    - fallback to the normal model stack is not allowed
 
+### Tools
+
+1. Preferences -> Tools shows the full built-in catalog. Verify expected categories: Files, Shell, Git, Web, Phone, Presentation, Media, Utility, YouTube, Clipboard, Automation, Memory.
+2. `youtube_search` and `youtube_download` require `yt-dlp` on PATH. If missing, Bob returns "yt-dlp not found on PATH. Install with: brew install yt-dlp".
+3. `phone_call`, `phone_hangup`, `phone_status` only appear when Jarvis phone is enabled in Preferences and a `JARVIS_API_KEY` is set.
+4. `web_search` only appears when `BRAVE_API_KEY` is configured.
+5. Read-only tools (green dot) should run silently. Write/ASK tools (orange dot) should show a modal approval dialog.
+
 ## Operator Gotchas
 
 ### macOS File Access Prompts

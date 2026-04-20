@@ -4,6 +4,8 @@ struct PreflightStatus {
     var ollamaReachable: Bool = false
     var modelInstalled: Bool = false
     var braveKeyPresent: Bool = false
+    var jarvisPhoneEnabled: Bool = false
+    var jarvisAPIKeyPresent: Bool = false
     var databaseWritable: Bool = false
     var sandboxDisabled: Bool = false
 
@@ -21,6 +23,8 @@ enum Preflight {
             await OllamaClient().installedModels()
         },
         braveKeyPresent: Bool = !AppConfig.braveAPIKey.isEmpty,
+        jarvisPhoneEnabled: Bool = UserDefaults.standard.bool(forKey: "jarvisPhoneEnabled"),
+        jarvisAPIKeyPresent: Bool = !(UserDefaults.standard.string(forKey: "jarvisAPIKey") ?? "").isEmpty,
         databaseWritable: () -> Bool = {
             DatabaseManager.shared.canWrite()
         },
@@ -43,6 +47,11 @@ enum Preflight {
 
         // 3. Brave API key present (optional)
         status.braveKeyPresent = braveKeyPresent
+
+        // 3b. Jarvis phone service settings are optional, but a missing key
+        // should surface as a non-fatal warning when the feature is enabled.
+        status.jarvisPhoneEnabled = jarvisPhoneEnabled
+        status.jarvisAPIKeyPresent = jarvisAPIKeyPresent
 
         // 4. Database writable (DatabaseManager is already initialized by AppState)
         status.databaseWritable = databaseWritable()

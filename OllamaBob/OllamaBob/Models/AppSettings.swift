@@ -8,6 +8,8 @@ final class AppSettings: ObservableObject {
 
     static let shared = AppSettings()
     static let defaultUncensoredModelName = "huihui_ai/qwen3-abliterated:8b"
+    static let jarvisPhoneEnabledKey = "jarvisPhoneEnabled"
+    static let jarvisAPIKeyKey = "jarvisAPIKey"
 
     @Published var showBob: Bool {
         didSet { UserDefaults.standard.set(showBob, forKey: Keys.showBob) }
@@ -104,6 +106,19 @@ final class AppSettings: ObservableObject {
         didSet { UserDefaults.standard.set(uncensoredModelName, forKey: Keys.uncensoredModelName) }
     }
 
+    /// Master switch for the Jarvis phone service integration. When off,
+    /// Bob hides the phone settings warning and the future phone tools stay
+    /// out of the registry.
+    @Published var jarvisPhoneEnabled: Bool {
+        didSet { UserDefaults.standard.set(jarvisPhoneEnabled, forKey: Self.jarvisPhoneEnabledKey) }
+    }
+
+    /// Shared secret for the local Jarvis daemon. Stored in UserDefaults to
+    /// match the existing Brave API key pattern.
+    @Published var jarvisAPIKey: String {
+        didSet { UserDefaults.standard.set(jarvisAPIKey, forKey: Self.jarvisAPIKeyKey) }
+    }
+
     private enum Keys {
         static let showBob               = "showBob"
         static let chatWindowOpacity     = "chatWindowOpacity"
@@ -166,6 +181,12 @@ final class AppSettings: ObservableObject {
         if defaults.object(forKey: Keys.uncensoredModelName) == nil {
             defaults.set(Self.defaultUncensoredModelName, forKey: Keys.uncensoredModelName)
         }
+        if defaults.object(forKey: Self.jarvisPhoneEnabledKey) == nil {
+            defaults.set(false, forKey: Self.jarvisPhoneEnabledKey)
+        }
+        if defaults.object(forKey: Self.jarvisAPIKeyKey) == nil {
+            defaults.set("", forKey: Self.jarvisAPIKeyKey)
+        }
 
         self.showBob               = defaults.bool(forKey: Keys.showBob)
         self.chatWindowOpacity     = defaults.double(forKey: Keys.chatWindowOpacity)
@@ -181,6 +202,8 @@ final class AppSettings: ObservableObject {
         self.richPresentationArtifactChipsEnabled = defaults.bool(forKey: Keys.richPresentationArtifactChipsEnabled)
         self.uncensoredModeAvailable = defaults.bool(forKey: Keys.uncensoredModeAvailable)
         self.uncensoredModelName = defaults.string(forKey: Keys.uncensoredModelName) ?? Self.defaultUncensoredModelName
+        self.jarvisPhoneEnabled = defaults.bool(forKey: Self.jarvisPhoneEnabledKey)
+        self.jarvisAPIKey = defaults.string(forKey: Self.jarvisAPIKeyKey) ?? ""
 
         let storedCtx = defaults.integer(forKey: Keys.numCtx)
         self.numCtx = AppConfig.numCtxAllowed.contains(storedCtx) ? storedCtx : AppConfig.numCtx

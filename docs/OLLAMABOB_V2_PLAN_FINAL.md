@@ -2,6 +2,8 @@
 
 **Status:** Draft locked for user review. Supersedes `OLLAMABOB_V2_PLAN_DRAFT.md`.
 **Date:** 2026-04-09
+
+> **Current-state note (2026-04-20):** This doc describes the original V2 plan. The shipped app has since added the full V2.9 Phase A native tool set (OCR, speak, weather, units, sips, yt-dlp), V2.10 rich presentation, and Naughty Bob v1 (uncensored mode). Phone tools (`phone_call`, `phone_hangup`, `phone_status`) are in active development. See `AGENTS.md`, `docs/CURRENT_HANDOFF.md`, and `README.md` for the current feature list.
 **Reviewers consulted:** fresh Opus (blind peer review), skeptical Sonnet (cold review), vibe_check, Context7 (GRDB.swift + sqlite-vec docs).
 
 ---

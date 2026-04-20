@@ -44,6 +44,11 @@ enum BuiltinToolsCatalog {
         // MARK: Web
         Entry(name: "web_search", category: "web", posture: .none, description: "Brave web search, top 5 results"),
 
+        // MARK: Phone
+        Entry(name: "phone_call", category: "phone", posture: .modal, description: "Place a real phone call through the Jarvis phone service"),
+        Entry(name: "phone_hangup", category: "phone", posture: .none, description: "End an active Jarvis phone call"),
+        Entry(name: "phone_status", category: "phone", posture: .none, description: "Check the current status of a Jarvis phone call"),
+
         // MARK: Presentation
         Entry(name: "present", category: "presentation", posture: .none, description: "Open rich HTML, URLs, or local files in the user's apps"),
 
@@ -79,7 +84,7 @@ enum BuiltinToolsCatalog {
 
     /// Rendering order for categories in the Preferences UI.
     static let categoryOrder: [String] = [
-        "files", "shell", "git", "web", "presentation", "media", "utility",
+        "files", "shell", "git", "web", "phone", "presentation", "media", "utility",
         "youtube", "clipboard", "automation", "memory", "meta"
     ]
 

@@ -24,6 +24,39 @@
       "commonFlags": ["-o json (convert to JSON)", "-i (in-place edit)", "-P (pretty print)"]
     },
     {
+      "name": "phone_call",
+      "category": "phone",
+      "tier": 2,
+      "beta": false,
+      "bundled": true,
+      "shortDescription": "Place a real phone call through the Jarvis phone service",
+      "whenToUse": "User asks Bob to place a phone call and provides a destination plus a purpose",
+      "example": "phone_call(persona: 'jarvis', to: 'Glennel', purpose: 'The pickup is at 5', max_minutes: 10)",
+      "commonFlags": []
+    },
+    {
+      "name": "phone_hangup",
+      "category": "phone",
+      "tier": 2,
+      "beta": false,
+      "bundled": true,
+      "shortDescription": "End an active Jarvis phone call",
+      "whenToUse": "User asks Bob to hang up an active call by call id",
+      "example": "phone_hangup(call_id: 'CA1234567890')",
+      "commonFlags": []
+    },
+    {
+      "name": "phone_status",
+      "category": "phone",
+      "tier": 2,
+      "beta": false,
+      "bundled": true,
+      "shortDescription": "Check the current status of a Jarvis phone call",
+      "whenToUse": "User asks for the current state of a call by call id",
+      "example": "phone_status(call_id: 'CA1234567890')",
+      "commonFlags": []
+    },
+    {
       "name": "mlr",
       "category": "data",
       "tier": 2,

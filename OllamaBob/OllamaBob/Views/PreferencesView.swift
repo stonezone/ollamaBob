@@ -21,6 +21,7 @@ struct PreferencesView: View {
     @State private var factsError: String?
     @State private var editingFactID: String?
     @State private var editingContent: String = ""
+    @State private var jarvisHealthState = JarvisHealthState()
 
     // MARK: Body
 
@@ -96,6 +97,13 @@ struct PreferencesView: View {
                 .padding(.top, 12)
 
             uncensoredModeSection
+
+            Divider()
+                .background(PreferencesView.phosphorGreen.opacity(0.2))
+                .padding(.horizontal, 24)
+                .padding(.top, 12)
+
+            jarvisPhoneServiceSection
         }
     }
 
@@ -394,6 +402,105 @@ struct PreferencesView: View {
                     dimmed: !settings.richPresentationEnabled
                 )
             }
+        }
+    }
+
+    private var jarvisPhoneServiceSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("JARVIS PHONE SERVICE")
+                    .font(.system(.caption, design: .monospaced).weight(.bold))
+                    .foregroundColor(PreferencesView.phosphorGreen)
+                Text("Connect Bob to the local Jarvis daemon for phone actions. The integration stays off until you enable it.")
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundColor(PreferencesView.textGrey)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .lineSpacing(2)
+            }
+            .padding(.horizontal, 24)
+            .padding(.top, 12)
+
+            HStack(alignment: .center, spacing: 16) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Enable Jarvis phone service")
+                        .font(.system(.caption, design: .monospaced).weight(.medium))
+                        .foregroundColor(.white)
+                    Text("Bob will expose Jarvis-related settings now and phone tools later.")
+                        .font(.system(.caption2, design: .monospaced))
+                        .foregroundColor(PreferencesView.textGrey)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer()
+                Toggle("", isOn: $settings.jarvisPhoneEnabled)
+                    .toggleStyle(.switch)
+                    .tint(.orange)
+                    .labelsHidden()
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 10)
+            .background(PreferencesView.bgPanel)
+
+            VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Jarvis API key")
+                        .font(.system(.caption, design: .monospaced).weight(.medium))
+                        .foregroundColor(.white)
+                    Text("Shared secret sent to the local daemon as X-Jarvis-Key. Stored locally in UserDefaults.")
+                        .font(.system(.caption2, design: .monospaced))
+                        .foregroundColor(PreferencesView.textGrey)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                SecureField("API key", text: $settings.jarvisAPIKey)
+                    .textFieldStyle(.plain)
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .background(
+                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            .fill(PreferencesView.bgBlack)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            .stroke(PreferencesView.phosphorGreen.opacity(0.35), lineWidth: 1)
+                    )
+
+                HStack(spacing: 8) {
+                    Button(jarvisHealthState.isChecking ? "Checking…" : "Test connection") {
+                        Task { await testJarvisConnection() }
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(.caption, design: .monospaced).weight(.bold))
+                    .foregroundColor(.black)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 5)
+                    .background(
+                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            .fill(PreferencesView.phosphorGreen.opacity(jarvisHealthState.isChecking ? 0.5 : 0.95))
+                    )
+                    .disabled(jarvisHealthState.isChecking)
+
+                    if let message = jarvisHealthState.message {
+                        HStack(spacing: 6) {
+                            Image(systemName: jarvisHealthState.isError ? "xmark.circle.fill" : "checkmark.circle.fill")
+                                .foregroundColor(jarvisHealthState.isError ? .red : PreferencesView.phosphorGreen)
+                            Text(message)
+                                .font(.system(.caption, design: .monospaced))
+                                .foregroundColor(jarvisHealthState.isError ? Color(red: 1.0, green: 0.45, blue: 0.35) : PreferencesView.textGrey)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+
+                Text("Health checks read GET \(AppConfig.jarvisBaseURL)/health and do not require the API key.")
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundColor(PreferencesView.textGrey)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 14)
+            .background(PreferencesView.bgPanel)
         }
     }
 
@@ -1370,4 +1477,89 @@ struct PreferencesView: View {
         .padding(.horizontal, 24)
         .padding(.vertical, 10)
     }
+
+    @MainActor
+    private func testJarvisConnection() async {
+        jarvisHealthState = JarvisHealthState(isChecking: true, isError: false, message: nil)
+
+        defer {
+            jarvisHealthState.isChecking = false
+        }
+
+        guard let url = URL(string: "\(AppConfig.jarvisBaseURL)/health") else {
+            jarvisHealthState = JarvisHealthState(isChecking: false, isError: true, message: "Invalid Jarvis URL")
+            return
+        }
+
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = 10
+        configuration.timeoutIntervalForResource = 10
+        let session = URLSession(configuration: configuration)
+
+        do {
+            let (data, response) = try await session.data(from: url)
+            guard let httpResponse = response as? HTTPURLResponse else {
+                jarvisHealthState = JarvisHealthState(isChecking: false, isError: true, message: "Jarvis returned an invalid response")
+                return
+            }
+
+            guard (200...299).contains(httpResponse.statusCode) else {
+                let body = String(data: data, encoding: .utf8)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    ?? ""
+                let suffix = body.isEmpty ? "" : ": \(body.prefix(120))"
+                jarvisHealthState = JarvisHealthState(
+                    isChecking: false,
+                    isError: true,
+                    message: "Jarvis error \(httpResponse.statusCode)\(suffix)"
+                )
+                return
+            }
+
+            let version = Self.jarvisDaemonVersion(from: data)
+            jarvisHealthState = JarvisHealthState(
+                isChecking: false,
+                isError: false,
+                message: version.map { "Healthy • v\($0)" } ?? "Healthy"
+            )
+        } catch {
+            jarvisHealthState = JarvisHealthState(
+                isChecking: false,
+                isError: true,
+                message: "Jarvis unreachable at \(AppConfig.jarvisBaseURL)"
+            )
+        }
+    }
+
+    private static func jarvisDaemonVersion(from data: Data) -> String? {
+        if let object = try? JSONSerialization.jsonObject(with: data, options: []),
+           let dictionary = object as? [String: Any] {
+            for key in ["version", "daemonVersion", "serviceVersion", "buildVersion"] {
+                if let value = dictionary[key] as? String, !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    return value.trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+            }
+
+            if let nested = dictionary["data"] as? [String: Any] {
+                for key in ["version", "daemonVersion", "serviceVersion", "buildVersion"] {
+                    if let value = nested[key] as? String, !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        return value.trimmingCharacters(in: .whitespacesAndNewlines)
+                    }
+                }
+            }
+        }
+
+        if let raw = String(data: data, encoding: .utf8) {
+            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        }
+
+        return nil
+    }
+}
+
+private struct JarvisHealthState {
+    var isChecking = false
+    var isError = false
+    var message: String?
 }

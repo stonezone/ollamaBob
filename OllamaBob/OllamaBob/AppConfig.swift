@@ -15,6 +15,10 @@ struct AppConfig {
     static let ollamaBaseURL = "http://localhost:11434"
     static let ollamaChatEndpoint = "/api/chat"
     static let ollamaTagsEndpoint = "/api/tags"
+
+    // MARK: - Jarvis Phone Service
+    static let jarvisBaseURL = "http://127.0.0.1:3100"
+
     /// Default context window size. Raised from 8192 to 32768 after Phase 0
     /// Investigation A proved zero per-turn latency penalty at idle on both
     /// gemma4:e4b and qwen3:14b (baseline TTFT ~250ms flat across 8K/16K/32K).

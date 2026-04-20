@@ -23,6 +23,12 @@ enum BobOperatingRules {
             "- list_facts: List all facts you remember about the user"
         ]
 
+        if PhoneTool.isConfigured {
+            toolLines.insert("- phone_call: Place a real phone call through the Jarvis phone service daemon", at: 5)
+            toolLines.insert("- phone_hangup: End an active Jarvis phone call by call id", at: 6)
+            toolLines.insert("- phone_status: Check the current status of a Jarvis phone call by call id", at: 7)
+        }
+
         var richPresentationRules = ""
         if AppSettings.shared.richPresentationEnabled {
             toolLines.insert("- present: Show rich HTML, open a URL in the browser, or open a local file in its default app", at: 5)
@@ -41,6 +47,18 @@ enum BobOperatingRules {
                 """
         }
 
+        var phoneRules = ""
+        if PhoneTool.isConfigured {
+            phoneRules = """
+
+                Phone calls:
+                - If the user asks you to make a phone call, use `phone_call`.
+                - Always include a clear purpose when placing a call.
+                - If the destination is ambiguous, ask the user to confirm it before calling.
+                - Use `phone_status` to report the call state and `phone_hangup` to end an active call.
+                """
+        }
+
         return """
             You have access to these tools:
             \(toolLines.joined(separator: "\n"))
@@ -51,6 +69,7 @@ enum BobOperatingRules {
             - Do NOT auto-remember things the user didn't ask you to remember. Only store facts when the user explicitly tells you to.
             - If a USER PROFILE block appears above, those are facts from previous sessions — use them to personalize your answers.
             \(richPresentationRules)
+            \(phoneRules)
 
             Choosing an external tool:
             - The user's Mac has extra CLI tools installed beyond the basics (jq, rg, fd, ffmpeg, yt-dlp, pdftotext, etc. — the exact set varies per machine). You can use any of them via `shell`.
