@@ -25,6 +25,19 @@ Before implementing the shared-session recommendation, decide whether [ChatPanel
 
 This decision gates whether the “two controllers” finding is a shipped-app bug or only maintenance debt.
 
+### Phase 0 Decision
+
+Resolved on 2026-04-20:
+
+- `ChatPanel` is not wired into the shipped app scene graph.
+- The active chat window in [OllamaBobApp.swift](/Users/zack/ollamaBob/OllamaBob/OllamaBob/OllamaBobApp.swift) mounts `BobsDeskView`, not `ChatPanel`.
+- Shared-session refactoring for `ChatPanel` is therefore deferred as dead-surface maintenance work, not included in the immediate shipped-app remediation path.
+
+Immediate consequence:
+
+- `V-1` is de-scoped from the current shipped-path fixes.
+- Phase 1 will target `BobsDeskView` + `ChatSessionController` + `AgentLoop` correctness issues only.
+
 ## Phase 1 — Conversation-Scoped Correctness
 
 Target findings:

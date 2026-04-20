@@ -12,6 +12,11 @@ The app is live as a single macOS menu-bar product with:
 - V2.10 rich presentation
 - Naughty Bob v1 as a feature inside the current app, not a separate app
 
+Runtime UI note:
+
+- the shipped chat surface is `BobsDeskView`
+- `ChatPanel.swift` currently exists in the repo but is not wired into the live app scene graph
+
 Latest polish after the main release commits:
 
 - `open ~/Desktop/...` / `open ~/Documents/...` fallback failures now normalize to a macOS-permission-prompt explanation instead of a generic shell-timeout sentence
