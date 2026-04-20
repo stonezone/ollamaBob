@@ -90,6 +90,27 @@ final class MultimediaBobTests: XCTestCase {
         XCTAssertTrue(html.contains("<p>Hello</p>"))
     }
 
+    func testPresentationServiceReopensStoredRichHTMLSnapshots() throws {
+        let state = RichHTMLState()
+        let service = PresentationService(workspace: FakeWorkspace(), richHTMLState: state)
+        var openCount = 0
+        service.registerOpenRichHTMLWindow { openCount += 1 }
+
+        let original = AppSettings.shared.richPresentationEnabled
+        defer { AppSettings.shared.richPresentationEnabled = original }
+        AppSettings.shared.richPresentationEnabled = true
+
+        let document = PresentationService.injectDocumentDefaults(into: "<p>Saved</p>", allowRemoteResources: false)
+        let presentationID = state.storePresentation(title: "Saved View", html: document)
+
+        let result = try service.reopenHTML(id: presentationID)
+
+        XCTAssertEqual(result, "Reopened rich view: Saved View")
+        XCTAssertEqual(state.title, "Saved View")
+        XCTAssertEqual(state.html, document)
+        XCTAssertEqual(openCount, 1)
+    }
+
     func testPresentationServiceRejectsUnsupportedURLSchemes() {
         let service = PresentationService(workspace: FakeWorkspace(), richHTMLState: RichHTMLState())
 

@@ -1131,7 +1131,12 @@ struct BobsDeskView: View {
                             switch item.content {
                             case .message(let msg):
                                 if Self.shouldShowInTranscript(msg) {
-                                    ChatBubble(message: msg)
+                                    ChatBubble(
+                                        message: msg,
+                                        chatWindowOpacity: settings.chatWindowOpacity,
+                                        richPresentationEnabled: settings.richPresentationEnabled,
+                                        richPresentationArtifactChipsEnabled: settings.richPresentationArtifactChipsEnabled
+                                    )
                                         .id(msg.id)
                                 }
                             case .notice(let notice):
@@ -1239,7 +1244,7 @@ struct BobsDeskView: View {
         if notice.isGreeting {
             // Greeting renders as a speech-bubble-style assistant message row
             HStack {
-                Spacer()
+                Spacer(minLength: 0)
                 Text(notice.text)
                     .font(.system(size: 13))
                     .foregroundColor(.white.opacity(0.85 * textOpacity))
@@ -1249,7 +1254,7 @@ struct BobsDeskView: View {
                         RoundedRectangle(cornerRadius: 10, style: .continuous)
                             .fill(Self.bgPanel.opacity(surfaceOpacity))
                     )
-                    .padding(.trailing, 8)
+                Spacer(minLength: 0)
             }
         } else {
             // Compaction notice: centered dim italic line

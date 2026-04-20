@@ -118,6 +118,21 @@ final class PresentationService: ObservableObject {
     }
 
     @discardableResult
+    func reopenHTML(id: String) throws -> String {
+        guard AppSettings.shared.richPresentationEnabled else {
+            throw PresentationError.richPresentationDisabled
+        }
+        guard let openRichHTMLWindowHandler else {
+            throw PresentationError.richWindowUnavailable
+        }
+        guard richHTMLState.activatePresentation(id: id) else {
+            throw PresentationError.openFailed(id)
+        }
+        openRichHTMLWindowHandler()
+        return "Reopened rich view: \(richHTMLState.title)"
+    }
+
+    @discardableResult
     func present(kind: PresentationKind, content: String, title: String? = nil) throws -> String {
         guard AppSettings.shared.richPresentationEnabled else {
             throw PresentationError.richPresentationDisabled
@@ -151,10 +166,12 @@ final class PresentationService: ObservableObject {
         )
 
         richHTMLState.title = effectiveTitle
-        richHTMLState.html = Self.injectDocumentDefaults(
+        let document = Self.injectDocumentDefaults(
             into: sanitized,
             allowRemoteResources: AppSettings.shared.richPresentationRemoteResourcesEnabled
         )
+        richHTMLState.html = document
+        _ = richHTMLState.storePresentation(title: effectiveTitle, html: document)
         openRichHTMLWindowHandler()
         return "Opened rich view: \(effectiveTitle)"
     }
@@ -195,8 +212,11 @@ final class PresentationService: ObservableObject {
             #"(?is)<script\b[^>]*>.*?</script>"#,
             #"(?is)<meta\b[^>]*http-equiv\s*=\s*['"]?refresh['"]?[^>]*>"#,
             #"(?is)\son[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)"#,
+            #"(?is)[/\s](?:on[a-z]+)\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)"#,
             #"(?is)\s(?:href|src|data|poster)\s*=\s*(['"])\s*(?:javascript|vbscript):.*?\1"#,
-            #"(?is)\s(?:href|src|data|poster)\s*=\s*(?:javascript|vbscript):[^\s>]+"#
+            #"(?is)\s(?:href|src|data|poster)\s*=\s*(?:javascript|vbscript):[^\s>]+"#,
+            #"(?is)\s(?:href|src|data|poster)\s*=\s*(['"])\s*data:(?!image/).*?\1"#,
+            #"(?is)\s(?:href|src|data|poster)\s*=\s*data:(?!image/)[^\s>]+"#
         ]
         for pattern in alwaysStripPatterns {
             sanitized = stripMatches(pattern: pattern, in: sanitized)
@@ -213,7 +233,9 @@ final class PresentationService: ObservableObject {
             #"(?is)<video\b[^>]*\bsrc\s*=\s*['"]https?://[^'"]+['"][^>]*>.*?</video>"#,
             #"(?is)<object\b[^>]*\bdata\s*=\s*['"]https?://[^'"]+['"][^>]*>.*?</object>"#,
             #"(?is)<embed\b[^>]*\bsrc\s*=\s*['"]https?://[^'"]+['"][^>]*>"#,
+            #"(?is)<(?:img|link|source|iframe|audio|video|object|embed)\b[^>]*\b(?:src|href|data)\s*=\s*https?://[^\s>]+[^>]*>"#,
             #"(?is)\ssrcset\s*=\s*['"][^'"]*https?://[^'"]*['"]"#,
+            #"(?is)\ssrcset\s*=\s*https?://[^\s>]+"#,
             #"(?is)<style\b[^>]*>.*?(?:@import\s+['"]https?://|url\(\s*['"]?https?://).*?</style>"#
         ]
         for pattern in remotePatterns {

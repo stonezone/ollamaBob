@@ -33,7 +33,12 @@ struct ChatPanel: View {
                     LazyVStack(spacing: 4) {
                         ForEach(session.messages) { msg in
                             if msg.role != .system {
-                                ChatBubble(message: msg)
+                                ChatBubble(
+                                    message: msg,
+                                    chatWindowOpacity: settings.chatWindowOpacity,
+                                    richPresentationEnabled: settings.richPresentationEnabled,
+                                    richPresentationArtifactChipsEnabled: settings.richPresentationArtifactChipsEnabled
+                                )
                                     .id(msg.id)
                             }
                         }

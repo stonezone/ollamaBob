@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 struct DetectedArtifact: Identifiable, Equatable {
     let kind: PresentationKind
@@ -8,12 +9,31 @@ struct DetectedArtifact: Identifiable, Equatable {
     let systemImage: String
 
     var id: String {
-        "\(kind.rawValue)|\(content)|\(title ?? "")"
+        "\(kind.rawValue)\u{001F}\(content)\u{001F}\(title ?? "")".sha256HexDigest()
     }
 }
 
 enum ArtifactDetector {
+    private final class ArtifactArrayBox: NSObject {
+        let artifacts: [DetectedArtifact]
+
+        init(_ artifacts: [DetectedArtifact]) {
+            self.artifacts = artifacts
+        }
+    }
+
+    private static let detectionCache: NSCache<NSString, ArtifactArrayBox> = {
+        let cache = NSCache<NSString, ArtifactArrayBox>()
+        cache.countLimit = 512
+        return cache
+    }()
+
     static func detect(in text: String) -> [DetectedArtifact] {
+        let cacheKey = text as NSString
+        if let cached = detectionCache.object(forKey: cacheKey) {
+            return cached.artifacts
+        }
+
         let masked = maskingCode(in: text)
 
         let markdownImageMatches = matches(regex: markdownImageRegex, in: masked)
@@ -87,6 +107,7 @@ enum ArtifactDetector {
             }
         }
 
+        detectionCache.setObject(ArtifactArrayBox(artifacts), forKey: cacheKey)
         return artifacts
     }
 
@@ -225,5 +246,12 @@ enum ArtifactDetector {
     private static func isImagePath(_ path: String) -> Bool {
         let ext = URL(fileURLWithPath: path).pathExtension.lowercased()
         return ["png", "jpg", "jpeg", "gif", "webp", "heic", "tiff", "bmp"].contains(ext)
+    }
+}
+
+private extension String {
+    func sha256HexDigest() -> String {
+        let digest = SHA256.hash(data: Data(utf8))
+        return digest.map { String(format: "%02x", $0) }.joined()
     }
 }

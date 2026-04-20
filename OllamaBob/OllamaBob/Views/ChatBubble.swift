@@ -228,7 +228,9 @@ enum ChatBubbleRendering {
 
 struct ChatBubble: View {
     let message: ChatMessage
-    @ObservedObject private var settings = AppSettings.shared
+    let chatWindowOpacity: Double
+    let richPresentationEnabled: Bool
+    let richPresentationArtifactChipsEnabled: Bool
 
     @State private var isToolPanelExpanded = false
     @State private var isThinkingPanelExpanded = false
@@ -360,7 +362,7 @@ struct ChatBubble: View {
             }
             .foregroundColor(.secondary.opacity(textOpacity))
 
-            transcriptPanel(title: nil, content: sanitizedToolContent, isExpanded: $isToolPanelExpanded)
+            transcriptPanel(title: nil, content: displayableToolContent, isExpanded: $isToolPanelExpanded)
         }
     }
 
@@ -374,11 +376,11 @@ struct ChatBubble: View {
     }
 
     private var surfaceOpacity: Double {
-        settings.chatWindowOpacity
+        chatWindowOpacity
     }
 
     private var textOpacity: Double {
-        min(1.0, settings.chatWindowOpacity + 0.1)
+        min(1.0, chatWindowOpacity + 0.1)
     }
 
     private var sanitizedThinking: String? {
@@ -388,12 +390,17 @@ struct ChatBubble: View {
 
     private var resolvedArtifacts: [DetectedArtifact] {
         guard message.role == .assistant,
-              settings.richPresentationEnabled,
-              settings.richPresentationArtifactChipsEnabled else {
+              richPresentationEnabled,
+              richPresentationArtifactChipsEnabled else {
             return []
         }
 
-        return ArtifactDetector.detect(in: message.content)
+        var artifacts = ArtifactDetector.detect(in: message.content)
+        if let htmlArtifact = synthesizedHTMLArtifact,
+           artifacts.contains(where: { $0.id == htmlArtifact.id }) == false {
+            artifacts.insert(htmlArtifact, at: 0)
+        }
+        return artifacts
     }
 
     private func shouldShowArtifactChips(_ artifacts: [DetectedArtifact]) -> Bool {
@@ -410,7 +417,7 @@ struct ChatBubble: View {
         }
     }
 
-    private var sanitizedToolContent: String {
+    private var displayableToolContent: String {
         message.content
             .replacingOccurrences(of: "<untrusted>", with: "")
             .replacingOccurrences(of: "</untrusted>", with: "")
@@ -419,11 +426,46 @@ struct ChatBubble: View {
 
     private func openArtifact(_ artifact: DetectedArtifact) {
         do {
-            try PresentationService.shared.present(kind: artifact.kind, content: artifact.content, title: artifact.title)
+            if artifact.kind == .html {
+                try PresentationService.shared.reopenHTML(id: artifact.content)
+            } else {
+                try PresentationService.shared.present(kind: artifact.kind, content: artifact.content, title: artifact.title)
+            }
         } catch {
             NSSound.beep()
             print("[ArtifactChip] \(error.localizedDescription)")
         }
+    }
+
+    private var synthesizedHTMLArtifact: DetectedArtifact? {
+        guard let toolCalls = message.toolCalls else { return nil }
+
+        for call in toolCalls where call.function.name == "present" {
+            let args = call.function.parsedArguments
+            guard (args["kind"] as? String)?.lowercased() == "html",
+                  let rawContent = (args["content"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  rawContent.isEmpty == false else {
+                continue
+            }
+
+            let effectiveTitle = ((args["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap {
+                $0.isEmpty ? nil : $0
+            } ?? "Bob's View"
+            let allowRemoteResources = AppSettings.shared.richPresentationRemoteResourcesEnabled
+            let sanitized = PresentationService.sanitizeHTML(rawContent, allowRemoteResources: allowRemoteResources)
+            let document = PresentationService.injectDocumentDefaults(into: sanitized, allowRemoteResources: allowRemoteResources)
+            let presentationID = RichHTMLState.presentationID(title: effectiveTitle, html: document)
+
+            return DetectedArtifact(
+                kind: .html,
+                content: presentationID,
+                title: effectiveTitle,
+                label: "Reopen rich view",
+                systemImage: "doc.richtext"
+            )
+        }
+
+        return nil
     }
 
     private func transcriptPanel(title: String?, content: String, isExpanded: Binding<Bool>) -> some View {
