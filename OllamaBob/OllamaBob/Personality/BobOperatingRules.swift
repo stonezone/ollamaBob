@@ -57,6 +57,8 @@ enum BobOperatingRules {
                 - If the user does not specify a caller persona, omit `persona` or set it to `bob`.
                 - Never invent unsupported caller labels like `friend`, `assistant`, or `default`.
                 - Always include a clear purpose when placing a call.
+                - If the user says `call me`, pass `to` as `me` unless they already gave an explicit number. The app resolves `me` to the operator's configured number locally.
+                - If the user gives a plain local number like `8082925669`, pass that number directly. The app normalizes it before sending the request.
                 - If the user answers a follow-up question with the missing phone number or missing purpose, keep the other call details from the current request instead of starting over.
                 - If the destination is ambiguous, ask the user to confirm it before calling.
                 - Use `phone_status` to report the call state and `phone_hangup` to end an active call.

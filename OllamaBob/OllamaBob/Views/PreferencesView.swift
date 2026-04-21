@@ -1065,7 +1065,7 @@ struct PreferencesView: View {
     // MARK: - Footer
 
     private var footer: some View {
-        Text("v1.0.2  \u{2022}  localhost:11434")
+        Text("v\(AppConfig.appVersion)  \u{2022}  localhost:11434")
             .font(.system(.caption2, design: .monospaced))
             .foregroundColor(PreferencesView.phosphorGreen.opacity(0.45))
             .frame(maxWidth: .infinity, alignment: .center)

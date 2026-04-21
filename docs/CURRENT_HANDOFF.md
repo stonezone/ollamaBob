@@ -3,6 +3,10 @@
 **Date:** 2026-04-20  
 **Audience:** the next coding agent or operator picking the project up cold.
 
+Current visible app version:
+
+- `1.0.3`
+
 ## Current State
 
 The app is live as a single macOS menu-bar product with:
@@ -154,12 +158,51 @@ Local setup note:
 
 - on local developer machines, if those preference fields are blank, the app will try to seed them from the repo-root `.env`
 - after that first seeding, the persisted Preferences values remain authoritative
+- local phone shortcuts now also seed from repo-local config:
+  - `ZACK_PERSONAL_NUMBER`
+  - `GLENNEL_PERSONAL_NUMBER`
+  - `jarvis-address-book.local.json`
+- Bob's prompt/tool guidance now explicitly tells the model:
+  - `call me` -> pass `to='me'`
+  - plain local numbers like `8082925669` are acceptable and normalized client-side
 
 Troubleshooting:
 
 - `401 Unauthorized` with capital `U` -> operator secret rejected by the outer gate
 - `401 unauthorized` with lowercase `u` -> Jarvis API key rejected by the inner `/call/*` gate
 - if `/health` is healthy but call routes still fail, assume a secret mismatch before assuming the daemon is down
+
+Live prompt/policy guidance from `JARVIS_KNOWS.md`:
+
+- supported caller identities are exactly:
+  - `bob`
+  - `buddy`
+  - `zack`
+  - `glennel`
+  - `glennel_naggy`
+- `bob` is the right default caller when the user does not specify one
+- `jarvis` is not a real daemon-side caller identity
+- explicit unsupported caller requests should ideally trigger a clarification question, not a silent substitution
+- `to` accepts either raw E.164 numbers or contact names
+- contact-name resolution is daemon-side
+- explicit E.164 numbers win over contact-name lookup
+- bare 10-digit and 11-digit North American numbers are normalized client-side to E.164
+- `call me` now resolves to the operator's own configured number client-side
+- local alias lookup checks env shortcuts and `jarvis-address-book.local.json` before falling back to daemon contact lookup
+- ambiguous phrases like `call buddy` should trigger clarification
+- if the user gives no clear mission brief and the purpose is not obvious from context, Bob should ask 1-2 short clarifying questions before placing the call
+
+Live daemon features not yet first-class in OllamaBob:
+
+- active/recent call listing
+- mid-call message injection
+- mid-call supervision
+- approval request queues
+- contacts APIs
+- follow-up APIs
+- memory search
+
+These are available in `jarvis-phone-service` but not yet wired into the OllamaBob tool surface.
 
 Current verified state:
 
@@ -173,7 +216,7 @@ Current verified state:
   - `swift build`
   - `swift test`
   - `./build.sh --run`
-- current suite result on this machine: `97` tests, `0` failures
+- current suite result on this machine: `100` tests, `0` failures
 
 Operator note from the Jarvis daemon side:
 
@@ -195,7 +238,10 @@ Primary files:
 - Relevant section anchor used in discussion/testing: `https://cleardeskshop.com/ollamabob/#bobs`
 - Confirmed live page title on 2026-04-20: `OllamaBob — Your Mac's new best mate.`
 - Confirmed live description on 2026-04-20 advertises a native macOS menu-bar AI agent with `25 built-in tools`
-- Exact local source path for that public page is still not verified inside this repo; `/Users/zack/ollama-chat` was checked and did not clearly map to the deployed `cleardeskshop.com/ollamabob` page
+- Confirmed live host files via SSH:
+  - `/home/zackj26/public_html/ollamabob/index.html`
+  - `/home/zackj26/public_html/cleardeskshop.com/ollamabob/index.html`
+- Going forward, treat `/home/zackj26/public_html/ollamabob/index.html` as canonical and sync the second copy after edits
 
 ## Key Files
 

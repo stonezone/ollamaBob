@@ -6,6 +6,7 @@ OllamaBob runs as a SwiftUI/AppKit app, talks directly to Ollama over `http://lo
 
 ## Current Highlights
 
+- Current app version: `1.0.3`
 - Primary model: `gemma4:e4b`
 - Fallback model: `qwen3:14b`
 - Rich presentation pipeline:
@@ -125,6 +126,122 @@ Local developer convenience:
 - when the Preferences fields are blank, the app will seed them from the repo-root `.env` on launch if it can find one
 - that fallback is for local builds only; the persisted Preferences values remain the real source of truth after seeding
 
+Optional local call shortcuts:
+
+- Bob now also checks repo-local destination hints before handing a call to the daemon:
+  - `ZACK_PERSONAL_NUMBER`
+  - `GLENNEL_PERSONAL_NUMBER`
+  - `jarvis-address-book.local.json`
+- `jarvis-address-book.local.json` is gitignored and intended for personal aliases such as `me`, `wife`, or household contacts.
+- Start from the checked-in template:
+  - [jarvis-address-book.example.json](jarvis-address-book.example.json)
+
+Canonical public-site HTML location:
+
+- canonical live file:
+  - `/home/zackj26/public_html/ollamabob/index.html`
+- synced secondary copy:
+  - `/home/zackj26/public_html/cleardeskshop.com/ollamabob/index.html`
+
+## Jarvis Calling Rules
+
+This is the live prompt/operator policy Bob follows for phone calls:
+
+### Current live OllamaBob phone tools
+
+- `phone_call`
+- `phone_hangup`
+- `phone_status`
+
+The Jarvis daemon exposes more call-related features than OllamaBob currently uses, including:
+
+- active/recent call listing
+- mid-call message injection
+- mid-call supervision
+- approval-request queues
+- contacts APIs
+- follow-up APIs
+- memory search APIs
+
+Those are daemon capabilities, not yet first-class OllamaBob tools.
+
+### Caller identity
+
+Supported caller identities today:
+
+- `bob`
+- `buddy`
+- `zack`
+- `glennel`
+- `glennel_naggy`
+
+Prompt policy:
+
+- if the user does not specify a caller persona, Bob should default to `bob`
+- `jarvis` is not a real daemon caller identity; it is not valid on the wire
+- if the user asks for an unsupported caller identity, Bob should ask for clarification rather than silently substituting another persona
+- `buddy` is a caller persona, not automatically a person to dial
+
+### Destination resolution
+
+The daemon accepts `to` as either:
+
+- a raw E.164 number
+- a known contact name
+
+Behavior:
+
+- explicit E.164 numbers win and bypass contact lookup
+- bare 10-digit or 11-digit North American numbers are normalized client-side to E.164 before the request is sent
+- contact-name lookup is daemon-side, case-insensitive, and exact-match
+- `call me` is now resolved client-side from local config/address-book before the request is sent
+- Bob checks local aliases in this order before falling back to daemon contact lookup:
+  - embedded or bare phone number in the destination text
+  - local env shortcuts (`ZACK_PERSONAL_NUMBER`, `GLENNEL_PERSONAL_NUMBER`)
+  - `jarvis-address-book.local.json`
+- prompt policy in the app now explicitly tells Bob to pass `to='me'` for `call me` requests instead of asking for the operator number again
+- if the user says something ambiguous like `call buddy`, Bob should clarify whether `buddy` is the caller persona or the callee
+- if the user says a relationship label such as `my wife`, Bob should not invent a new contact; he should map it only if that alias is a known client-side policy or ask a clarifying question
+
+### How to ask Bob to place calls
+
+Best prompt shape:
+
+- `Call <person or number> [as <caller>] and <purpose>.`
+
+Examples:
+
+- `Call Glennel and tell her the pickup is at 5.`
+- `Call me and tell me dinner is ready.`
+- `Call +18082925669 and ask how the day is going.`
+- `Call Glennel as zack and tell her I'm running late.`
+- `Call me as buddy and tell me to get back to work.`
+- `Call +18082925669 as glennel_naggy and remind me about the appointment.`
+
+If the user omits the purpose and the task is not already obvious from context, Bob should ask 1-2 short follow-up questions before placing the call.
+
+### Purpose / mission brief
+
+- `purpose` is the one-line objective Bob sends for the call
+- it is required by OllamaBob's current `phone_call` tool contract
+- if the user says only `call Glennel` and the mission is not already obvious from context, Bob should ask 1-2 short clarifying questions before placing the call
+- Bob should not auto-fill a vague generic purpose when the human intent is underspecified
+
+### Approval / execution expectations
+
+- approval should clearly state the caller persona, destination, and reason for the call
+- if a contact name resolves to a number, the confirmation UX should prefer showing the resolved number
+- Bob should mention the returned `callSid` after a successful call so the user can ask for status or hang up
+- status polling is user-driven in v1; Bob should use `phone_status` when asked, not auto-poll continuously
+
+### Current limitations
+
+- no inbound-call support
+- no historical transcript endpoint in OllamaBob yet
+- no first-class call supervision UI in OllamaBob yet
+- no first-class contacts/follow-ups/memory-search UI in OllamaBob yet
+- phone tools are disabled in uncensored mode on the OllamaBob side
+
 ## Troubleshooting
 
 ### Jarvis `401 Unauthorized`
@@ -141,6 +258,16 @@ If `phone_call`, `phone_hangup`, or `phone_status` do not appear:
 2. make sure both secrets are present
 3. make sure the base URL still points at the daemon
 4. relaunch the app if you just added values to `.env` and expect the initial seeding path to pick them up
+
+### Jarvis Contact Lookup Misses
+
+If Bob says the contact was not found:
+
+1. give Bob an explicit E.164 number such as `+18082925669`
+2. or add the alias to `jarvis-address-book.local.json`
+3. or make sure the daemon-side contact exists in the Jarvis address book
+
+If you type a plain local number like `8082925669`, Bob now normalizes it to `+18082925669` before sending it to Jarvis.
 
 ### macOS File Opens Time Out
 

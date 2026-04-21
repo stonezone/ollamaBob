@@ -1,6 +1,10 @@
 import Foundation
 
 struct AppConfig {
+    // MARK: - App Version
+    static let appVersion = "1.0.3"
+    static let appBuild = "103"
+
     // MARK: - Models
     static let primaryModel = "gemma4:e4b"
     static let fallbackModel = "qwen3:14b"

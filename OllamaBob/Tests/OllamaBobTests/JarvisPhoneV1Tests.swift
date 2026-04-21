@@ -49,7 +49,7 @@ final class JarvisPhoneV1Tests: XCTestCase {
             let body = try XCTUnwrap(Self.requestBodyData(from: request))
             let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body, options: []) as? [String: Any])
             XCTAssertEqual(object["caller"] as? String, "bob")
-            XCTAssertEqual(object["to"] as? String, "Glennel")
+            XCTAssertEqual(object["to"] as? String, "Pickup Vendor")
             XCTAssertEqual(object["missionBrief"] as? String, "Ask about the pickup")
             XCTAssertEqual(object["maxDurationSeconds"] as? Int, 420)
 
@@ -64,13 +64,13 @@ final class JarvisPhoneV1Tests: XCTestCase {
         }
         defer { JarvisURLProtocol.requestHandler = nil }
 
-        let result = await PhoneTool.execute(persona: "jarvis", to: "Glennel", purpose: "Ask about the pickup", maxMinutes: 7)
+        let result = await PhoneTool.execute(persona: "jarvis", to: "Pickup Vendor", purpose: "Ask about the pickup", maxMinutes: 7)
 
         XCTAssertTrue(result.success, result.content)
         XCTAssertEqual(result.toolName, "phone_call")
         XCTAssertTrue(result.content.contains("callSid=call_123"), result.content)
         XCTAssertTrue(result.content.contains("persona=bob"), result.content)
-        XCTAssertTrue(result.content.contains("to=Glennel"), result.content)
+        XCTAssertTrue(result.content.contains("to=Pickup Vendor"), result.content)
         XCTAssertTrue(result.content.contains("status=queued"), result.content)
         XCTAssertTrue(result.content.contains("maxMinutes=7"), result.content)
         XCTAssertTrue(result.content.contains("Queued"), result.content)
@@ -84,7 +84,7 @@ final class JarvisPhoneV1Tests: XCTestCase {
             let body = try XCTUnwrap(Self.requestBodyData(from: request))
             let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body, options: []) as? [String: Any])
             XCTAssertEqual(object["caller"] as? String, "bob")
-            XCTAssertEqual(object["to"] as? String, "808-292-5669")
+            XCTAssertEqual(object["to"] as? String, "+18082925669")
             XCTAssertEqual(object["missionBrief"] as? String, "Ask how the day is going")
 
             let responseJSON = Data(#"{"callSid":"call_456","status":"queued","message":"Queued"}"#.utf8)
@@ -108,6 +108,42 @@ final class JarvisPhoneV1Tests: XCTestCase {
         XCTAssertTrue(result.success, result.content)
         XCTAssertTrue(result.content.contains("persona=bob"), result.content)
         XCTAssertTrue(result.content.contains("callSid=call_456"), result.content)
+    }
+
+    func testPhoneToolNormalizesNorthAmericanNumbersBeforeSending() {
+        XCTAssertEqual(PhoneTool.resolvedDestinationLabel("8082925669"), "+18082925669")
+        XCTAssertEqual(PhoneTool.resolvedDestinationLabel("1-808-292-5669"), "+18082925669")
+        XCTAssertEqual(PhoneTool.resolvedDestinationLabel("(808) 292-5669"), "+18082925669")
+    }
+
+    func testPhoneToolExtractsEmbeddedPhoneNumbersBeforeFallingBackToContactLookup() {
+        XCTAssertEqual(PhoneTool.resolvedDestinationLabel("me=zack=8082925669"), "+18082925669")
+        XCTAssertEqual(
+            PhoneTool.resolvedDestinationLabel("call me at 808-292-5669 please"),
+            "+18082925669"
+        )
+    }
+
+    func testPhoneToolResolvesLocalAliasesFromAddressBook() {
+        let lookup: (String) -> String? = { alias in
+            switch alias {
+            case "me", "zack":
+                return "+18082925669"
+            case "glennel":
+                return "+18082197398"
+            default:
+                return nil
+            }
+        }
+
+        XCTAssertEqual(
+            PhoneTool.resolvedDestinationLabel("me", addressBookLookup: lookup),
+            "+18082925669"
+        )
+        XCTAssertEqual(
+            PhoneTool.resolvedDestinationLabel("Glennel", addressBookLookup: lookup),
+            "+18082197398"
+        )
     }
 
     func testPhoneToolRejectsMissingInputsBeforeNetwork() async {
@@ -256,10 +292,12 @@ final class JarvisPhoneV1Tests: XCTestCase {
         let prompt = BobOperatingRules.systemPrompt
         XCTAssertTrue(prompt.contains("omit `persona` or set it to `bob`"), prompt)
         XCTAssertTrue(prompt.contains("Never invent unsupported caller labels"), prompt)
+        XCTAssertTrue(prompt.contains("If the user says `call me`, pass `to` as `me`"), prompt)
+        XCTAssertTrue(prompt.contains("If the user gives a plain local number like `8082925669`"), prompt)
 
         let catalog = try ToolCatalog.loadFromBundle()
         let phoneEntry = try XCTUnwrap(catalog.tools.first { $0.name == "phone_call" })
-        XCTAssertTrue(phoneEntry.whenToUse.contains("omit persona to call as bob by default"))
+        XCTAssertTrue(phoneEntry.whenToUse.contains("`me`"))
     }
 
     func testPhoneToolDistinguishesOperatorAndCallAuthFailures() async {

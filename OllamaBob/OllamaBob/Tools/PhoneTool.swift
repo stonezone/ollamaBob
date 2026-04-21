@@ -12,9 +12,10 @@ enum PhoneTool {
 
     static func execute(persona: String, to: String, purpose: String, maxMinutes: Int?) async -> ToolResult {
         let start = Date()
+        let resolvedDestination = resolvedDestinationLabel(to)
         let request = PhoneCallRequest(
             caller: resolvedCallerLabel(persona),
-            to: to.trimmingCharacters(in: .whitespacesAndNewlines),
+            to: resolvedDestination,
             missionBrief: purpose.trimmingCharacters(in: .whitespacesAndNewlines),
             maxDurationSeconds: (maxMinutes ?? 10) * 60
         )
@@ -244,6 +245,95 @@ enum PhoneTool {
         default:
             return defaultCaller
         }
+    }
+
+    static func resolvedDestinationLabel(
+        _ destination: String,
+        addressBookLookup: (String) -> String? = LocalAddressBook.value(for:)
+    ) -> String {
+        let trimmed = destination.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.isEmpty == false else { return "" }
+
+        if let e164 = firstE164Candidate(in: trimmed) {
+            return e164
+        }
+
+        if let normalized = firstNorthAmericanNumberCandidate(in: trimmed) {
+            return normalized
+        }
+
+        if let alias = resolvedLocalContactAlias(trimmed, addressBookLookup: addressBookLookup) {
+            return alias
+        }
+
+        return trimmed
+    }
+
+    private static func firstE164Candidate(in text: String) -> String? {
+        firstRegexMatch(in: text, pattern: #"(?<!\d)\+[1-9]\d{7,14}(?!\d)"#)
+    }
+
+    private static func firstNorthAmericanNumberCandidate(in text: String) -> String? {
+        let patterns = [
+            #"(?:\+?1[\s.\-]*)?(?:\(\d{3}\)|\d{3})[\s.\-]*\d{3}[\s.\-]*\d{4}"#,
+            #"(?<!\d)\d{10}(?!\d)"#,
+            #"(?<!\d)1\d{10}(?!\d)"#
+        ]
+
+        for pattern in patterns {
+            guard let candidate = firstRegexMatch(in: text, pattern: pattern) else { continue }
+            if let normalized = normalizeNorthAmericanNumber(candidate) {
+                return normalized
+            }
+        }
+
+        return nil
+    }
+
+    private static func resolvedLocalContactAlias(
+        _ text: String,
+        addressBookLookup: (String) -> String?
+    ) -> String? {
+        let normalizedAlias = canonicalDestinationAlias(text)
+        guard normalizedAlias.isEmpty == false else { return nil }
+
+        if let direct = addressBookLookup(normalizedAlias),
+           let normalized = normalizeNorthAmericanNumber(direct) ?? firstE164Candidate(in: direct) {
+            return normalized
+        }
+
+        return nil
+    }
+
+    private static func canonicalDestinationAlias(_ text: String) -> String {
+        text
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .replacingOccurrences(of: "_", with: " ")
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
+    }
+
+    private static func normalizeNorthAmericanNumber(_ text: String) -> String? {
+        let digits = text.filter(\.isWholeNumber)
+        switch digits.count {
+        case 10:
+            return "+1\(digits)"
+        case 11 where digits.hasPrefix("1"):
+            return "+\(digits)"
+        default:
+            return nil
+        }
+    }
+
+    private static func firstRegexMatch(in text: String, pattern: String) -> String? {
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        guard let match = regex.firstMatch(in: text, options: [], range: range),
+              let matchRange = Range(match.range, in: text) else {
+            return nil
+        }
+        return String(text[matchRange])
     }
 
     private static func toolName(for action: CallAction) -> String {

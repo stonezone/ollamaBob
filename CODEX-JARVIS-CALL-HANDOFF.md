@@ -107,6 +107,61 @@ Current caller normalization:
 
 Any unsupported or blank persona string now defaults locally to `bob` before network.
 
+Live daemon-side guidance from `JARVIS_KNOWS.md`:
+- `bob` is the correct default when no caller persona is specified
+- `jarvis` is not a real daemon caller identity
+- if the user explicitly asks for an unsupported caller identity, the better behavior is to ask for clarification rather than silently substituting `bob`
+- this means the current client defaulting is acceptable for omitted persona, but still worth tightening later for explicit unsupported persona names
+
+### Prompt / policy behavior Bob should follow
+
+- If the user asks to make a call and does not specify a persona, default to `bob`.
+- If the user says `call me`, OllamaBob should send `to='me'` and let the local resolver map it to the operator's configured number.
+- If the user provides a plain local number such as `8082925669`, OllamaBob should pass it through; the client normalizes it to E.164 before the request.
+- If the user specifies an unsupported persona, ask a clarification question instead of silently swapping callers.
+- `to` may be a contact name or a raw E.164 number.
+- Explicit E.164 numbers win over contact lookup.
+- The daemon resolves contact names; OllamaBob still does that fallback path.
+- OllamaBob now resolves these client-side before hitting the daemon:
+  - explicit E.164 numbers
+  - bare 10-digit / 11-digit North American numbers -> E.164
+  - `call me` / `me` via local config
+  - local aliases from `jarvis-address-book.local.json`
+- If the request is ambiguous, such as `call buddy`, clarify whether `buddy` is the caller persona or the callee.
+- If the mission is underspecified and not obvious from context, ask 1-2 short clarifying questions before calling.
+- After a successful call, preserve the returned `callSid` so the user can ask for status or hangup.
+
+### Local address-book support
+
+Shipped in this pass:
+
+- `LocalAddressBook.swift`
+- repo-local gitignored file: `jarvis-address-book.local.json`
+- checked-in template: [jarvis-address-book.example.json](/Users/zack/ollamaBob/jarvis-address-book.example.json)
+
+Seeded aliases:
+
+- `me`, `myself`, `zack`, `my phone` -> `ZACK_PERSONAL_NUMBER`
+- `glennel`, `wife`, `partner` -> `GLENNEL_PERSONAL_NUMBER`
+
+### Canonical public HTML location
+
+- canonical live file: `/home/zackj26/public_html/ollamabob/index.html`
+- synced copy: `/home/zackj26/public_html/cleardeskshop.com/ollamabob/index.html`
+
+### Live daemon features beyond OllamaBob's current surface
+
+The Jarvis daemon already supports more than OllamaBob currently exposes:
+- active/recent call listing
+- mid-call message injection
+- mid-call supervision
+- approval request queues
+- contacts CRUD
+- follow-ups
+- memory search
+
+These are daemon-live but not yet first-class OllamaBob tools in the shipped app.
+
 ### Response Rendering
 
 Success summaries:
@@ -132,7 +187,7 @@ Current verification state for the latest local changes:
 - `swift test --filter JarvisPhoneV1Tests` -> passes
 - `swift test` -> passes
 - `./build.sh --run` -> passes
-- current suite result: `97` tests, `0` failures
+- current suite result: `100` tests, `0` failures
 
 Important test-harness hardening that made this stable:
 - `ToolRuntime` startup probing is skipped under XCTest, so the suite no longer hangs waiting on background `ProcessRunner` probes
@@ -178,5 +233,6 @@ Run these with the real daemon up:
 
 - Preferences health check only shows a version if `/health` returns one. The current daemon contract previously inspected did not expose a version field.
 - Caller normalization is intentionally conservative. If the daemon adds more caller identities, update `PhoneTool.normalizeCallerLabel`.
+- Current OllamaBob behavior still maps explicit unsupported persona strings to `bob`; the daemon guidance prefers asking for clarification instead. That is a candidate follow-up behavior fix.
 - This pass did not implement V2 supervised-call features.
 - This handoff covers the app-side Jarvis feature only. Website/docs refresh for public-facing OllamaBob pages is a separate follow-up.

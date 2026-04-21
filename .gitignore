@@ -35,6 +35,7 @@ coverage/
 .env
 .env.*
 !.env.example
+jarvis-address-book.local.json
 *.provisionprofile
 *.p12
 *.mobileprovision

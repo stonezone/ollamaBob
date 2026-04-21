@@ -103,8 +103,10 @@ struct OnboardingView: View {
             VStack(alignment: .leading, spacing: 14) {
                 pillRow(icon: "🔒", title: "Private by default", body: "Everything runs locally through Ollama. Your conversations never leave your machine (except opt-in web searches).")
                 pillRow(icon: "🛠", title: "Real tools, not just chat", body: "Bob can inspect your filesystem, run shell commands, read files, search the web, and write files — with your approval.")
+                pillRow(icon: "📞", title: "Phone calls when you want them", body: "Enable Jarvis in Preferences → Tools and Bob can place real calls, check status, and hang up active calls.")
+                pillRow(icon: "🖼", title: "Rich presentation", body: "Bob can open formatted HTML pages, URLs, and local files in real macOS windows instead of dumping everything into chat.")
                 pillRow(icon: "🧠", title: "Remembers what matters", body: "Tell Bob \"remember I prefer tabs\" and he'll carry that forward across every future conversation.")
-                pillRow(icon: "🎭", title: "Five personas", body: "Mumbai Bob (with voice!), Terse Engineer, Grumpy Linus, Helpful Assistant, or Blank — pick the voice that fits your mood.")
+                pillRow(icon: "🎭", title: "Five personas + uncensored mode", body: "Pick the voice that fits the moment, then optionally enable the per-conversation UNCENSORED pill later in Preferences → Models.")
             }
             .padding(.horizontal, 28)
             .padding(.vertical, 18)
@@ -152,7 +154,7 @@ struct OnboardingView: View {
                     .font(.system(.body, design: .monospaced).weight(.bold))
                     .foregroundColor(Self.phosphorGreen)
 
-                Text("macOS requires your permission before Bob can talk to apps like Mail or Calendar. Click \"Grant all\" to get the prompts out of the way now — you can approve or skip each one.")
+                Text("macOS requires your permission before Bob can talk to apps like Mail or Calendar. Click \"Grant all\" to get the prompts out of the way now — you can approve or skip each one. This step is only for macOS Automation permissions, not every runtime tool approval.")
                     .font(.system(.caption, design: .monospaced))
                     .foregroundColor(Self.textGrey)
                     .fixedSize(horizontal: false, vertical: true)
@@ -177,7 +179,7 @@ struct OnboardingView: View {
                     permissionRow(target: target)
                 }
 
-                Text("Denied one by accident? Open System Settings → Privacy & Security → Automation and toggle \"OllamaBob\" back on.")
+                Text("Denied one by accident? Open System Settings → Privacy & Security → Automation and toggle \"OllamaBob\" back on. File writes, AppleScript, phone calls, downloads, and other ASK tools still prompt at runtime.")
                     .font(.system(.caption, design: .monospaced))
                     .foregroundColor(Self.textGrey.opacity(0.8))
                     .fixedSize(horizontal: false, vertical: true)
@@ -255,6 +257,8 @@ struct OnboardingView: View {
                             "\"list the 10 largest files in my Downloads\"",
                             "\"what's in my ~/.zshrc?\"",
                             "\"find every TODO comment in this project\"",
+                            "\"give me a formatted page of today's top world news\"",
+                            "\"call me and tell me dinner is ready\"",
                             "\"remember my GitHub handle is @zackjordan\"",
                          ])
 
@@ -266,7 +270,15 @@ struct OnboardingView: View {
                             "⌘,  open preferences",
                          ])
 
-                Text("Anything in Preferences → Help has the full reference. Have fun.")
+                tourCard(title: "Worth enabling in Preferences",
+                         lines: [
+                            "Tools → Rich Presentation  for HTML pages, URLs, and file opens",
+                            "Tools → Jarvis Phone Service  for phone_call / phone_status / phone_hangup",
+                            "Models → Enable Uncensored Mode  to show the per-chat UNCENSORED pill",
+                            "Create jarvis-address-book.local.json  if you want aliases like me or wife",
+                         ])
+
+                Text("Anything in Preferences → Help and the README has the fuller reference, including Jarvis calling rules and local address-book shortcuts.")
                     .font(.system(.caption, design: .monospaced))
                     .foregroundColor(Self.textGrey)
                     .padding(.top, 4)

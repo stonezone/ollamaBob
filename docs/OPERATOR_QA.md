@@ -45,6 +45,28 @@
    - capital-`U` `Unauthorized` means the operator secret failed
    - lowercase `unauthorized` means the Jarvis API key failed
 
+### Jarvis Call Prompt Policy
+
+When checking Bob's actual behavior, verify these prompt/policy rules:
+
+1. If the user does not specify a caller persona, Bob should place the call as `bob`.
+2. Supported caller identities are exactly:
+   - `bob`
+   - `buddy`
+   - `zack`
+   - `glennel`
+   - `glennel_naggy`
+3. If the user asks for an unsupported caller identity, Bob should ask for clarification instead of silently replacing it.
+4. `jarvis` is not a daemon-side caller identity; Bob should not claim otherwise.
+5. If the user provides a raw E.164 number, that number should be used directly.
+6. If the user provides a contact name such as `Glennel`, Bob may pass it through and let the daemon resolve it.
+7. If the user provides a bare 10-digit/11-digit North American number, Bob should normalize it to E.164 before the request is sent.
+8. If the user says `call me`, Bob should resolve that through local env/address-book shortcuts before falling back to daemon contacts.
+9. Bob should not ask for the operator's number again when the user says `call me` and the local shortcut data exists.
+10. If the request is ambiguous, such as `call buddy`, Bob should clarify whether `buddy` is the caller persona or the callee.
+11. If the user gives no clear purpose and the mission is not obvious from context, Bob should ask 1-2 short clarifying questions before placing the call.
+12. After a successful call, Bob should preserve or surface the `callSid` so status/hangup follow-ups can work.
+
 ## Operator Gotchas
 
 ### macOS File Access Prompts
@@ -65,6 +87,33 @@
   - `X-Jarvis-Key`
 - `/health` is open and does not validate either one.
 - A healthy `/health` check is not enough to prove calls will succeed.
+
+### Local Jarvis Address Book
+
+- Bob checks these local shortcut sources before daemon-side contact lookup:
+  - `ZACK_PERSONAL_NUMBER`
+  - `GLENNEL_PERSONAL_NUMBER`
+  - `jarvis-address-book.local.json`
+- `jarvis-address-book.local.json` is gitignored.
+- Use [jarvis-address-book.example.json](/Users/zack/ollamaBob/jarvis-address-book.example.json) as the template.
+
+### Jarvis Live Feature Surface
+
+Live in OllamaBob today:
+
+- `phone_call`
+- `phone_hangup`
+- `phone_status`
+
+Live in the Jarvis daemon but not yet exposed as first-class OllamaBob tools:
+
+- call list
+- mid-call message injection
+- supervision
+- approval queues
+- contacts APIs
+- follow-up APIs
+- memory search
 
 ### Uncensored Mode Prerequisite
 

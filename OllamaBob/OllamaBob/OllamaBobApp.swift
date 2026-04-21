@@ -42,6 +42,10 @@ struct OllamaBobApp: App {
                     .font(.caption)
             }
 
+            Text("Version \(AppConfig.appVersion)")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+
             Divider()
 
             Button("Quit OllamaBob") {
