@@ -445,7 +445,7 @@ struct PreferencesView: View {
                     Text("Jarvis API key")
                         .font(.system(.caption, design: .monospaced).weight(.medium))
                         .foregroundColor(.white)
-                    Text("Shared secret sent to the local daemon as X-Jarvis-Key. Stored locally in UserDefaults.")
+                    Text("Inner call API key sent to the local daemon as X-Jarvis-Key. Stored locally in UserDefaults.")
                         .font(.system(.caption2, design: .monospaced))
                         .foregroundColor(PreferencesView.textGrey)
                         .fixedSize(horizontal: false, vertical: true)
@@ -460,6 +460,31 @@ struct PreferencesView: View {
                     .background(
                         RoundedRectangle(cornerRadius: 4, style: .continuous)
                             .fill(PreferencesView.bgBlack)
+                    )
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Operator secret")
+                        .font(.system(.caption, design: .monospaced).weight(.medium))
+                        .foregroundColor(.white)
+                    Text("Outer operator-auth secret sent as x-operator-secret. Jarvis call routes currently require both this and the Jarvis API key.")
+                        .font(.system(.caption2, design: .monospaced))
+                        .foregroundColor(PreferencesView.textGrey)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                SecureField("Operator secret", text: $settings.jarvisOperatorSecret)
+                    .textFieldStyle(.plain)
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .background(
+                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            .fill(PreferencesView.bgBlack)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            .stroke(PreferencesView.phosphorGreen.opacity(0.35), lineWidth: 1)
                     )
                     .overlay(
                         RoundedRectangle(cornerRadius: 4, style: .continuous)
@@ -493,7 +518,7 @@ struct PreferencesView: View {
                     }
                 }
 
-                Text("Health checks read GET \(AppConfig.jarvisBaseURL)/health and do not require the API key.")
+                Text("Health checks read GET \(AppConfig.jarvisBaseURL)/health and do not validate the Jarvis API key or operator secret. Call routes currently require both.")
                     .font(.system(.caption2, design: .monospaced))
                     .foregroundColor(PreferencesView.textGrey)
                     .fixedSize(horizontal: false, vertical: true)

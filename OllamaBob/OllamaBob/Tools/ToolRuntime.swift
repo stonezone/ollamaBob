@@ -34,6 +34,7 @@ enum ToolState: Equatable {
 @MainActor
 final class ToolRuntime: ObservableObject {
     static let shared = ToolRuntime()
+    nonisolated private static let skipProbeEnvironmentKey = "OLLAMABOB_SKIP_PROBE"
 
     @Published private(set) var catalog: ToolCatalog
     @Published private(set) var states: [String: ToolState] = [:]
@@ -61,6 +62,7 @@ final class ToolRuntime: ObservableObject {
             states[entry.name] = .missing(reason: "Not yet probed.")
         }
 
+        guard Self.shouldAutoProbe else { return }
         Task { await self.probeAll() }
     }
 
@@ -332,5 +334,12 @@ final class ToolRuntime: ObservableObject {
     private func liveBuiltinEntries() -> [BuiltinToolsCatalog.Entry] {
         let registry = ToolRegistry(braveKeyAvailable: !AppConfig.braveAPIKey.isEmpty)
         return BuiltinToolsCatalog.entries.filter { registry.has($0.name) }
+    }
+
+    private static var shouldAutoProbe: Bool {
+        let env = ProcessInfo.processInfo.environment
+        if env["XCTestConfigurationFilePath"] != nil { return false }
+        if env[skipProbeEnvironmentKey] == "1" { return false }
+        return true
     }
 }

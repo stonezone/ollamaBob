@@ -44,7 +44,8 @@ ollama pull huihui_ai/qwen3-abliterated:8b
 Optional external services:
 
 - `BRAVE_API_KEY` — enables the `web_search` tool
-- `JARVIS_API_KEY` — enables the Jarvis phone call tools (`phone_call`, `phone_hangup`, `phone_status`)
+- `JARVIS_API_KEY` — inner call API key for Jarvis `/call/*`
+- `OPERATOR_API_SECRET` — outer operator secret also required by the current Jarvis `/call/*` contract
 
 External CLI dependencies (install separately via Homebrew):
 
@@ -81,7 +82,7 @@ Bob ships with 20+ first-party tools across these categories:
 | Shell | `shell` (approval depends on command) |
 | Git | `git_status`, `git_diff` |
 | Web | `web_search` |
-| Phone | `phone_call`, `phone_hangup`, `phone_status` *(gated by Jarvis settings)* |
+| Phone | `phone_call`, `phone_hangup`, `phone_status` *(gated by Jarvis settings and both Jarvis secrets)* |
 | Presentation | `present` (html, url, file) |
 | Media | `ocr`, `speak`, `image_convert` |
 | Utility | `weather`, `unit_convert` |
@@ -104,6 +105,48 @@ Notes:
 - If the configured uncensored model is not installed, Bob shows a banner with the exact `ollama pull ...` command.
 - Uncensored mode is per-conversation and persists with that conversation.
 - Tools are intentionally disabled in uncensored mode in v1.
+
+## Enabling Jarvis Phone Tools
+
+Jarvis phone tools stay hidden until all of these are true:
+
+1. `Preferences -> Tools -> Enable Jarvis phone service` is on
+2. `Jarvis API key` is filled in
+3. `Operator secret` is filled in
+
+Current request contract:
+
+- `phone_call`, `phone_hangup`, and `phone_status` send `X-Jarvis-Key` from `JARVIS_API_KEY`
+- those same routes also send `x-operator-secret` from `OPERATOR_API_SECRET`
+- `GET /health` is only a reachability check; it does not validate either secret
+
+Local developer convenience:
+
+- when the Preferences fields are blank, the app will seed them from the repo-root `.env` on launch if it can find one
+- that fallback is for local builds only; the persisted Preferences values remain the real source of truth after seeding
+
+## Troubleshooting
+
+### Jarvis `401 Unauthorized`
+
+- `Jarvis operator secret rejected (401 Unauthorized)` means the outer operator auth failed
+- `Jarvis call API key rejected (401 unauthorized)` means the inner call auth failed
+- if `/health` passes but calls still fail, the most likely problem is one of the two secrets is missing or mismatched
+
+### Jarvis Tools Missing
+
+If `phone_call`, `phone_hangup`, or `phone_status` do not appear:
+
+1. make sure Jarvis phone is enabled in Preferences
+2. make sure both secrets are present
+3. make sure the base URL still points at the daemon
+4. relaunch the app if you just added values to `.env` and expect the initial seeding path to pick them up
+
+### macOS File Opens Time Out
+
+- first access to Desktop/Documents/Downloads can trigger a macOS privacy prompt
+- approve that prompt, then retry
+- a shell timeout during that first open often means Bob was blocked on TCC, not that the file-open path itself is broken
 
 ## Documentation Map
 

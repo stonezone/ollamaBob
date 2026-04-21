@@ -54,11 +54,11 @@ struct PreflightErrorView: View {
                     )
                 }
 
-                if status.jarvisPhoneEnabled && !status.jarvisAPIKeyPresent {
+                if status.jarvisPhoneEnabled && (!status.jarvisAPIKeyPresent || !status.jarvisOperatorSecretPresent) {
                     infoRow(
                         icon: "phone.badge.exclamationmark",
-                        title: "Jarvis phone service key missing",
-                        note: "Phone integration is enabled, but Bob cannot talk to the local Jarvis daemon until you add its API key."
+                        title: "Jarvis phone secrets incomplete",
+                        note: "Phone integration is enabled, but Bob cannot talk to the local Jarvis daemon until both the Jarvis API key and operator secret are configured."
                     )
                 }
             }

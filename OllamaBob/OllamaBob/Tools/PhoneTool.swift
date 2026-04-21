@@ -4,8 +4,9 @@ enum PhoneTool {
     static let defaultCaller = "bob"
 
     static var isConfigured: Bool {
-        UserDefaults.standard.bool(forKey: "jarvisPhoneEnabled") &&
+        UserDefaults.standard.bool(forKey: AppSettings.jarvisPhoneEnabledKey) &&
         JarvisConfiguration.apiKey.isEmpty == false &&
+        JarvisConfiguration.operatorSecret.isEmpty == false &&
         JarvisConfiguration.baseURL != nil
     }
 
@@ -168,6 +169,22 @@ enum PhoneTool {
 
     private static func failureResult(action: CallAction, response: JarvisHTTPResponse, durationMs: Int) -> ToolResult {
         let rawText = String(response.bodyText.prefix(500)).trimmingCharacters(in: .whitespacesAndNewlines)
+        if response.statusCode == 401 {
+            let message: String
+            if rawText.contains("Unauthorized") {
+                message = "Jarvis operator secret rejected (401 Unauthorized). Update the Operator secret in Preferences."
+            } else if rawText.lowercased().contains("unauthorized") {
+                message = "Jarvis call API key rejected (401 unauthorized). Update the Jarvis API key in Preferences."
+            } else {
+                message = "Jarvis authentication failed (401). Check the Operator secret and Jarvis API key in Preferences."
+            }
+            return ToolResult(
+                toolName: toolName(for: action),
+                content: message,
+                success: false,
+                durationMs: durationMs
+            )
+        }
         let suffix = rawText.isEmpty ? "" : ": \(rawText)"
         return ToolResult(
             toolName: toolName(for: action),
@@ -266,7 +283,13 @@ private struct JarvisConfiguration {
 
     static var apiKey: String {
         let env = ProcessInfo.processInfo.environment["JARVIS_API_KEY"] ?? ""
-        let stored = UserDefaults.standard.string(forKey: "jarvisAPIKey") ?? ""
+        let stored = UserDefaults.standard.string(forKey: AppSettings.jarvisAPIKeyKey) ?? ""
+        return env.isEmpty ? stored : env
+    }
+
+    static var operatorSecret: String {
+        let env = ProcessInfo.processInfo.environment["OPERATOR_API_SECRET"] ?? ""
+        let stored = UserDefaults.standard.string(forKey: AppSettings.jarvisOperatorSecretKey) ?? ""
         return env.isEmpty ? stored : env
     }
 }
@@ -307,6 +330,10 @@ private struct JarvisClient {
             let apiKey = JarvisConfiguration.apiKey
             if apiKey.isEmpty == false {
                 request.setValue(apiKey, forHTTPHeaderField: "X-Jarvis-Key")
+            }
+            let operatorSecret = JarvisConfiguration.operatorSecret
+            if operatorSecret.isEmpty == false {
+                request.setValue(operatorSecret, forHTTPHeaderField: "x-operator-secret")
             }
 
             do {

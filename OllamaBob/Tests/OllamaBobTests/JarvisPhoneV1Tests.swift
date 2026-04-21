@@ -2,16 +2,18 @@ import Foundation
 import XCTest
 @testable import OllamaBob
 
-@MainActor
 final class JarvisPhoneV1Tests: XCTestCase {
-    override class func setUp() {
-        super.setUp()
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        URLProtocol.unregisterClass(JarvisURLProtocol.self)
+        JarvisURLProtocol.requestHandler = nil
         URLProtocol.registerClass(JarvisURLProtocol.self)
     }
 
-    override class func tearDown() {
+    override func tearDownWithError() throws {
+        JarvisURLProtocol.requestHandler = nil
         URLProtocol.unregisterClass(JarvisURLProtocol.self)
-        super.tearDown()
+        try super.tearDownWithError()
     }
 
     func testJarvisPhonePreflightWarningIsNonFatal() async {
@@ -21,6 +23,7 @@ final class JarvisPhoneV1Tests: XCTestCase {
             braveKeyPresent: true,
             jarvisPhoneEnabled: true,
             jarvisAPIKeyPresent: false,
+            jarvisOperatorSecretPresent: false,
             databaseWritable: { true },
             sandboxDisabled: { true }
         )
@@ -28,19 +31,12 @@ final class JarvisPhoneV1Tests: XCTestCase {
         XCTAssertTrue(status.canLaunch)
         XCTAssertTrue(status.jarvisPhoneEnabled)
         XCTAssertFalse(status.jarvisAPIKeyPresent)
+        XCTAssertFalse(status.jarvisOperatorSecretPresent)
     }
 
     func testPhoneToolExecuteSendsAuthenticatedCallRequestAndSummarizesResponse() async {
-        let originalKey = UserDefaults.standard.string(forKey: AppSettings.jarvisAPIKeyKey)
-        defer {
-            if let originalKey {
-                UserDefaults.standard.set(originalKey, forKey: AppSettings.jarvisAPIKeyKey)
-            } else {
-                UserDefaults.standard.removeObject(forKey: AppSettings.jarvisAPIKeyKey)
-            }
-        }
-
-        UserDefaults.standard.set("unit-test-key", forKey: AppSettings.jarvisAPIKeyKey)
+        let override = JarvisDefaultsScope(apiKey: "unit-test-key", operatorSecret: "unit-test-operator")
+        defer { _ = override }
 
         JarvisURLProtocol.requestHandler = { request in
             XCTAssertEqual(request.httpMethod, "POST")
@@ -48,6 +44,7 @@ final class JarvisPhoneV1Tests: XCTestCase {
             XCTAssertEqual(request.value(forHTTPHeaderField: "Accept"), "application/json")
             XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Type"), "application/json")
             XCTAssertEqual(request.value(forHTTPHeaderField: "X-Jarvis-Key"), "unit-test-key")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "x-operator-secret"), "unit-test-operator")
 
             let body = try XCTUnwrap(Self.requestBodyData(from: request))
             let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body, options: []) as? [String: Any])
@@ -80,16 +77,8 @@ final class JarvisPhoneV1Tests: XCTestCase {
     }
 
     func testPhoneToolDefaultsUnknownPersonaToBob() async {
-        let originalKey = UserDefaults.standard.string(forKey: AppSettings.jarvisAPIKeyKey)
-        defer {
-            if let originalKey {
-                UserDefaults.standard.set(originalKey, forKey: AppSettings.jarvisAPIKeyKey)
-            } else {
-                UserDefaults.standard.removeObject(forKey: AppSettings.jarvisAPIKeyKey)
-            }
-        }
-
-        UserDefaults.standard.set("unit-test-key", forKey: AppSettings.jarvisAPIKeyKey)
+        let override = JarvisDefaultsScope(apiKey: "unit-test-key", operatorSecret: "unit-test-operator")
+        defer { _ = override }
 
         JarvisURLProtocol.requestHandler = { request in
             let body = try XCTUnwrap(Self.requestBodyData(from: request))
@@ -130,16 +119,8 @@ final class JarvisPhoneV1Tests: XCTestCase {
     }
 
     func testPhoneToolHangupAndStatusRequestsSummarizeJarvisResponses() async {
-        let originalKey = UserDefaults.standard.string(forKey: AppSettings.jarvisAPIKeyKey)
-        defer {
-            if let originalKey {
-                UserDefaults.standard.set(originalKey, forKey: AppSettings.jarvisAPIKeyKey)
-            } else {
-                UserDefaults.standard.removeObject(forKey: AppSettings.jarvisAPIKeyKey)
-            }
-        }
-
-        UserDefaults.standard.set("unit-test-key", forKey: AppSettings.jarvisAPIKeyKey)
+        let override = JarvisDefaultsScope(apiKey: "unit-test-key", operatorSecret: "unit-test-operator")
+        defer { _ = override }
 
         JarvisURLProtocol.requestHandler = { request in
             guard let url = request.url else {
@@ -190,6 +171,7 @@ final class JarvisPhoneV1Tests: XCTestCase {
         XCTAssertTrue(status.content.contains("Still in progress"), status.content)
     }
 
+    @MainActor
     func testJarvisPhoneRegistryAndApprovalContractsWhenToolEntriesExist() throws {
         let phoneToolNames = ["phone_call", "phone_hangup", "phone_status"]
         guard Self.phoneToolEntriesExist(named: phoneToolNames) else {
@@ -199,13 +181,16 @@ final class JarvisPhoneV1Tests: XCTestCase {
         let settings = AppSettings.shared
         let originalEnabled = settings.jarvisPhoneEnabled
         let originalKey = settings.jarvisAPIKey
+        let originalOperatorSecret = settings.jarvisOperatorSecret
         defer {
             settings.jarvisPhoneEnabled = originalEnabled
             settings.jarvisAPIKey = originalKey
+            settings.jarvisOperatorSecret = originalOperatorSecret
         }
 
         settings.jarvisPhoneEnabled = false
         settings.jarvisAPIKey = ""
+        settings.jarvisOperatorSecret = ""
 
         let disabledRegistry = ToolRegistry(braveKeyAvailable: false)
         for name in phoneToolNames {
@@ -214,12 +199,21 @@ final class JarvisPhoneV1Tests: XCTestCase {
 
         settings.jarvisPhoneEnabled = true
         settings.jarvisAPIKey = "local-test-key"
+        settings.jarvisOperatorSecret = "local-operator-secret"
 
         let enabledRegistry = ToolRegistry(braveKeyAvailable: false)
         for name in phoneToolNames {
             XCTAssertTrue(enabledRegistry.has(name), "\(name) should become visible once Jarvis is enabled")
         }
         XCTAssertTrue(enabledRegistry.validateArgs("phone_call", ["to": "Glennel", "purpose": "Pickup"]))
+
+        settings.jarvisOperatorSecret = ""
+        let missingOperatorRegistry = ToolRegistry(braveKeyAvailable: false)
+        for name in phoneToolNames {
+            XCTAssertFalse(missingOperatorRegistry.has(name), "\(name) should stay hidden until the operator secret is configured")
+        }
+
+        settings.jarvisOperatorSecret = "local-operator-secret"
 
         XCTAssertEqual(
             ApprovalPolicy.check(
@@ -243,16 +237,21 @@ final class JarvisPhoneV1Tests: XCTestCase {
         )
     }
 
+    @MainActor
     func testPhoneRulesDefaultPersonaToBobInPromptAndCatalog() throws {
-        let originalEnabled = AppSettings.shared.jarvisPhoneEnabled
-        let originalKey = AppSettings.shared.jarvisAPIKey
+        let settings = AppSettings.shared
+        let originalEnabled = settings.jarvisPhoneEnabled
+        let originalKey = settings.jarvisAPIKey
+        let originalOperatorSecret = settings.jarvisOperatorSecret
         defer {
-            AppSettings.shared.jarvisPhoneEnabled = originalEnabled
-            AppSettings.shared.jarvisAPIKey = originalKey
+            settings.jarvisPhoneEnabled = originalEnabled
+            settings.jarvisAPIKey = originalKey
+            settings.jarvisOperatorSecret = originalOperatorSecret
         }
 
-        AppSettings.shared.jarvisPhoneEnabled = true
-        AppSettings.shared.jarvisAPIKey = "local-test-key"
+        settings.jarvisPhoneEnabled = true
+        settings.jarvisAPIKey = "local-test-key"
+        settings.jarvisOperatorSecret = "local-operator-secret"
 
         let prompt = BobOperatingRules.systemPrompt
         XCTAssertTrue(prompt.contains("omit `persona` or set it to `bob`"), prompt)
@@ -261,6 +260,67 @@ final class JarvisPhoneV1Tests: XCTestCase {
         let catalog = try ToolCatalog.loadFromBundle()
         let phoneEntry = try XCTUnwrap(catalog.tools.first { $0.name == "phone_call" })
         XCTAssertTrue(phoneEntry.whenToUse.contains("omit persona to call as bob by default"))
+    }
+
+    func testPhoneToolDistinguishesOperatorAndCallAuthFailures() async {
+        let override = JarvisDefaultsScope(apiKey: "unit-test-key", operatorSecret: "unit-test-operator")
+        defer { _ = override }
+
+        JarvisURLProtocol.requestHandler = { request in
+            // jarvis-phone-service intentionally uses two different 401 bodies:
+            // outer operator auth => "Unauthorized", inner call auth => "unauthorized".
+            let operatorAuth = request.value(forHTTPHeaderField: "x-operator-secret")
+            let responseBody: String
+            if operatorAuth == "unit-test-operator" {
+                responseBody = #"{"error":"unauthorized"}"#
+            } else {
+                responseBody = #"{"error":"Unauthorized"}"#
+            }
+            let response = HTTPURLResponse(
+                url: try XCTUnwrap(request.url),
+                statusCode: 401,
+                httpVersion: "HTTP/1.1",
+                headerFields: ["Content-Type": "application/json"]
+            )!
+            return (response, Data(responseBody.utf8))
+        }
+        defer { JarvisURLProtocol.requestHandler = nil }
+
+        let callAuthFailure = await PhoneTool.execute(
+            persona: "bob",
+            to: "8082925669",
+            purpose: "Check in",
+            maxMinutes: nil
+        )
+        XCTAssertFalse(callAuthFailure.success)
+        XCTAssertTrue(callAuthFailure.content.contains("Jarvis call API key rejected"), callAuthFailure.content)
+    }
+
+    func testPhoneToolSurfacesOperatorAuthFailureWhenOuterSecretIsMissing() async {
+        let override = JarvisDefaultsScope(apiKey: "unit-test-key", operatorSecret: nil)
+        defer { _ = override }
+
+        JarvisURLProtocol.requestHandler = { request in
+            XCTAssertNil(request.value(forHTTPHeaderField: "x-operator-secret"))
+            let response = HTTPURLResponse(
+                url: try XCTUnwrap(request.url),
+                statusCode: 401,
+                httpVersion: "HTTP/1.1",
+                headerFields: ["Content-Type": "application/json"]
+            )!
+            return (response, Data(#"{"error":"Unauthorized"}"#.utf8))
+        }
+        defer { JarvisURLProtocol.requestHandler = nil }
+
+        let result = await PhoneTool.execute(
+            persona: "bob",
+            to: "8082925669",
+            purpose: "Check in and ask how your day is going",
+            maxMinutes: nil
+        )
+
+        XCTAssertFalse(result.success)
+        XCTAssertTrue(result.content.contains("Jarvis operator secret rejected"), result.content)
     }
 
     private static func phoneToolEntriesExist(named names: [String]) -> Bool {
@@ -278,16 +338,38 @@ final class JarvisPhoneV1Tests: XCTestCase {
         defer { stream.close() }
 
         let chunkSize = 1024
-        let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: chunkSize)
-        defer { buffer.deallocate() }
-
         var data = Data()
+        var buffer = [UInt8](repeating: 0, count: chunkSize)
         while stream.hasBytesAvailable {
-            let read = stream.read(buffer, maxLength: chunkSize)
-            if read <= 0 { break }
+            let read = stream.read(&buffer, maxLength: chunkSize)
+            if read < 0 { return nil }
+            if read == 0 { break }
             data.append(buffer, count: read)
         }
         return data.isEmpty ? nil : data
+    }
+}
+
+private final class JarvisDefaultsScope {
+    private let originalAPIKey = UserDefaults.standard.string(forKey: AppSettings.jarvisAPIKeyKey)
+    private let originalOperatorSecret = UserDefaults.standard.string(forKey: AppSettings.jarvisOperatorSecretKey)
+
+    init(apiKey: String?, operatorSecret: String?) {
+        apply(value: apiKey, forKey: AppSettings.jarvisAPIKeyKey)
+        apply(value: operatorSecret, forKey: AppSettings.jarvisOperatorSecretKey)
+    }
+
+    deinit {
+        apply(value: originalAPIKey, forKey: AppSettings.jarvisAPIKeyKey)
+        apply(value: originalOperatorSecret, forKey: AppSettings.jarvisOperatorSecretKey)
+    }
+
+    private func apply(value: String?, forKey key: String) {
+        if let value {
+            UserDefaults.standard.set(value, forKey: key)
+        } else {
+            UserDefaults.standard.removeObject(forKey: key)
+        }
     }
 }
 

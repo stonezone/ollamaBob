@@ -38,6 +38,9 @@ Latest polish after the main release commits:
 - active icon-only send controls now expose accessibility labels and hints in both input surfaces
 - `ToolActivityView` now uses an explicit details toggle, selectable preview text, and clearer expanded input/output panels
 - `phone_call` now defaults unsupported or omitted caller personas to `bob` instead of failing locally, so Bob no longer invents labels like `friend` and then trips the tool contract
+- Jarvis phone tools now honor the daemon's real double-auth contract: `/call/*` requests send both `X-Jarvis-Key` and `x-operator-secret`
+- the app now seeds Jarvis secrets from the repo-root `.env` on first launch when the Preferences values are still blank, which makes Finder-launched debug builds less brittle during local setup
+- Jarvis 401 handling now distinguishes outer operator-auth failures from inner call-auth failures so the user sees which secret to fix
 - `ShellTool` now returns a real failure when the shell executable cannot launch, instead of surfacing a fake success with `[exit code: -1]`
 - `ToolRuntime` now probes external CLI tools sequentially; the earlier unbounded fan-out could stall the full Swift test suite because `ProcessRunner` still blocks worker threads internally
 
@@ -130,6 +133,53 @@ Rich presentation is now first-class:
 
 Assistant transcript chips route through the same `PresentationService`.
 Rich HTML snapshots can be reopened after the window is closed.
+
+## Jarvis Phone Tools
+
+Current local app behavior:
+
+- tools: `phone_call`, `phone_hangup`, `phone_status`
+- gating: Jarvis phone enabled, valid base URL, non-empty Jarvis API key, non-empty operator secret
+- auth on `/call/*`:
+  - `X-Jarvis-Key` from `JARVIS_API_KEY`
+  - `x-operator-secret` from `OPERATOR_API_SECRET`
+- `/health` remains open and is only a reachability check
+
+Preference fields:
+
+- `Jarvis API key`
+- `Operator secret`
+
+Local setup note:
+
+- on local developer machines, if those preference fields are blank, the app will try to seed them from the repo-root `.env`
+- after that first seeding, the persisted Preferences values remain authoritative
+
+Troubleshooting:
+
+- `401 Unauthorized` with capital `U` -> operator secret rejected by the outer gate
+- `401 unauthorized` with lowercase `u` -> Jarvis API key rejected by the inner `/call/*` gate
+- if `/health` is healthy but call routes still fail, assume a secret mismatch before assuming the daemon is down
+
+Current verified state:
+
+- the app-side Jarvis double-auth patch is applied locally in this phase
+- Preferences now expose both `Jarvis API key` and `Operator secret`
+- local debug builds can seed those two values from the repo-root `.env` when the stored Preferences fields are still blank
+- `ToolRuntime` now skips startup probing under XCTest so the full suite exits cleanly
+- `JarvisPhoneV1Tests` no longer use the class-level `@MainActor` pattern that broke SwiftPM class filtering
+- `swift test --filter JarvisPhoneV1Tests` now runs cleanly
+- full-suite verification is green:
+  - `swift build`
+  - `swift test`
+  - `./build.sh --run`
+- current suite result on this machine: `97` tests, `0` failures
+
+Operator note from the Jarvis daemon side:
+
+- Claude reported the Codex-side `jarvis-phone` MCP config now includes both `OPERATOR_API_SECRET` and `JARVIS_API_KEY`
+- those two values currently happen to match in the local `.env`
+- Codex needs a restart for MCP-side `phone_call_initiate` to pick up that change
 
 Primary files:
 

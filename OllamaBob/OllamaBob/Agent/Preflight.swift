@@ -6,6 +6,7 @@ struct PreflightStatus {
     var braveKeyPresent: Bool = false
     var jarvisPhoneEnabled: Bool = false
     var jarvisAPIKeyPresent: Bool = false
+    var jarvisOperatorSecretPresent: Bool = false
     var databaseWritable: Bool = false
     var sandboxDisabled: Bool = false
 
@@ -24,7 +25,8 @@ enum Preflight {
         },
         braveKeyPresent: Bool = !AppConfig.braveAPIKey.isEmpty,
         jarvisPhoneEnabled: Bool = UserDefaults.standard.bool(forKey: "jarvisPhoneEnabled"),
-        jarvisAPIKeyPresent: Bool = !(UserDefaults.standard.string(forKey: "jarvisAPIKey") ?? "").isEmpty,
+        jarvisAPIKeyPresent: Bool = !(UserDefaults.standard.string(forKey: "jarvisAPIKey") ?? LocalEnv.value(for: "JARVIS_API_KEY") ?? "").isEmpty,
+        jarvisOperatorSecretPresent: Bool = !(UserDefaults.standard.string(forKey: "jarvisOperatorSecret") ?? LocalEnv.value(for: "OPERATOR_API_SECRET") ?? "").isEmpty,
         databaseWritable: () -> Bool = {
             DatabaseManager.shared.canWrite()
         },
@@ -52,6 +54,7 @@ enum Preflight {
         // should surface as a non-fatal warning when the feature is enabled.
         status.jarvisPhoneEnabled = jarvisPhoneEnabled
         status.jarvisAPIKeyPresent = jarvisAPIKeyPresent
+        status.jarvisOperatorSecretPresent = jarvisOperatorSecretPresent
 
         // 4. Database writable (DatabaseManager is already initialized by AppState)
         status.databaseWritable = databaseWritable()

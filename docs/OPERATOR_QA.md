@@ -27,9 +27,23 @@
 
 1. Preferences -> Tools shows the full built-in catalog. Verify expected categories: Files, Shell, Git, Web, Phone, Presentation, Media, Utility, YouTube, Clipboard, Automation, Memory.
 2. `youtube_search` and `youtube_download` require `yt-dlp` on PATH. If missing, Bob returns "yt-dlp not found on PATH. Install with: brew install yt-dlp".
-3. `phone_call`, `phone_hangup`, `phone_status` only appear when Jarvis phone is enabled in Preferences and a `JARVIS_API_KEY` is set.
+3. `phone_call`, `phone_hangup`, `phone_status` only appear when Jarvis phone is enabled in Preferences and both `JARVIS_API_KEY` and `OPERATOR_API_SECRET` are configured.
 4. `web_search` only appears when `BRAVE_API_KEY` is configured.
 5. Read-only tools (green dot) should run silently. Write/ASK tools (orange dot) should show a modal approval dialog.
+
+### Jarvis Phone
+
+1. Preferences -> Tools -> `Enable Jarvis phone service` is on.
+2. Both secure fields are filled:
+   - `Jarvis API key`
+   - `Operator secret`
+3. `Test connection` returns healthy reachability.
+4. Ask Bob to place a call:
+   - expected: approval modal for `phone_call`
+   - after approval: either a returned `callSid` or a precise auth failure
+5. If the daemon returns `401`:
+   - capital-`U` `Unauthorized` means the operator secret failed
+   - lowercase `unauthorized` means the Jarvis API key failed
 
 ## Operator Gotchas
 
@@ -43,6 +57,14 @@
 
 - If `Rich Presentation` is off, Bob should not use `present`.
 - In that state, simple file/URL open requests should fall back to shell `open` or a clear refusal.
+
+### Jarvis Auth Contract
+
+- The current daemon contract puts `/call/*` behind two layers:
+  - `x-operator-secret`
+  - `X-Jarvis-Key`
+- `/health` is open and does not validate either one.
+- A healthy `/health` check is not enough to prove calls will succeed.
 
 ### Uncensored Mode Prerequisite
 

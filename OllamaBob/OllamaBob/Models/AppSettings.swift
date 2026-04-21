@@ -7,9 +7,10 @@ import Combine
 final class AppSettings: ObservableObject {
 
     static let shared = AppSettings()
-    static let defaultUncensoredModelName = "huihui_ai/qwen3-abliterated:8b"
-    static let jarvisPhoneEnabledKey = "jarvisPhoneEnabled"
-    static let jarvisAPIKeyKey = "jarvisAPIKey"
+    nonisolated static let defaultUncensoredModelName = "huihui_ai/qwen3-abliterated:8b"
+    nonisolated static let jarvisPhoneEnabledKey = "jarvisPhoneEnabled"
+    nonisolated static let jarvisAPIKeyKey = "jarvisAPIKey"
+    nonisolated static let jarvisOperatorSecretKey = "jarvisOperatorSecret"
 
     @Published var showBob: Bool {
         didSet { UserDefaults.standard.set(showBob, forKey: Keys.showBob) }
@@ -119,6 +120,12 @@ final class AppSettings: ObservableObject {
         didSet { UserDefaults.standard.set(jarvisAPIKey, forKey: Self.jarvisAPIKeyKey) }
     }
 
+    /// Outer operator-auth secret required by the Jarvis daemon before the
+    /// inner call API key is even checked.
+    @Published var jarvisOperatorSecret: String {
+        didSet { UserDefaults.standard.set(jarvisOperatorSecret, forKey: Self.jarvisOperatorSecretKey) }
+    }
+
     private enum Keys {
         static let showBob               = "showBob"
         static let chatWindowOpacity     = "chatWindowOpacity"
@@ -185,7 +192,10 @@ final class AppSettings: ObservableObject {
             defaults.set(false, forKey: Self.jarvisPhoneEnabledKey)
         }
         if defaults.object(forKey: Self.jarvisAPIKeyKey) == nil {
-            defaults.set("", forKey: Self.jarvisAPIKeyKey)
+            defaults.set(LocalEnv.value(for: "JARVIS_API_KEY") ?? "", forKey: Self.jarvisAPIKeyKey)
+        }
+        if defaults.object(forKey: Self.jarvisOperatorSecretKey) == nil {
+            defaults.set(LocalEnv.value(for: "OPERATOR_API_SECRET") ?? "", forKey: Self.jarvisOperatorSecretKey)
         }
 
         self.showBob               = defaults.bool(forKey: Keys.showBob)
@@ -204,6 +214,7 @@ final class AppSettings: ObservableObject {
         self.uncensoredModelName = defaults.string(forKey: Keys.uncensoredModelName) ?? Self.defaultUncensoredModelName
         self.jarvisPhoneEnabled = defaults.bool(forKey: Self.jarvisPhoneEnabledKey)
         self.jarvisAPIKey = defaults.string(forKey: Self.jarvisAPIKeyKey) ?? ""
+        self.jarvisOperatorSecret = defaults.string(forKey: Self.jarvisOperatorSecretKey) ?? ""
 
         let storedCtx = defaults.integer(forKey: Keys.numCtx)
         self.numCtx = AppConfig.numCtxAllowed.contains(storedCtx) ? storedCtx : AppConfig.numCtx

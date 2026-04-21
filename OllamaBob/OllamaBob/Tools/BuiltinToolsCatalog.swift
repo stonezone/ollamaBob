@@ -45,7 +45,7 @@ enum BuiltinToolsCatalog {
         Entry(name: "web_search", category: "web", posture: .none, description: "Brave web search, top 5 results"),
 
         // MARK: Phone
-        Entry(name: "phone_call", category: "phone", posture: .modal, description: "Place a real phone call through the Jarvis phone service (defaults to Bob as caller)"),
+        Entry(name: "phone_call", category: "phone", posture: .modal, description: "Place a real phone call through the Jarvis phone service (defaults to Bob as caller; requires both Jarvis secrets)"),
         Entry(name: "phone_hangup", category: "phone", posture: .none, description: "End an active Jarvis phone call"),
         Entry(name: "phone_status", category: "phone", posture: .none, description: "Check the current status of a Jarvis phone call"),
 

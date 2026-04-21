@@ -109,6 +109,8 @@ Configured in `AppConfig.swift`:
 
 Runtime secrets are read from environment variables or `UserDefaults`:
 - `BRAVE_API_KEY` — enables the `web_search` tool (optional).
+- `JARVIS_API_KEY` — inner Jarvis call API key for `/call/*`.
+- `OPERATOR_API_SECRET` — outer Jarvis operator secret; the current daemon contract requires this as well as `JARVIS_API_KEY` for `phone_call`, `phone_hangup`, and `phone_status`.
 - `ELEVENLABS_API_KEY` + `OLLAMABOB_VOICE_ID` — only needed to re-render voice clips via `tools/render-bob-sayings.py`; the shipping app reads pre-rendered audio from `Resources/Audio/`.
 
 Store secrets in a gitignored `.env` at the repo root. Use `.env.example` as the template.

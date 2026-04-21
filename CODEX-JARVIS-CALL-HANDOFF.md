@@ -6,6 +6,7 @@ Implemented the `JARVIS_BOB_CALLS.md` V1 app-side slice in OllamaBob.
 
 This pass added:
 - Preferences support for the Jarvis phone daemon
+- local `.env` seeding for Jarvis secrets when Preferences are still blank
 - non-fatal preflight warning when Jarvis is enabled without a key
 - built-in phone tools:
   - `phone_call`
@@ -46,18 +47,21 @@ Handoff:
 New preferences section:
 - `Enable Jarvis phone service`
 - secure `Jarvis API key` field
+- secure `Operator secret` field
 - `Test connection` button against `GET http://127.0.0.1:3100/health`
 
 Notes:
-- the health check does not send `X-Jarvis-Key`
+- the health check does not send either Jarvis auth header
 - if the daemon exposes no version field, the UI shows `Healthy`
-- if Jarvis is enabled but the key is blank, preflight shows a warning but app launch is not blocked
+- if Jarvis is enabled but either secret is blank, preflight shows a warning but app launch is not blocked
+- if both Preferences fields are blank on local debug builds, the app will try to seed them from the repo-root `.env`
 
 ### Tool Exposure Rules
 
 The phone tools are only exposed when all of these are true:
 - `jarvisPhoneEnabled == true`
 - `jarvisAPIKey` is non-empty
+- `jarvisOperatorSecret` is non-empty
 - `jarvisBaseURL` parses successfully
 
 If any of those are false:
@@ -81,6 +85,12 @@ Daemon-facing HTTP contract actually used by the app:
 - `POST /call/initiate`
 - `POST /call/hangup/:id`
 - `GET /call/status/:id`
+
+Current auth contract actually required by the daemon:
+- outer gate: `x-operator-secret` from `OPERATOR_API_SECRET`
+- inner `/call/*` gate: `X-Jarvis-Key` from `JARVIS_API_KEY`
+- both headers are required on `phone_call`, `phone_hangup`, and `phone_status`
+- `GET /health` is open and only verifies reachability
 
 The app maps the model-facing fields to the daemon payload:
 - `persona` -> normalized daemon `caller`
@@ -106,18 +116,33 @@ Success summaries:
 
 Failure summaries:
 - network/unreachable -> `Jarvis unreachable at http://127.0.0.1:3100`
-- HTTP non-2xx -> `Jarvis error: <status>: <body prefix>`
+- operator auth failure -> `Jarvis operator secret rejected (401 Unauthorized). Update the Operator secret in Preferences.`
+- call auth failure -> `Jarvis call API key rejected (401 unauthorized). Update the Jarvis API key in Preferences.`
+- other HTTP non-2xx -> `Jarvis error: <status>: <body prefix>`
 - missing inputs -> local validation failure
 
 ## Verification Completed
 
 Automated:
 - `swift build` -> passed
-- `swift test` -> passed
+- `swift test` -> had passed before the latest Jarvis double-auth patch
 
-Current suite result at handoff time:
-- `95` tests
-- `0` failures
+Current verification state for the latest local changes:
+- `swift build` -> passes
+- `swift test --filter JarvisPhoneV1Tests` -> passes
+- `swift test` -> passes
+- `./build.sh --run` -> passes
+- current suite result: `97` tests, `0` failures
+
+Important test-harness hardening that made this stable:
+- `ToolRuntime` startup probing is skipped under XCTest, so the suite no longer hangs waiting on background `ProcessRunner` probes
+- `JarvisPhoneV1Tests` no longer rely on class-level `@MainActor`, which restores `swift test --filter JarvisPhoneV1Tests`
+- `JarvisPhoneV1Tests` now use per-test URLProtocol registration/cleanup and scoped defaults restoration
+
+Claude/Jarvis daemon note:
+- the Codex-side `jarvis-phone` MCP config was patched to include both `OPERATOR_API_SECRET` and `JARVIS_API_KEY`
+- those values currently match in the local `.env`
+- Codex needs a restart before MCP-side call tools will see that change
 
 Important regression that was fixed during integration:
 - worker output initially listed the phone tools but did not actually dispatch them in `AgentLoop.executeTool`
@@ -133,7 +158,7 @@ Run these with the real daemon up:
 1. Enable Jarvis in Preferences, leave key blank
    - expected: warning in preflight, tools absent
 
-2. Add the real key and click `Test connection`
+2. Add both real secrets and click `Test connection`
    - expected: healthy state in Preferences
 
 3. Ask Bob to place a call
