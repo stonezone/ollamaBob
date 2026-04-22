@@ -1,6 +1,6 @@
 Phase 1 is accepted.
 
-Continue in this same session and execute Phase 2 only.
+Continue and execute Phase 2 only.
 
 Do not redo the broad audit.
 Do only a narrow spot-check of the files you are about to touch to confirm nothing materially changed.
