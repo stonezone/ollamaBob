@@ -23,6 +23,11 @@ enum ChatBubbleRendering {
         let isTruncated: Bool
     }
 
+    private struct AvatarSpeechSegment {
+        let text: String
+        let isListItem: Bool
+    }
+
     struct AssistantMetadata {
         let shouldShowBody: Bool
         let synthesizedHTMLArtifact: DetectedArtifact?
@@ -129,30 +134,19 @@ enum ChatBubbleRendering {
             return AvatarPreview(blocks: [.markdown(AttributedString("Opened rich view."))])
         }
 
-        let previewBlocks = blocks(for: trimmed, cacheIdentity: "avatar-\(stableDigest(for: trimmed))").compactMap { block -> Block? in
-            switch block {
-            case .markdown(let attributed):
-                let text = String(attributed.characters).trimmingCharacters(in: .whitespacesAndNewlines)
-                guard text.isEmpty == false else { return nil }
-                return .markdown(attributedString(from: text))
-            case .code(let language, let content):
-                let body = content.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard body.isEmpty == false else { return nil }
-                let preview = transcriptPreview(
-                    for: body,
-                    expanded: false,
-                    maxLines: 4,
-                    maxCharacters: 220
-                )
-                return .code(language: language, content: preview.text)
-            }
-        }
+        let previewLines = avatarSpeechLines(
+            from: blocks(for: trimmed, cacheIdentity: "avatar-\(stableDigest(for: trimmed))"),
+            fallback: trimmed,
+            preferListSummary: containsAvatarListMarkers(trimmed)
+        )
 
-        if previewBlocks.isEmpty {
+        if previewLines.isEmpty {
             return AvatarPreview(blocks: [.markdown(attributedString(from: trimmed))])
         }
 
-        return AvatarPreview(blocks: Array(previewBlocks.prefix(2)))
+        return AvatarPreview(
+            blocks: previewLines.map { .markdown(attributedString(from: $0)) }
+        )
     }
 
     static func toolCallSummary(_ call: OllamaToolCall) -> String {
@@ -338,6 +332,357 @@ enum ChatBubbleRendering {
         return language.isEmpty ? nil : language
     }
 
+    private static func avatarSpeechLines(
+        from blocks: [Block],
+        fallback: String,
+        preferListSummary: Bool
+    ) -> [String] {
+        var segments: [AvatarSpeechSegment] = []
+        var codeLanguages: [String] = []
+        var sawTechnicalDetail = false
+
+        for block in blocks {
+            switch block {
+            case .markdown(let attributed):
+                let text = String(attributed.characters).trimmingCharacters(in: .whitespacesAndNewlines)
+                guard text.isEmpty == false else { continue }
+
+                for segment in avatarSegments(from: text) {
+                    let cleaned = condensedAvatarSpeechLine(segment.text)
+                    guard cleaned.isEmpty == false else { continue }
+                    if isAvatarTechnicalNoise(cleaned) {
+                        sawTechnicalDetail = true
+                        continue
+                    }
+                    segments.append(AvatarSpeechSegment(text: cleaned, isListItem: segment.isListItem))
+                }
+            case .code(let language, let content):
+                let body = content.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard body.isEmpty == false else { continue }
+                sawTechnicalDetail = true
+                if let language, language.isEmpty == false {
+                    codeLanguages.append(language)
+                }
+            }
+        }
+
+        var speakableSegments = deduplicatedAvatarSegments(segments)
+        if speakableSegments.count > 1, shouldSkipAvatarLeadIn(speakableSegments[0].text) {
+            speakableSegments.removeFirst()
+        }
+
+        var lines: [String] = []
+        let proseLineBudget = max(1, 3 - (codeLanguages.isEmpty ? 0 : 1))
+        let proseSegments = speakableSegments.filter { $0.isListItem == false }
+        let explicitListSegments = speakableSegments.filter(\.isListItem).map(\.text)
+        let syntheticListSegments = preferListSummary && explicitListSegments.isEmpty
+            ? proseSegments.map(\.text)
+            : []
+        let listSegments = explicitListSegments.isEmpty == false ? explicitListSegments : syntheticListSegments
+
+        if preferListSummary == false || explicitListSegments.isEmpty == false {
+            for prose in proseSegments {
+                guard lines.contains(prose.text) == false else { continue }
+                lines.append(prose.text)
+                if lines.count >= proseLineBudget {
+                    break
+                }
+            }
+        }
+
+        if lines.count < proseLineBudget {
+            if listSegments.count > 1 {
+                let summary = avatarListSummary(
+                    from: listSegments,
+                    maxItems: lines.isEmpty ? 3 : 2
+                )
+                if summary.isEmpty == false, lines.contains(summary) == false {
+                    lines.append(summary)
+                }
+            } else if let listItem = listSegments.first, lines.contains(listItem) == false {
+                lines.append(listItem)
+            }
+        }
+
+        if codeLanguages.isEmpty == false && lines.count < 3 {
+            lines.append(
+                avatarCodeSummary(
+                    for: codeLanguages,
+                    hasExistingSpeech: lines.isEmpty == false
+                )
+            )
+        }
+
+        if lines.isEmpty && sawTechnicalDetail {
+            lines.append("The detailed output is in the full reply.")
+        }
+
+        if lines.isEmpty {
+            let fallbackLine = condensedAvatarSpeechLine(fallback)
+            if fallbackLine.isEmpty == false {
+                lines.append(fallbackLine)
+            }
+        }
+
+        return Array(deduplicatedAvatarLines(lines).prefix(3))
+    }
+
+    private static func avatarSegments(from text: String) -> [AvatarSpeechSegment] {
+        var segments: [AvatarSpeechSegment] = []
+        var proseBuffer: [String] = []
+
+        func flushProseBuffer() {
+            let paragraph = proseBuffer.joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+            proseBuffer.removeAll(keepingCapacity: true)
+            guard paragraph.isEmpty == false else { return }
+
+            let sentences = sentenceSegments(from: paragraph)
+            if sentences.isEmpty {
+                segments.append(AvatarSpeechSegment(text: paragraph, isListItem: false))
+            } else {
+                segments.append(contentsOf: sentences.map {
+                    AvatarSpeechSegment(text: $0, isListItem: false)
+                })
+            }
+        }
+
+        for rawLine in text.components(separatedBy: .newlines) {
+            let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+            if line.isEmpty {
+                flushProseBuffer()
+                continue
+            }
+
+            if let listItem = strippedAvatarListMarker(from: line) {
+                flushProseBuffer()
+                segments.append(AvatarSpeechSegment(text: listItem, isListItem: true))
+            } else {
+                proseBuffer.append(line)
+            }
+        }
+
+        flushProseBuffer()
+        return segments
+    }
+
+    private static func sentenceSegments(from text: String) -> [String] {
+        var sentences: [String] = []
+        text.enumerateSubstrings(in: text.startIndex..<text.endIndex, options: [.bySentences]) { substring, _, _, _ in
+            guard let substring else { return }
+            let cleaned = substring.trimmingCharacters(in: .whitespacesAndNewlines)
+            if cleaned.isEmpty == false {
+                sentences.append(cleaned)
+            }
+        }
+
+        if sentences.isEmpty {
+            let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            return cleaned.isEmpty ? [] : [cleaned]
+        }
+
+        if sentences.count == 1 {
+            let manuallySplit = text
+                .replacingOccurrences(
+                    of: #"(?<=[.!?])\s+(?=[A-Za-z0-9])|(?<=[.!?])(?=[A-Z])|:(?=[A-Z])"#,
+                    with: "\n",
+                    options: .regularExpression
+                )
+                .components(separatedBy: .newlines)
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { $0.isEmpty == false }
+
+            if manuallySplit.count > 1 {
+                return manuallySplit
+            }
+        }
+
+        return sentences
+    }
+
+    private static func strippedAvatarListMarker(from line: String) -> String? {
+        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let simplePrefixes = ["• ", "- ", "* ", "+ "]
+        for prefix in simplePrefixes where trimmed.hasPrefix(prefix) {
+            let stripped = trimmed.dropFirst(prefix.count).trimmingCharacters(in: .whitespacesAndNewlines)
+            return stripped.isEmpty ? nil : stripped
+        }
+
+        if let range = trimmed.range(of: #"^\d+[\.\)]\s+"#, options: .regularExpression) {
+            let stripped = trimmed[range.upperBound...].trimmingCharacters(in: .whitespacesAndNewlines)
+            return stripped.isEmpty ? nil : stripped
+        }
+
+        if let range = trimmed.range(of: #"^-\s+\[[ xX]\]\s+"#, options: .regularExpression) {
+            let stripped = trimmed[range.upperBound...].trimmingCharacters(in: .whitespacesAndNewlines)
+            return stripped.isEmpty ? nil : stripped
+        }
+
+        return nil
+    }
+
+    private static func condensedAvatarSpeechLine(_ text: String, maxCharacters: Int = 92) -> String {
+        let normalized = text
+            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard normalized.count > maxCharacters else { return normalized }
+
+        let limitIndex = normalized.index(normalized.startIndex, offsetBy: maxCharacters)
+        let prefix = String(normalized[..<limitIndex])
+        let boundary = prefix.lastIndex(of: " ") ?? prefix.endIndex
+        let truncated = String(prefix[..<boundary]).trimmingCharacters(in: .whitespacesAndNewlines)
+        return truncated.isEmpty ? normalized : truncated + "…"
+    }
+
+    private static func isAvatarTechnicalNoise(_ text: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.isEmpty == false else { return false }
+
+        let lower = trimmed.lowercased()
+        let technicalPrefixes = [
+            "stdout:",
+            "stderr:",
+            "exit code",
+            "diff --git",
+            "@@",
+            "traceback",
+            "stack trace",
+            "command:",
+            "path:",
+            "fatal:",
+            "warning:",
+            "error:"
+        ]
+        if technicalPrefixes.contains(where: { lower.hasPrefix($0) }) {
+            return true
+        }
+
+        if trimmed.hasPrefix("$ ") || trimmed.hasPrefix("{") || trimmed.hasPrefix("[") {
+            return true
+        }
+
+        if trimmed.contains("{"), trimmed.contains("}"), trimmed.contains(":") {
+            return true
+        }
+
+        let wordCount = trimmed.split(whereSeparator: \.isWhitespace).count
+        if trimmed.range(of: #"[/~][A-Za-z0-9._/\-]{4,}"#, options: .regularExpression) != nil, wordCount <= 10 {
+            return true
+        }
+
+        let punctuation = CharacterSet.punctuationCharacters
+        let symbols = CharacterSet.symbols
+        let symbolCount = trimmed.unicodeScalars.filter { punctuation.contains($0) || symbols.contains($0) }.count
+        if Double(symbolCount) / Double(max(trimmed.count, 1)) > 0.22, wordCount < 12 {
+            return true
+        }
+
+        return false
+    }
+
+    private static func avatarListSummary(from items: [String], maxItems: Int) -> String {
+        let selected = Array(items.prefix(maxItems)).map { item in
+            item.trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+        }
+        .filter { $0.isEmpty == false }
+
+        guard selected.isEmpty == false else { return "" }
+        if selected.count == 1 {
+            return selected[0]
+        }
+
+        return "Key points: " + selected.joined(separator: "; ") + "."
+    }
+
+    private static func avatarCodeSummary(for languages: [String], hasExistingSpeech: Bool) -> String {
+        let normalizedLanguage = languages
+            .compactMap { avatarLanguageDisplayName(for: $0) }
+            .first
+
+        let snippetLabel: String
+        if let normalizedLanguage {
+            let article = normalizedLanguage == "JSON" ? "" : "a "
+            snippetLabel = "\(article)\(normalizedLanguage) snippet"
+        } else {
+            snippetLabel = "the code"
+        }
+
+        if hasExistingSpeech {
+            return "I also included \(snippetLabel)."
+        }
+
+        return "I have \(snippetLabel) ready."
+    }
+
+    private static func avatarLanguageDisplayName(for language: String) -> String? {
+        let normalized = language.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard normalized.isEmpty == false else { return nil }
+
+        switch normalized {
+        case "bash", "sh", "zsh", "shell":
+            return "shell"
+        case "js", "javascript":
+            return "JavaScript"
+        case "ts", "typescript":
+            return "TypeScript"
+        case "json":
+            return "JSON"
+        case "swift":
+            return "Swift"
+        case "py", "python":
+            return "Python"
+        default:
+            return normalized.capitalized
+        }
+    }
+
+    private static func shouldSkipAvatarLeadIn(_ text: String) -> Bool {
+        let normalized = text
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: .punctuationCharacters)
+            .lowercased()
+
+        let knownLeadIns: Set<String> = [
+            "here's the plan",
+            "here is the plan",
+            "plan",
+            "summary",
+            "quick summary",
+            "short version",
+            "the short version",
+            "next steps",
+            "what i found",
+            "key points"
+        ]
+        if knownLeadIns.contains(normalized) {
+            return true
+        }
+
+        return text.hasSuffix(":") && normalized.split(separator: " ").count <= 5
+    }
+
+    private static func deduplicatedAvatarSegments(_ segments: [AvatarSpeechSegment]) -> [AvatarSpeechSegment] {
+        var seen: Set<String> = []
+        var deduplicated: [AvatarSpeechSegment] = []
+
+        for segment in segments {
+            let key = segment.text.lowercased()
+            guard seen.insert(key).inserted else { continue }
+            deduplicated.append(segment)
+        }
+
+        return deduplicated
+    }
+
+    private static func deduplicatedAvatarLines(_ lines: [String]) -> [String] {
+        var seen: Set<String> = []
+        return lines.filter { line in
+            let key = line.lowercased()
+            return seen.insert(key).inserted
+        }
+    }
+
     private static func attributedString(from markdown: String) -> AttributedString {
         if let attributed = try? AttributedString(
             markdown: markdown,
@@ -350,6 +695,13 @@ enum ChatBubbleRendering {
 
     private static func containsMarkdownImageSyntax(_ content: String) -> Bool {
         content.range(of: #"\!\[[^\]]*\]\([^)]+\)"#, options: .regularExpression) != nil
+    }
+
+    private static func containsAvatarListMarkers(_ content: String) -> Bool {
+        content.range(
+            of: #"(?m)^\s*(?:[-*+]|•|\d+[\.\)])\s+"#,
+            options: .regularExpression
+        ) != nil
     }
 
     private static func containsHTMLPayload(_ content: String) -> Bool {

@@ -112,7 +112,7 @@ final class ChatBubbleRenderingTests: XCTestCase {
         }
     }
 
-    func testAvatarBubblePreviewStripsFenceMarkersButKeepsCode() {
+    func testAvatarBubblePreviewSummarizesPureCodeAsSpeech() {
         let preview = ChatBubbleRendering.avatarBubblePreview(
             for: """
             ```bash
@@ -122,11 +122,13 @@ final class ChatBubbleRenderingTests: XCTestCase {
         )
 
         XCTAssertEqual(preview.blocks.count, 1)
-        if case .code(let language, let content) = preview.blocks[0] {
-            XCTAssertEqual(language, "bash")
-            XCTAssertEqual(content, "cat ~/.zshrc")
+        if case .markdown(let attributed) = preview.blocks[0] {
+            XCTAssertEqual(
+                String(attributed.characters).trimmingCharacters(in: .whitespacesAndNewlines),
+                "I have a shell snippet ready."
+            )
         } else {
-            XCTFail("Expected code preview block")
+            XCTFail("Expected markdown speech summary")
         }
     }
 
@@ -162,6 +164,121 @@ final class ChatBubbleRenderingTests: XCTestCase {
         }
     }
 
+    func testAvatarBubblePreviewCondensesLongProseIntoThreeSpeechLines() {
+        let preview = ChatBubbleRendering.avatarBubblePreview(
+            for: """
+            I reviewed the reply. I pulled the main point forward. I cut the extra implementation detail. The full explanation is still there.
+            """
+        )
+
+        XCTAssertEqual(
+            avatarPreviewLines(preview),
+            [
+                "I reviewed the reply.",
+                "I pulled the main point forward.",
+                "I cut the extra implementation detail."
+            ]
+        )
+    }
+
+    func testAvatarBubblePreviewCollapsesProseAndListIntoSpeechLikeSummary() {
+        let preview = ChatBubbleRendering.avatarBubblePreview(
+            for: """
+            Here's the plan:
+
+            - Tighten the avatar preview.
+            - Keep Full mode unchanged.
+            - Leave the geometry work for later.
+            """
+        )
+
+        XCTAssertEqual(
+            avatarPreviewLines(preview),
+            ["Key points: Tighten the avatar preview; Keep Full mode unchanged; Leave the geometry work for later."]
+        )
+    }
+
+    func testAvatarBubblePreviewKeepsSpeechButDropsRawCodeTranscript() {
+        let content = """
+        I tightened the preview for avatar mode.
+
+        ```swift
+        print("hello")
+        ```
+        """
+
+        let preview = ChatBubbleRendering.avatarBubblePreview(for: content)
+
+        XCTAssertEqual(
+            avatarPreviewLines(preview),
+            [
+                "I tightened the preview for avatar mode.",
+                "I also included a Swift snippet."
+            ]
+        )
+        XCTAssertFalse(preview.blocks.contains(where: { block in
+            if case .code = block {
+                return true
+            }
+            return false
+        }))
+    }
+
+    func testAvatarBubblePreviewDropsToolNoiseButKeepsHumanSummary() {
+        let preview = ChatBubbleRendering.avatarBubblePreview(
+            for: """
+            I checked the repo and found local changes.
+            stdout:
+             M OllamaBob/OllamaBob/Views/ChatBubble.swift
+             M OllamaBob/Tests/OllamaBobTests/ChatBubbleRenderingTests.swift
+            exit code: 0
+            """
+        )
+
+        XCTAssertEqual(
+            avatarPreviewLines(preview),
+            ["I checked the repo and found local changes."]
+        )
+    }
+
+    func testFullModeBlocksRemainDetailedWhileAvatarPreviewTightens() {
+        let content = """
+        Here is the change.
+
+        ```bash
+        cat ~/.zshrc
+        ```
+        """
+
+        let blocks = ChatBubbleRendering.blocks(for: content)
+        let preview = ChatBubbleRendering.avatarBubblePreview(for: content)
+
+        XCTAssertEqual(blocks.count, 2)
+        if case .markdown(let attributed) = blocks[0] {
+            XCTAssertEqual(
+                String(attributed.characters).trimmingCharacters(in: .whitespacesAndNewlines),
+                "Here is the change."
+            )
+        } else {
+            XCTFail("Expected markdown block first")
+        }
+
+        if case .code(let language, let code) = blocks[1] {
+            XCTAssertEqual(language, "bash")
+            XCTAssertEqual(code, "cat ~/.zshrc")
+        } else {
+            XCTFail("Expected code block second")
+        }
+
+        XCTAssertEqual(
+            avatarPreviewLines(preview),
+            [
+                "Here is the change.",
+                "I also included a shell snippet."
+            ]
+        )
+    }
+
     func testTranscriptPreviewTruncatesLongContentWhenCollapsed() {
         let longText = Array(repeating: "line", count: 30).joined(separator: "\n")
 
@@ -183,5 +300,13 @@ final class ChatBubbleRenderingTests: XCTestCase {
                 arguments: .object(arguments)
             )
         )
+    }
+
+    private func avatarPreviewLines(_ preview: ChatBubbleRendering.AvatarPreview) -> [String] {
+        preview.blocks.compactMap { block in
+            guard case .markdown(let attributed) = block else { return nil }
+            let text = String(attributed.characters).trimmingCharacters(in: .whitespacesAndNewlines)
+            return text.isEmpty ? nil : text
+        }
     }
 }

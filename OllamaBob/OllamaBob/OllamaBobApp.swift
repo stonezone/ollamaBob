@@ -3,15 +3,18 @@ import AppKit
 
 @main
 struct OllamaBobApp: App {
-    @StateObject private var appState = AppState()
+    @NSApplicationDelegateAdaptor(OllamaBobAppDelegate.self) private var appDelegate
+    @ObservedObject private var appState = AppState.shared
     @ObservedObject private var settings = AppSettings.shared
 
     @Environment(\.openWindow) private var openWindow
 
     var body: some Scene {
+        let _ = configureWindowRouting()
+
         MenuBarExtra("OllamaBob", systemImage: "bubble.left.fill") {
             Button("Open Chat") {
-                openWindow(id: "chat")
+                ChatWindowController.shared.showChatWindow()
             }
             .keyboardShortcut("o")
 
@@ -20,16 +23,16 @@ struct OllamaBobApp: App {
             }
 
             Button("Tool Activity") {
-                openWindow(id: "tool-activity")
+                AppWindowRouter.shared.open(id: AppWindowRouter.toolActivityID)
             }
 
             Button("Preferences…") {
-                openWindow(id: "preferences")
+                AppWindowRouter.shared.open(id: AppWindowRouter.preferencesID)
             }
             .keyboardShortcut(",")
 
             Button("Welcome / Tour…") {
-                openWindow(id: "onboarding")
+                AppWindowRouter.shared.open(id: AppWindowRouter.onboardingID)
             }
 
             Divider()
@@ -54,30 +57,17 @@ struct OllamaBobApp: App {
             .keyboardShortcut("q")
         }
 
-        Window("Bob's Desk", id: "chat") {
-            ZStack {
-                Group {
-                    if appState.preflightPassed {
-                        BobsDeskView(agentLoop: appState.agentLoop)
-                    } else if let status = appState.preflightStatus {
-                        PreflightErrorView(status: status, onRetry: { appState.runPreflight() })
-                    } else {
-                        ProgressView("Starting up...")
-                            .frame(width: 300, height: 200)
-                    }
-                }
-
-                PresentationWindowBinder()
-                    .frame(width: 0, height: 0)
-                    .allowsHitTesting(false)
-            }
+        Window("Tool Activity", id: "tool-activity") {
+            ToolActivityView(agentLoop: appState.agentLoop)
         }
-        .defaultSize(width: 520, height: 760)
-        .windowStyle(.hiddenTitleBar)
-        .windowResizability(.contentMinSize)
+        .defaultSize(width: 450, height: 400)
         .commands {
-            // F5 — keyboard shortcuts for chat actions and persona switching
             CommandMenu("Chat") {
+                Button("Open Chat") {
+                    ChatWindowController.shared.showChatWindow()
+                }
+                .keyboardShortcut("o")
+
                 Button("New Chat") {
                     NotificationCenter.default.post(name: .bobNewChat, object: nil)
                 }
@@ -122,11 +112,6 @@ struct OllamaBobApp: App {
             }
         }
 
-        Window("Tool Activity", id: "tool-activity") {
-            ToolActivityView(agentLoop: appState.agentLoop)
-        }
-        .defaultSize(width: 450, height: 400)
-
         Window("Bob's View", id: "rich-html") {
             RichHTMLView(state: PresentationService.shared.richHTMLState)
         }
@@ -143,16 +128,29 @@ struct OllamaBobApp: App {
         }
         .defaultSize(width: 520, height: 520)
         .windowResizability(.contentSize)
+
+    }
+
+    @MainActor
+    private func configureWindowRouting() {
+        AppWindowRouter.shared.register { id in
+            openWindow(id: id)
+        }
+        PresentationService.shared.registerOpenRichHTMLWindow {
+            AppWindowRouter.shared.open(id: AppWindowRouter.richHTMLID)
+        }
     }
 }
 
 @MainActor
 final class AppState: ObservableObject {
+    static let shared = AppState()
+
     @Published var agentLoop = AgentLoop()
     @Published var preflightStatus: PreflightStatus?
     @Published var preflightPassed = false
 
-    init() {
+    private init() {
         initDatabase()
         setupApprovalHandler()
         runPreflight()
@@ -184,18 +182,5 @@ final class AppState: ObservableObject {
         agentLoop.modelSwitchHandler = { oldModel, newModel in
             print("Model switched from \(oldModel) to \(newModel)")
         }
-    }
-}
-
-private struct PresentationWindowBinder: View {
-    @Environment(\.openWindow) private var openWindow
-
-    var body: some View {
-        Color.clear
-            .onAppear {
-                PresentationService.shared.registerOpenRichHTMLWindow {
-                    openWindow(id: "rich-html")
-                }
-            }
     }
 }

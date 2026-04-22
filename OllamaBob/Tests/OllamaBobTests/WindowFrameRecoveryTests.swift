@@ -64,6 +64,48 @@ final class WindowFrameRecoveryTests: XCTestCase {
         XCTAssertEqual(clamped.size.height, 340, accuracy: 0.001)
     }
 
+    func testClampedFrameCapsOversizedAvatarRestoreToMaximumSize() {
+        let visible = NSRect(x: 0, y: 0, width: 1512, height: 982)
+        let saved = NSRect(x: 632, y: 336, width: 675, height: 552)
+
+        let clamped = WindowFrameRecovery.clampedFrame(
+            saved,
+            minimumSize: NSSize(width: 280, height: 340),
+            maximumSize: NSSize(width: 420, height: 420),
+            visibleFrames: [visible]
+        )
+
+        guard let clamped else {
+            return XCTFail("Expected a clamped frame")
+        }
+
+        XCTAssertEqual(clamped.origin.x, 632, accuracy: 0.001)
+        XCTAssertEqual(clamped.origin.y, 336, accuracy: 0.001)
+        XCTAssertEqual(clamped.size.width, 420, accuracy: 0.001)
+        XCTAssertEqual(clamped.size.height, 420, accuracy: 0.001)
+    }
+
+    func testClampedFrameAllowsAvatarRestorePartiallyAboveVisibleTop() {
+        let visible = NSRect(x: 0, y: 0, width: 1512, height: 982)
+        let saved = NSRect(x: 640, y: 820, width: 420, height: 420)
+
+        let clamped = WindowFrameRecovery.clampedFrame(
+            saved,
+            minimumSize: NSSize(width: 280, height: 340),
+            maximumSize: NSSize(width: 420, height: 420),
+            minimumVisibleHeight: 240,
+            visibleFrames: [visible]
+        )
+
+        guard let clamped else {
+            return XCTFail("Expected a clamped frame")
+        }
+
+        XCTAssertEqual(clamped.origin.x, 640, accuracy: 0.001)
+        XCTAssertEqual(clamped.origin.y, 742, accuracy: 0.001)
+        XCTAssertEqual(clamped.maxY, 1162, accuracy: 0.001)
+    }
+
     func testClampedFrameReturnsNilWithoutVisibleScreens() {
         let saved = NSRect(x: 100, y: 100, width: 420, height: 520)
 

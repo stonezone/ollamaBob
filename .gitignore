@@ -76,6 +76,13 @@ out/
 .claude/
 CLAUDE.local.md
 
+# Local agent scratch docs and handoffs
+.local-docs/
+/TOP_DRAG_HANDOFF.md
+/CODEX-JARVIS-CALL-HANDOFF.md
+/*upgrade*.md
+/*UPGRADE*.md
+
 # Archived compiled artifacts — sources tracked, binaries ignored
 archive/**/*.app/
 archive/**/*.dylib

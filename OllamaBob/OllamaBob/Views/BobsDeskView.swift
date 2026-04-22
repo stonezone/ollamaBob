@@ -3,6 +3,13 @@ import AppKit
 
 // MARK: - Window Transparency
 
+enum ChatWindowMetrics {
+    static let fullMinSize = NSSize(width: 420, height: 520)
+    static let avatarMinSize = NSSize(width: 280, height: 340)
+    static let avatarMaxSize = NSSize(width: 420, height: 420)
+    static let avatarMinimumVisibleHeight: CGFloat = 240
+}
+
 /// Strips all macOS chrome from the chat window: makes the NSWindow non-opaque,
 /// hides the title bar visuals and traffic-light buttons, and lets the user
 /// drag from any background area. Also walks the titlebar container tree and
@@ -11,11 +18,8 @@ import AppKit
 /// API to disable it. Tracks window frames per-mode so the user can park
 /// full mode and avatar-only mode in separate spots on the screen.
 /// Close via Cmd+W.
-private struct WindowTransparencyConfigurator: NSViewRepresentable {
+struct WindowTransparencyConfigurator: NSViewRepresentable {
     let avatarOnly: Bool
-
-    private static let fullMinSize   = NSSize(width: 420, height: 520)
-    private static let avatarMinSize = NSSize(width: 280, height: 340)
 
     func makeCoordinator() -> Coordinator {
         Coordinator(avatarOnly: avatarOnly)
@@ -37,9 +41,13 @@ private struct WindowTransparencyConfigurator: NSViewRepresentable {
         guard let window = nsView.window else { return }
         if context.coordinator.avatarOnly != avatarOnly {
             let previousMode = context.coordinator.avatarOnly
-            context.coordinator.avatarOnly = avatarOnly
-            Self.applyChromelessConfiguration(to: window, avatarOnly: avatarOnly)
-            context.coordinator.handleModeSwitch(window: window, from: previousMode)
+            let outgoingFrame = window.frame
+            context.coordinator.handleModeSwitch(
+                window: window,
+                from: previousMode,
+                to: avatarOnly,
+                outgoingFrame: outgoingFrame
+            )
         }
         // AppKit re-adds frosted chrome on window state changes (resize,
         // screen move). Re-strip on every update to keep the backdrop clear.
@@ -48,15 +56,16 @@ private struct WindowTransparencyConfigurator: NSViewRepresentable {
 
     /// Apply the same transparency baseline to the NSWindow in both modes:
     /// non-opaque, clear backgroundColor, no titlebar, hidden traffic-lights,
-    /// resizable + movable-by-background. Shadow is kept ON for the full
-    /// chat surface (discoverable resize edges) and dropped in avatar-only
-    /// mode (no visible chrome at all per the design target).
+    /// resizable, and background dragging only where AppKit's default window
+    /// constraints are acceptable. Shadow is kept ON for the full chat
+    /// surface (discoverable resize edges) and dropped in avatar-only mode
+    /// (no visible chrome at all per the design target).
     ///
     /// `.titled` styleMask is removed in avatar-only mode — that dissolves
     /// NSThemeFrame, which macOS 14 backs with a system material even when
     /// `backgroundColor = .clear`. The borderless styleMask still draws
     /// SwiftUI content and honours resize (because `.resizable` is kept).
-    private static func applyChromelessConfiguration(to window: NSWindow, avatarOnly: Bool) {
+    static func applyChromelessConfiguration(to window: NSWindow, avatarOnly: Bool) {
         window.isOpaque = false
         window.backgroundColor = .clear
         window.hasShadow = !avatarOnly
@@ -73,8 +82,11 @@ private struct WindowTransparencyConfigurator: NSViewRepresentable {
         window.standardWindowButton(.closeButton)?.isHidden = true
         window.standardWindowButton(.miniaturizeButton)?.isHidden = true
         window.standardWindowButton(.zoomButton)?.isHidden = true
-        window.isMovableByWindowBackground = true
-        window.minSize = avatarOnly ? Self.avatarMinSize : Self.fullMinSize
+        window.isMovableByWindowBackground = !avatarOnly
+        window.minSize = avatarOnly ? ChatWindowMetrics.avatarMinSize : ChatWindowMetrics.fullMinSize
+        window.maxSize = avatarOnly
+            ? ChatWindowMetrics.avatarMaxSize
+            : NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         if let contentView = window.contentView {
             contentView.wantsLayer = true
             contentView.layer?.backgroundColor = nil
@@ -136,11 +148,14 @@ private struct WindowTransparencyConfigurator: NSViewRepresentable {
             revalidateWindowFrame(window: window, persistIfAdjusted: true)
         }
 
-        func handleModeSwitch(window: NSWindow, from previous: Bool) {
-            // Save the current frame under the mode we're leaving, then
-            // restore whatever was saved for the mode we're entering.
-            saveFrame(mode: previous, frame: window.frame)
+        func handleModeSwitch(window: NSWindow, from previous: Bool, to next: Bool, outgoingFrame: NSRect) {
+            // Save the frame before changing style masks or size constraints,
+            // then restore the destination mode with its own bounds.
+            saveFrame(mode: previous, frame: normalizedFrame(outgoingFrame, avatarOnly: previous) ?? outgoingFrame)
+            avatarOnly = next
+            WindowTransparencyConfigurator.applyChromelessConfiguration(to: window, avatarOnly: next)
             applySavedFrame(window: window)
+            revalidateWindowFrame(window: window, persistIfAdjusted: true)
         }
 
         private func applySavedFrame(window: NSWindow) {
@@ -154,6 +169,8 @@ private struct WindowTransparencyConfigurator: NSViewRepresentable {
             guard let clamped = WindowFrameRecovery.clampedFrame(
                 rect,
                 minimumSize: minimumWindowSize,
+                maximumSize: maximumWindowSize,
+                minimumVisibleHeight: minimumVisibleHeight,
                 visibleFrames: visibleFrames
             ) else {
                 return
@@ -211,7 +228,15 @@ private struct WindowTransparencyConfigurator: NSViewRepresentable {
         }
 
         private var minimumWindowSize: NSSize {
-            avatarOnly ? WindowTransparencyConfigurator.avatarMinSize : WindowTransparencyConfigurator.fullMinSize
+            avatarOnly ? ChatWindowMetrics.avatarMinSize : ChatWindowMetrics.fullMinSize
+        }
+
+        private var maximumWindowSize: NSSize? {
+            avatarOnly ? ChatWindowMetrics.avatarMaxSize : nil
+        }
+
+        private var minimumVisibleHeight: CGFloat? {
+            avatarOnly ? ChatWindowMetrics.avatarMinimumVisibleHeight : nil
         }
 
         private func revalidateWindowFrame(window: NSWindow, persistIfAdjusted: Bool) {
@@ -219,6 +244,8 @@ private struct WindowTransparencyConfigurator: NSViewRepresentable {
             guard let clamped = WindowFrameRecovery.clampedFrame(
                 window.frame,
                 minimumSize: minimumWindowSize,
+                maximumSize: maximumWindowSize,
+                minimumVisibleHeight: minimumVisibleHeight,
                 visibleFrames: visibleFrames
             ) else {
                 return
@@ -234,6 +261,22 @@ private struct WindowTransparencyConfigurator: NSViewRepresentable {
             }
         }
 
+        private func normalizedFrame(_ frame: NSRect, avatarOnly: Bool) -> NSRect? {
+            WindowFrameRecovery.clampedFrame(
+                frame,
+                minimumSize: avatarOnly
+                    ? ChatWindowMetrics.avatarMinSize
+                    : ChatWindowMetrics.fullMinSize,
+                maximumSize: avatarOnly
+                    ? ChatWindowMetrics.avatarMaxSize
+                    : nil,
+                minimumVisibleHeight: avatarOnly
+                    ? ChatWindowMetrics.avatarMinimumVisibleHeight
+                    : nil,
+                visibleFrames: NSScreen.screens.map(\.visibleFrame)
+            )
+        }
+
         deinit {
             if let o = moveObs { NotificationCenter.default.removeObserver(o) }
             if let o = resizeObs { NotificationCenter.default.removeObserver(o) }
@@ -246,19 +289,24 @@ enum WindowFrameRecovery {
     static func clampedFrame(
         _ frame: NSRect,
         minimumSize: NSSize,
+        maximumSize: NSSize? = nil,
+        minimumVisibleHeight: CGFloat? = nil,
         visibleFrames: [NSRect]
     ) -> NSRect? {
         let cleanedFrames = visibleFrames.filter { $0.width > 0 && $0.height > 0 }
         guard cleanedFrames.isEmpty == false else { return nil }
 
         let target = preferredVisibleFrame(for: frame, visibleFrames: cleanedFrames)
-        let width = min(target.width, max(frame.width, minimumSize.width))
-        let height = min(target.height, max(frame.height, minimumSize.height))
+        let cappedWidth = min(frame.width, maximumSize?.width ?? frame.width)
+        let cappedHeight = min(frame.height, maximumSize?.height ?? frame.height)
+        let width = min(target.width, max(cappedWidth, minimumSize.width))
+        let height = min(target.height, max(cappedHeight, minimumSize.height))
+        let requiredVisibleHeight = min(height, max(minimumVisibleHeight ?? height, 1))
 
         let minX = target.minX
         let maxX = target.maxX - width
         let minY = target.minY
-        let maxY = target.maxY - height
+        let maxY = target.maxY - requiredVisibleHeight
 
         let originX = min(max(frame.minX, minX), maxX)
         let originY = min(max(frame.minY, minY), maxY)
@@ -303,15 +351,12 @@ private extension NSRect {
 
 // MARK: - Drag Handle
 
-/// Transparent strip at the top of the chat window. Mouse-down initiates
-/// `window.performDrag(with:)` so the user can move the chromeless window
-/// by grabbing this area — without it, SwiftUI content covers every pixel
-/// and `isMovableByWindowBackground` has no empty region to activate on.
 private struct WindowDragHandle: NSViewRepresentable {
     final class DragView: NSView {
         override func mouseDown(with event: NSEvent) {
             window?.performDrag(with: event)
         }
+
         override func resetCursorRects() {
             addCursorRect(bounds, cursor: .openHand)
         }
@@ -606,8 +651,6 @@ struct BobsDeskView: View {
     // the next send plays an "idle_return" clip.
     @State private var lastSendAt: Date? = nil
 
-    // F12 — preferences window access
-    @Environment(\.openWindow) private var openWindow
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
@@ -896,7 +939,7 @@ struct BobsDeskView: View {
             // unless the user picks "Welcome / Tour…" from the menu bar.
             if !UserDefaults.standard.bool(forKey: OnboardingView.completionKey) {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                    openWindow(id: "onboarding")
+                    AppWindowRouter.shared.open(id: AppWindowRouter.onboardingID)
                 }
             }
         }
@@ -944,7 +987,9 @@ struct BobsDeskView: View {
         // GeometryReader measures the live window height so the bubble's
         // cap is always `height - Bob - input - gaps`. Bob's 160pt slot and
         // the input pill get `.layoutPriority(2)` so the bubble gives up
-        // space first when the window is short.
+        // space first when the window is short. The visible avatar content
+        // is top-anchored inside the transparent frame so Bob can sit nearer
+        // to the screen edge without relying on offscreen window movement.
         ZStack {
             GeometryReader { proxy in
                 let portrait: CGFloat = 160
@@ -991,7 +1036,7 @@ struct BobsDeskView: View {
 
                     Spacer().frame(height: gapBottom)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
             .safeAreaInset(edge: .top, spacing: 0) {
                 modelSwitchBanner
@@ -1713,7 +1758,7 @@ struct BobsDeskView: View {
                 .font(.system(size: 11, design: .monospaced))
                 .foregroundColor(Self.phosphorGreen.opacity(textOpacity))
             Button {
-                openWindow(id: "preferences")
+                AppWindowRouter.shared.open(id: AppWindowRouter.preferencesID)
             } label: {
                 Text("\u{1F9E0} \(factCount) facts")
                     .font(.system(size: 11, design: .monospaced))
