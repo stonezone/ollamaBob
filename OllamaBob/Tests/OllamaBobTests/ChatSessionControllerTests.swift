@@ -200,12 +200,185 @@ final class ChatSessionControllerTests: XCTestCase {
         controller.sendCurrentInput(allowsLocalCommands: false)
 
         XCTAssertEqual(controller.transcriptRevision, 1)
+        XCTAssertEqual(controller.terminalTurnRevision, 0)
 
         await fulfillment(of: [processExpectation], timeout: 1.0)
         await Task.yield()
 
         XCTAssertEqual(controller.transcriptRevision, 1)
+        XCTAssertEqual(controller.terminalTurnRevision, 1)
+        XCTAssertEqual(controller.lastTerminalTurnToken, 1)
         XCTAssertEqual(controller.messages.map(\.content), ["hello"])
+    }
+
+    func testInFlightConversationSwitchIgnoresStaleCompletionInLiveTranscript() async {
+        let processExpectation = expectation(description: "agent loop called")
+        let database = FakeDatabase()
+        let agentLoop = FakeAgentLoop()
+        let controller = ChatSessionController(
+            agentLoop: agentLoop,
+            database: database,
+            toolOutputStore: FakeToolOutputStore()
+        )
+        let conversationA = ConversationSnapshot(
+            id: "convo-a",
+            title: "Conversation A",
+            isPinned: false,
+            uncensoredMode: false,
+            messages: [],
+            createdAt: Date(timeIntervalSince1970: 1_000),
+            updatedAt: Date(timeIntervalSince1970: 1_100)
+        )
+        let conversationB = ConversationSnapshot(
+            id: "convo-b",
+            title: "Conversation B",
+            isPinned: false,
+            uncensoredMode: false,
+            messages: [ChatMessage(role: .assistant, content: "Existing B reply")],
+            createdAt: Date(timeIntervalSince1970: 2_000),
+            updatedAt: Date(timeIntervalSince1970: 2_100)
+        )
+        var continuation: CheckedContinuation<[OllamaMessage], Never>?
+        agentLoop.onProcess = { message, history, conversationId, _ in
+            processExpectation.fulfill()
+            XCTAssertEqual(message, "question for A")
+            XCTAssertEqual(conversationId, "convo-a")
+            XCTAssertTrue(history.isEmpty)
+            return await withCheckedContinuation { continuation = $0 }
+        }
+
+        controller.loadConversation(conversationA)
+        controller.inputText = "question for A"
+        controller.sendCurrentInput(allowsLocalCommands: false)
+        await fulfillment(of: [processExpectation], timeout: 1.0)
+
+        controller.loadConversation(conversationB)
+        continuation?.resume(returning: [
+            .user("question for A"),
+            .assistant("reply for A")
+        ])
+
+        for _ in 0..<10 where controller.terminalTurnRevision == 0 {
+            await Task.yield()
+        }
+
+        XCTAssertEqual(controller.conversationId, "convo-b")
+        XCTAssertEqual(controller.messages.map(\.content), ["Existing B reply"])
+        XCTAssertEqual(controller.history.map(\.role), ["assistant"])
+        XCTAssertEqual(database.savedMessageConversationIDs, ["convo-a", "convo-a"])
+        XCTAssertEqual(database.savedMessages.map(\.content), ["question for A", "reply for A"])
+        XCTAssertEqual(controller.terminalTurnRevision, 1)
+        XCTAssertEqual(controller.lastTerminalTurnToken, 1)
+    }
+
+    func testInFlightNewChatIgnoresStaleCompletionInFreshConversation() async {
+        let processExpectation = expectation(description: "agent loop called")
+        let database = FakeDatabase(
+            createdConversation: ConversationRecord(
+                id: "convo-new",
+                title: "New Chat",
+                isPinned: false,
+                uncensoredMode: false,
+                createdAt: Date(timeIntervalSince1970: 3_000),
+                updatedAt: Date(timeIntervalSince1970: 3_100)
+            )
+        )
+        let agentLoop = FakeAgentLoop()
+        let toolOutputStore = FakeToolOutputStore()
+        let controller = ChatSessionController(
+            agentLoop: agentLoop,
+            database: database,
+            toolOutputStore: toolOutputStore
+        )
+        let conversationA = ConversationSnapshot(
+            id: "convo-a",
+            title: "Conversation A",
+            isPinned: false,
+            uncensoredMode: false,
+            messages: [],
+            createdAt: Date(timeIntervalSince1970: 1_000),
+            updatedAt: Date(timeIntervalSince1970: 1_100)
+        )
+        var continuation: CheckedContinuation<[OllamaMessage], Never>?
+        agentLoop.onProcess = { message, history, conversationId, _ in
+            processExpectation.fulfill()
+            XCTAssertEqual(message, "question for A")
+            XCTAssertEqual(conversationId, "convo-a")
+            XCTAssertTrue(history.isEmpty)
+            return await withCheckedContinuation { continuation = $0 }
+        }
+
+        controller.loadConversation(conversationA)
+        controller.inputText = "question for A"
+        controller.sendCurrentInput(allowsLocalCommands: false)
+        await fulfillment(of: [processExpectation], timeout: 1.0)
+
+        controller.startFreshConversation()
+        continuation?.resume(returning: [
+            .user("question for A"),
+            .assistant("reply for A")
+        ])
+
+        for _ in 0..<10 where controller.terminalTurnRevision == 0 {
+            await Task.yield()
+        }
+        for _ in 0..<10 where toolOutputStore.clearedConversationIDs.isEmpty {
+            await Task.yield()
+        }
+
+        XCTAssertEqual(controller.conversationId, "convo-new")
+        XCTAssertTrue(controller.messages.isEmpty)
+        XCTAssertTrue(controller.history.isEmpty)
+        XCTAssertEqual(database.savedMessageConversationIDs, ["convo-a", "convo-a"])
+        XCTAssertEqual(database.savedMessages.map(\.content), ["question for A", "reply for A"])
+        XCTAssertEqual(controller.terminalTurnRevision, 1)
+        XCTAssertEqual(controller.lastTerminalTurnToken, 1)
+        XCTAssertEqual(toolOutputStore.clearedConversationIDs, ["convo-a"])
+    }
+
+    func testTerminalTurnRevisionAdvancesWhenTurnFails() async {
+        enum Failure: LocalizedError {
+            case expected
+
+            var errorDescription: String? {
+                "expected failure"
+            }
+        }
+
+        let processExpectation = expectation(description: "agent loop called")
+        let database = FakeDatabase(
+            createdConversation: ConversationRecord(
+                id: "convo-error",
+                title: "New Chat",
+                isPinned: false,
+                uncensoredMode: false,
+                createdAt: Date(),
+                updatedAt: Date()
+            )
+        )
+        let agentLoop = FakeAgentLoop()
+        agentLoop.onProcess = { _, _, _, _ in
+            processExpectation.fulfill()
+            throw Failure.expected
+        }
+
+        let controller = ChatSessionController(
+            agentLoop: agentLoop,
+            database: database,
+            toolOutputStore: FakeToolOutputStore()
+        )
+        controller.inputText = "hello"
+
+        controller.sendCurrentInput(allowsLocalCommands: false)
+        await fulfillment(of: [processExpectation], timeout: 1.0)
+
+        for _ in 0..<10 where controller.terminalTurnRevision == 0 {
+            await Task.yield()
+        }
+
+        XCTAssertEqual(controller.terminalTurnRevision, 1)
+        XCTAssertEqual(controller.lastTerminalTurnToken, 1)
+        XCTAssertEqual(controller.errorMessage, "expected failure")
     }
 
     func testToolBackedTurnPreservesThinkingAndAssistantContent() async {
@@ -390,6 +563,7 @@ private final class FakeDatabase: ChatSessionDatabaseManaging {
     var loadedMessagesStub: [ChatMessage]
     var createdConversationStub: ConversationRecord
     var savedMessages: [ChatMessage] = []
+    var savedMessageConversationIDs: [String] = []
     var savedToolLogs: [(conversationId: String, toolName: String)] = []
     var lastSetConversationUncensoredMode: (id: String, isEnabled: Bool)?
     var currentConversationCallCount = 0
@@ -429,6 +603,7 @@ private final class FakeDatabase: ChatSessionDatabaseManaging {
 
     func saveMessage(_ msg: ChatMessage, conversationId: String) throws {
         savedMessages.append(msg)
+        savedMessageConversationIDs.append(conversationId)
     }
 
     func saveToolLog(

@@ -568,6 +568,11 @@ struct BobsDeskView: View {
         // Sync bubble visibility whenever the transcript actually changes.
         .onChange(of: session.transcriptRevision) {
             refreshContextTokensUsed()
+            withAnimation(.easeInOut(duration: 0.3)) {
+                bubbleVisible = shouldShowBubble
+            }
+        }
+        .onChange(of: session.terminalTurnRevision) {
             awaitingTurnTranscript = false
             withAnimation(.easeInOut(duration: 0.3)) {
                 bubbleVisible = shouldShowBubble
@@ -575,7 +580,6 @@ struct BobsDeskView: View {
         }
         .onChange(of: session.errorMessage) {
             guard agentLoop.isProcessing == false else { return }
-            awaitingTurnTranscript = false
             withAnimation(.easeInOut(duration: 0.3)) {
                 bubbleVisible = shouldShowBubble
             }

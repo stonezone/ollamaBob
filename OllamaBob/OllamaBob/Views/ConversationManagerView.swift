@@ -145,7 +145,7 @@ struct ConversationManagerView: View {
     }
 
     private var selectedConversationId: String? {
-        conversationStore.selectedConversationId ?? session.conversationId
+        session.conversationId
     }
 
     private var selectedConversation: ConversationSummary? {
@@ -236,8 +236,7 @@ struct ConversationManagerView: View {
     private func presentConversationManager() {
         conversationStore.refreshConversations()
         conversationStore.searchQuery = ""
-        conversationStore.selectConversation(id: session.conversationId)
-        renameDraft = conversationStore.loadedConversation?.title ?? session.conversationTitle
+        renameDraft = session.conversationTitle
         searchQuery = ""
         searchHits = []
         searchError = nil
@@ -247,39 +246,28 @@ struct ConversationManagerView: View {
     private func startNewConversation() {
         session.startFreshConversation()
         conversationStore.refreshConversations()
-        conversationStore.selectConversation(id: session.conversationId)
         renameDraft = session.conversationTitle
     }
 
     private func selectConversation(_ id: String) {
-        conversationStore.loadConversation(id: id)
-        if let snapshot = conversationStore.loadedConversation {
-            session.loadConversation(snapshot)
-            renameDraft = snapshot.title
-        }
+        session.loadConversation(id: id)
+        conversationStore.refreshConversations()
+        renameDraft = session.conversationTitle
     }
 
     private func renameSelectedConversation() {
         guard let selectedConversationId else { return }
-        conversationStore.renameConversation(id: selectedConversationId, title: renameDraft)
+        session.renameSelectedConversation(to: renameDraft)
+        conversationStore.refreshConversations()
         if session.conversationId == selectedConversationId {
-            session.updateConversationTitle(renameDraft.trimmingCharacters(in: .whitespacesAndNewlines))
-        }
-        if let updated = conversationStore.loadedConversation?.title {
-            renameDraft = updated
+            renameDraft = session.conversationTitle
         }
     }
 
     private func deleteConversation(_ conversation: ConversationSummary) {
-        let deletedCurrentConversation = session.conversationId == conversation.id
-        conversationStore.deleteConversation(id: conversation.id)
-
-        if deletedCurrentConversation {
-            session.startFreshConversation()
-        }
-
+        guard session.conversationId == conversation.id else { return }
+        session.deleteSelectedConversation()
         conversationStore.refreshConversations()
-        conversationStore.selectConversation(id: session.conversationId)
-        renameDraft = conversationStore.loadedConversation?.title ?? session.conversationTitle
+        renameDraft = session.conversationTitle
     }
 }

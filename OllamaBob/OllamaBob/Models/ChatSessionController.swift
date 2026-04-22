@@ -5,6 +5,8 @@ final class ChatSessionController: ObservableObject {
     @Published var inputText = ""
     @Published private(set) var messages: [ChatMessage] = []
     @Published private(set) var transcriptRevision = 0
+    @Published private(set) var terminalTurnRevision = 0
+    @Published private(set) var lastTerminalTurnToken = 0
     @Published private(set) var errorMessage: String?
     @Published private(set) var conversationId: String?
     @Published private(set) var conversationTitle = "New Chat"
@@ -15,7 +17,14 @@ final class ChatSessionController: ObservableObject {
     private let database: ChatSessionDatabaseManaging
     private let toolOutputStore: ChatSessionToolOutputStoring
     private let conversationStore: ConversationStoring?
+    private var nextTurnToken = 0
+    private var activeTurn: InFlightTurn?
     private var ollamaHistory: [OllamaMessage] = []
+
+    private struct InFlightTurn: Equatable {
+        let conversationId: String
+        let token: Int
+    }
 
     init(
         agentLoop: ChatSessionAgentLooping,
@@ -127,9 +136,13 @@ final class ChatSessionController: ObservableObject {
     }
 
     func renameSelectedConversation() {
+        renameSelectedConversation(to: conversationTitle)
+    }
+
+    func renameSelectedConversation(to title: String) {
         guard let conversationId else { return }
 
-        let trimmed = conversationTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             errorMessage = "Conversation title cannot be empty."
             return
@@ -230,28 +243,52 @@ final class ChatSessionController: ObservableObject {
             errorMessage = "Failed to save message: \(error.localizedDescription)"
         }
 
-        let previousHistoryCount = ollamaHistory.count
+        let requestHistory = ollamaHistory
+        let requestUncensoredMode = conversationUncensoredMode
+        let turn = beginTurn(conversationId: convoId)
+        let previousHistoryCount = requestHistory.count
         let previousToolActivityCount = agentLoop.toolActivity.count
 
         Task {
+            defer { finishTurn(turn) }
+
             do {
                 let updatedHistory = try await agentLoop.process(
                     userMessage: text,
-                    history: ollamaHistory,
+                    history: requestHistory,
                     conversationId: convoId,
-                    uncensoredMode: conversationUncensoredMode
+                    uncensoredMode: requestUncensoredMode
                 )
 
-                appendNewMessages(from: updatedHistory, startingAt: previousHistoryCount + 1, conversationId: convoId)
-                ollamaHistory = updatedHistory
-                persistToolActivity(from: previousToolActivityCount, conversationId: convoId)
+                let shouldApplyLiveUpdate = shouldApplyLiveUpdate(for: turn)
+                appendNewMessages(
+                    from: updatedHistory,
+                    startingAt: previousHistoryCount + 1,
+                    conversationId: convoId,
+                    applyToLiveSession: shouldApplyLiveUpdate
+                )
+                if shouldApplyLiveUpdate {
+                    ollamaHistory = updatedHistory
+                }
+                persistToolActivity(
+                    from: previousToolActivityCount,
+                    conversationId: convoId,
+                    reportErrorsToLiveSession: shouldApplyLiveUpdate
+                )
             } catch {
-                errorMessage = error.localizedDescription
+                if shouldApplyLiveUpdate(for: turn) {
+                    errorMessage = error.localizedDescription
+                }
             }
         }
     }
 
-    private func appendNewMessages(from updatedHistory: [OllamaMessage], startingAt startIndex: Int, conversationId: String) {
+    private func appendNewMessages(
+        from updatedHistory: [OllamaMessage],
+        startingAt startIndex: Int,
+        conversationId: String,
+        applyToLiveSession: Bool
+    ) {
         guard startIndex < updatedHistory.count else { return }
 
         var appendedMessages = false
@@ -265,9 +302,11 @@ final class ChatSessionController: ObservableObject {
                     toolCalls: ollamaMsg.toolCalls
                 )
                 if !chatMsg.content.isEmpty || (chatMsg.toolCalls?.isEmpty == false) {
-                    messages.append(chatMsg)
-                    appendedMessages = true
-                    persist(chatMsg, in: conversationId)
+                    if applyToLiveSession {
+                        messages.append(chatMsg)
+                        appendedMessages = true
+                    }
+                    persist(chatMsg, in: conversationId, reportErrorsToLiveSession: applyToLiveSession)
                 }
             } else if ollamaMsg.role == "tool" {
                 let chatMsg = ChatMessage(
@@ -275,18 +314,24 @@ final class ChatSessionController: ObservableObject {
                     content: ollamaMsg.content,
                     toolName: ollamaMsg.toolName
                 )
-                messages.append(chatMsg)
-                appendedMessages = true
-                persist(chatMsg, in: conversationId)
+                if applyToLiveSession {
+                    messages.append(chatMsg)
+                    appendedMessages = true
+                }
+                persist(chatMsg, in: conversationId, reportErrorsToLiveSession: applyToLiveSession)
             }
         }
 
-        if appendedMessages {
+        if applyToLiveSession && appendedMessages {
             markTranscriptChanged()
         }
     }
 
-    private func persistToolActivity(from previousCount: Int, conversationId: String) {
+    private func persistToolActivity(
+        from previousCount: Int,
+        conversationId: String,
+        reportErrorsToLiveSession: Bool
+    ) {
         let newActivity = agentLoop.toolActivity.dropFirst(previousCount)
         for entry in newActivity {
             do {
@@ -300,16 +345,20 @@ final class ChatSessionController: ObservableObject {
                     durationMs: entry.durationMs
                 )
             } catch {
-                errorMessage = "Failed to log tool: \(error.localizedDescription)"
+                if reportErrorsToLiveSession {
+                    errorMessage = "Failed to log tool: \(error.localizedDescription)"
+                }
             }
         }
     }
 
-    private func persist(_ msg: ChatMessage, in conversationId: String) {
+    private func persist(_ msg: ChatMessage, in conversationId: String, reportErrorsToLiveSession: Bool) {
         do {
             try database.saveMessage(msg, conversationId: conversationId)
         } catch {
-            errorMessage = "Failed to save message: \(error.localizedDescription)"
+            if reportErrorsToLiveSession {
+                errorMessage = "Failed to save message: \(error.localizedDescription)"
+            }
         }
     }
 
@@ -333,6 +382,25 @@ final class ChatSessionController: ObservableObject {
 
     private func markTranscriptChanged() {
         transcriptRevision += 1
+    }
+
+    private func beginTurn(conversationId: String) -> InFlightTurn {
+        nextTurnToken += 1
+        let turn = InFlightTurn(conversationId: conversationId, token: nextTurnToken)
+        activeTurn = turn
+        return turn
+    }
+
+    private func shouldApplyLiveUpdate(for turn: InFlightTurn) -> Bool {
+        activeTurn == turn && conversationId == turn.conversationId
+    }
+
+    private func finishTurn(_ turn: InFlightTurn) {
+        if activeTurn == turn {
+            activeTurn = nil
+        }
+        lastTerminalTurnToken = turn.token
+        terminalTurnRevision += 1
     }
 
     private static func toOllamaMessage(_ msg: ChatMessage) -> OllamaMessage? {
