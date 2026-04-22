@@ -1,0 +1,25 @@
+Sub-Agent B — Avatar UI / Speech / Bubble Audit
+
+Scope:
+- `BobsDeskView`
+- `ChatBubble`
+- avatar-only speech projection
+- pending/thinking state behavior
+- bubble sizing
+- tail attachment
+- overlay/history lifecycle
+- related tests
+
+Mission:
+- verify pending/thinking-state clearing
+- verify whether avatar-only speech is still too transcript-like
+- verify whether bubble behavior is slot-first instead of content-first
+- estimate UI measurements only if code or runtime evidence supports them
+- do not edit code
+
+Expected output:
+- exact trigger path for sticky thinking state if present
+- avatar-only speech projection findings
+- bubble sizing / attachment findings
+- smallest plausible fixes
+- quick verification steps

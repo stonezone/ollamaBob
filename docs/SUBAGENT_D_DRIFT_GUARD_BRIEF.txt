@@ -1,0 +1,19 @@
+Sub-Agent D — Preserved Features / Drift Guard Audit
+
+Scope:
+- read-only review against `AGENTS.md`
+- read-only review against `docs/ACTIVE_EXECUTION_PLAN.md`
+- any files touched by proposed work
+
+Mission:
+- flag scope drift immediately
+- flag proposed changes that touch preserved components
+- flag new architecture layers that were not justified
+- flag unrelated cleanup
+- do not edit code
+
+Expected output:
+- drift risks
+- preserved-feature risks
+- conflicts between proposed work and the active plan
+- approval blockers, if any

@@ -1,0 +1,23 @@
+Sub-Agent C — Window / Accessibility / Hotplug Audit
+
+Scope:
+- window coordinator/configurator
+- mode-switch window behavior
+- frame restore
+- monitor hotplug / screen parameter changes
+- reduce motion
+- reduce transparency
+- accessibility labels
+- asset fallback behavior
+
+Mission:
+- verify whether frame restore/hotplug handling is under-hardened
+- verify whether accessibility display settings are honored
+- verify whether window-presence changes are product decisions vs technical requirements
+- do not edit code
+
+Expected output:
+- exact file/class references
+- smallest plausible fixes
+- quick verification steps
+- explicit distinction between required hardening and optional product behavior

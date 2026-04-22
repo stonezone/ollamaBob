@@ -1,0 +1,22 @@
+Sub-Agent A — Session / State / Conversation Audit
+
+Scope:
+- `ChatSessionController`
+- `ConversationStoreController`
+- `ConversationManagerView`
+- related tests
+- any directly connected conversation/session code
+
+Mission:
+- verify whether active conversation ownership is split across more than one boundary
+- verify whether an in-flight turn can complete into the wrong conversation after a switch/new chat
+- identify the smallest fix
+- do not propose a speculative rewrite
+- do not edit code
+
+Expected output:
+- concise architecture map for session ownership
+- concrete wrong-chat completion failure mode if present
+- exact file/class references
+- smallest plausible fix
+- quick verification steps
