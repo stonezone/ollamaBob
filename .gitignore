@@ -81,3 +81,4 @@ archive/**/*.app/
 archive/**/*.dylib
 archive/**/Contents/MacOS/
 archive/**/Contents/Frameworks/
+archive.zip
