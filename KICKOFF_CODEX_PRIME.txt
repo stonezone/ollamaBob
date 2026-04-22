@@ -1,178 +1,103 @@
-You are Codex Prime for OllamaBob.
+Phase 1 is accepted.
 
-Execution mode:
-- This is a fresh implementation session after a prior audit.
-- Do not redo a broad repo audit.
-- Use the confirmed audit baseline below.
-- Do a narrow spot-check only for files you are about to touch, to confirm nothing materially changed.
-- If your spot-check contradicts the baseline, stop and report the contradiction before coding.
+Continue in this same session and execute Phase 2 only.
 
-Read order:
-1. AGENTS.md
-2. docs/ACTIVE_EXECUTION_PLAN.md
-3. docs/CURRENT_HANDOFF.md if present
-4. If docs/CURRENT_HANDOFF.md is missing, note that explicitly and continue; do not block execution on it.
+Do not redo the broad audit.
+Do only a narrow spot-check of the files you are about to touch to confirm nothing materially changed.
+If you find a contradiction, stop and report it before coding.
 
-Authority / drift rules:
-- AGENTS.md and docs/ACTIVE_EXECUTION_PLAN.md are binding.
-- Preserve the existing architecture and protected subsystems unless explicitly approved otherwise.
-- No speculative rewrite.
-- No unrelated cleanup.
-- No “while I’m here” edits.
-- One writing agent per file per phase.
-- Do not allow concurrent edits to BobsDeskView.swift.
-- Stop after Phase 1 for review. Do not continue to Phase 2 without approval.
+Phase 2 goal:
+Tighten avatar-only speech projection so Avatar Mode feels like spoken output, not a mini transcript.
 
-Confirmed baseline from prior audit
-Treat the following as the current working baseline unless your narrow spot-check proves otherwise:
+Binding constraints:
+- Keep the current architecture.
+- No new parser.
+- No new normalization layer.
+- No second message model.
+- No Full-mode transcript changes.
+- No bubble geometry/tail work yet.
+- No accessibility/window/hotplug work yet.
+- No cleanup outside the direct Phase 2 scope.
+- Do not revisit Phase 1 logic unless strictly required for compilation/test stability.
 
-Preserved boundaries and components:
-- Keep AgentLoop -> ChatSessionController -> BobsDeskView.
-- Keep stream: false.
-- Keep PresentationService / present.
-- Keep Jarvis phone tools.
-- Keep approvals/path policy.
-- Keep uncensored mode.
-- Keep onboarding/preferences.
-- Keep Tool Activity window.
-- Keep avatar packs + bobMood.
-- Keep native performDrag(with:).
-- Keep per-mode window persistence.
-- Keep current scene structure.
-- Keep the rich HTML companion window.
+Primary target:
+- OllamaBob/OllamaBob/Views/ChatBubble.swift
 
-Confirmed issues to execute against:
-1. High — in-flight completion can corrupt the wrong visible conversation.
-   - Live selected/loaded conversation state is effectively split between ChatSessionController and ConversationStoreController/ConversationManagerView.
-   - Late completion can persist to origin while polluting the currently loaded transcript if the user switches chats or starts a new chat mid-turn.
-   - Required direction: keep ConversationStoreController only for list/search/pin support if still needed; remove it as a second owner of live selected/loaded state; add originating-conversation + turn-token completion guards.
+Secondary target only if strictly necessary:
+- related tests in OllamaBob/Tests/OllamaBobTests/ChatBubbleRenderingTests.swift
 
-2. High — no-delta completion can leave Avatar Mode stuck pending.
-   - Pending currently depends too heavily on transcript delta / error changes.
-   - Required direction: add a lightweight controller-published terminal completion signal/revision/token that advances on every terminal outcome, including no-delta completions; clear avatar pending from that signal.
+What to do:
+1. Narrowly spot-check the current avatarBubblePreview path and confirm the smallest safe in-place change.
+2. Tighten avatar-only projection heuristics so avatar speech becomes short, speech-like, and low-noise.
+3. Preserve existing Full-mode rendering.
+4. Preserve any existing rich-view / HTML / artifact placeholder behavior unless there is a direct bug.
+5. Add or update focused tests for:
+   - long prose
+   - prose + list
+   - prose + code
+   - tool-heavy reply
+   - confirmation that Full mode remains unchanged while avatar-only projection tightens
 
-3. Medium — avatar-only speech is still too transcript-like.
-   - Required direction: tighten avatarBubblePreview in place for avatar mode only.
-   - No parser.
-   - No second message model.
-   - No Full-mode transcript change.
+Desired behavior:
+- avatar-only replies should usually collapse to 1–3 short spoken lines
+- code-heavy content should not render like a code transcript in the primary avatar speech surface
+- list-heavy/tool-heavy content should be collapsed harder into concise spoken output
+- avoid developer-noise leakage in avatar mode
+- preserve semantic meaning; do not make the avatar preview misleading
 
-4. Medium — bubble geometry is slot-first and tail anchoring is fixed.
-   - Required direction: content-hug short replies up to a max clamp; keep scroll for overflow only; move tail anchoring off the single hardcoded fraction if/when this phase is reached.
+Preserved components still untouched:
+- AgentLoop -> ChatSessionController -> BobsDeskView
+- stream: false
+- PresentationService / present
+- Jarvis phone tools
+- approvals/path policy
+- uncensored mode
+- onboarding/preferences
+- Tool Activity window
+- avatar packs + bobMood
+- native performDrag(with:)
+- per-mode frame persistence
+- current scene structure
+- rich HTML companion window
+- Phase 1 session-integrity and terminal-completion changes
 
-5. Medium — avatar-only transient/accessibility/fallback hardening is incomplete.
-   - Required direction for later phase only: overlay reset on avatar-mode exit if touched, Reduce Motion / Reduce Transparency support, explicit avatar/bubble accessibility labels, neutral missing-art fallback.
-
-6. Medium — frame restore is under-hardened for hotplug/display changes.
-   - Required direction for later phase only: clamp into visible bounds and add screen-change revalidation in the existing window coordinator.
-
-Explicit non-goals for this execution:
-- Do not add a new state container, event bus, reducer/store layer, parsing layer, normalization layer, or animation framework.
-- Do not add/remove a tag parser project. There is no confirmed <speech>/<debug> parser to remove.
-- Do not disable conversation switching or New Chat by default. First implement the originating-conversation + turn-token guard. Only restrict switching if you can prove a remaining corruption path after the guard.
-- Do not change stream: false.
-- Do not enable floating / all-Spaces / fullscreen-auxiliary behavior in this execution unless explicitly approved later as a product-level change.
-- Do not touch ChatPanel cleanup in this phase.
-- Do not alter preserved components without explicit justification and approval.
-
-Swarm structure
-If sub-agents are supported, create them.
-If sub-agents are not supported, emulate them as four isolated passes and summarize each separately before coding.
-
-Agent A — Session/state spot-check (read-only until Prime assigns code)
-Scope:
-- ChatSessionController
-- ConversationStoreController
-- ConversationManagerView
-- related tests
-Mission:
-- confirm the wrong-chat completion path
-- confirm the smallest safe ownership change
-- identify exact files/tests to touch for Phase 1
-- do not propose new architecture
-
-Agent B — Avatar pending-state / projection spot-check (read-only until Prime assigns code)
-Scope:
-- BobsDeskView
-- ChatBubble
-- related tests
-Mission:
-- confirm the no-delta pending bug path
-- confirm the smallest safe completion-signal hookup
-- confirm Phase 2 projection work can remain local to avatarBubblePreview
-- do not propose parser/model forks
-
-Agent C — Window/accessibility/hotplug spot-check (read-only)
-Scope:
-- WindowTransparencyConfigurator / related coordinator code
-- BobsDeskView accessibility-related paths
-Mission:
-- confirm later-phase work only
-- do not pull this phase forward unless a direct blocker for Phase 1 appears
-
-Agent D — Drift guard / preservation reviewer (read-only)
-Mission:
-- compare all proposed edits against AGENTS.md, docs/ACTIVE_EXECUTION_PLAN.md, and the preserved-components list
-- flag drift immediately
-- block unrelated edits
-
-Current task for this session
-Execute Phase 1 only.
-
-Phase 1 goals:
-1. Make ChatSessionController the sole live owner of selected/loaded conversation state, or otherwise guarantee a single authoritative live-conversation boundary without large rewrite.
-2. Keep ConversationStoreController only as a secondary browser/list/search/pin helper if needed, not a second live-state owner.
-3. Add originating-conversation + turn-token guards so async completion persists to the originating conversation but only mutates live UI when the active conversation still matches.
-4. Add a lightweight terminal completion signal/revision/token that advances on every terminal turn outcome, including no-delta success/failure.
-5. Wire Avatar Mode pending-state clearing in BobsDeskView to that completion signal rather than transcript changes alone.
-6. Add focused regression coverage for:
-   - in-flight switch during completion
-   - in-flight New Chat during completion
-   - no-delta completion clearing avatar pending state
-
-Phase 1 constraints:
-- Keep conversation switching enabled unless guard-based correctness still fails after the fix.
-- No UI/cosmetic phase creep.
-- No Phase 2 speech-projection edits yet unless absolutely necessary for compilation or test wiring.
-- No Phase 3 bubble/accessibility/window polish yet unless absolutely necessary for compilation.
-
-Required workflow
-1. Read the required docs/files.
-2. Run the four sub-agent spot-checks or their equivalent isolated passes.
-3. Produce a concise Phase 1 execution plan before code:
-   - confirmed files to edit
-   - exact failure modes being fixed
+Required workflow:
+1. Give a concise Phase 2 execution plan before coding:
+   - files to edit
+   - exact heuristics you plan to tighten
    - tests to add/update
    - preserved items explicitly untouched
-4. Implement Phase 1 only.
-5. Run:
+2. Implement Phase 2 only.
+3. Run:
    - cd /Users/zack/ollamaBob/OllamaBob
    - swift build
    - swift test
-6. Report:
+4. Report:
    - changed files
    - why each changed
-   - test results
-   - any remaining Phase 1 risk
-   - exact manual verification steps I should perform
-7. Stop and wait for approval before Phase 2.
+   - test/build results
+   - remaining Phase 2 risk
+   - exact manual verification steps
+5. Stop and wait for approval before Phase 3.
 
-Required manual verification to include in your final report
-- Send a prompt in conversation A.
-- Immediately switch to conversation B.
-- Repeat with immediate New Chat.
-- Confirm completion/tool state lands only in the originating conversation.
-- Exercise a no-delta terminal outcome.
-- Confirm Avatar Mode clears pending and returns to idle / last speech rather than hanging.
+Required manual verification to include:
+- In Avatar Mode, test:
+  - long prose reply
+  - prose + list
+  - prose + code
+  - tool-heavy reply
+- Confirm avatar speech is more concise and speech-like.
+- Confirm Full mode transcript rendering is unchanged.
+- Confirm no Phase 1 behavior regressed.
 
-Output format
-1. Spot-check summary from Agents A-D
-2. Phase 1 execution plan
+Output format:
+1. Narrow spot-check summary
+2. Phase 2 execution plan
 3. Code changes made
 4. Test/build results
 5. Manual verification checklist
-6. Deferred items for later phases
+6. Deferred items for Phase 3
 
-Do not start Phase 2.
+Do not start Phase 3.
 Do not widen scope.
-Stop after Phase 1.
+Stop after Phase 2.
