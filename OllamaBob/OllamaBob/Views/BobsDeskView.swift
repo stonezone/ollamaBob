@@ -124,6 +124,7 @@ private struct WindowTransparencyConfigurator: NSViewRepresentable {
         private weak var window: NSWindow?
         private var moveObs: NSObjectProtocol?
         private var resizeObs: NSObjectProtocol?
+        private var screenParamsObs: NSObjectProtocol?
 
         init(avatarOnly: Bool) { self.avatarOnly = avatarOnly }
 
@@ -132,6 +133,7 @@ private struct WindowTransparencyConfigurator: NSViewRepresentable {
             self.window = window
             applySavedFrame(window: window)
             startObserving(window: window)
+            revalidateWindowFrame(window: window, persistIfAdjusted: true)
         }
 
         func handleModeSwitch(window: NSWindow, from previous: Bool) {
@@ -148,16 +150,25 @@ private struct WindowTransparencyConfigurator: NSViewRepresentable {
             guard !raw.isEmpty else { return }
             let rect = NSRectFromString(raw)
             guard rect.width >= 200, rect.height >= 200 else { return }
-            // Don't restore onto a screen the user no longer has plugged in.
-            let visibleOnAnyScreen = NSScreen.screens.contains { $0.visibleFrame.intersects(rect) }
-            guard visibleOnAnyScreen else { return }
-            window.setFrame(rect, display: true, animate: false)
+            let visibleFrames = NSScreen.screens.map(\.visibleFrame)
+            guard let clamped = WindowFrameRecovery.clampedFrame(
+                rect,
+                minimumSize: minimumWindowSize,
+                visibleFrames: visibleFrames
+            ) else {
+                return
+            }
+            if window.frame.equalTo(clamped) == false {
+                window.setFrame(clamped, display: true, animate: false)
+            }
+            saveFrame(mode: avatarOnly, frame: clamped)
         }
 
         private func startObserving(window: NSWindow) {
             let center = NotificationCenter.default
             moveObs.map { center.removeObserver($0) }
             resizeObs.map { center.removeObserver($0) }
+            screenParamsObs.map { center.removeObserver($0) }
             moveObs = center.addObserver(
                 forName: NSWindow.didMoveNotification,
                 object: window,
@@ -178,6 +189,16 @@ private struct WindowTransparencyConfigurator: NSViewRepresentable {
                     self.saveFrame(mode: self.avatarOnly, frame: window.frame)
                 }
             }
+            screenParamsObs = center.addObserver(
+                forName: NSApplication.didChangeScreenParametersNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self, let window = self.window else { return }
+                    self.revalidateWindowFrame(window: window, persistIfAdjusted: true)
+                }
+            }
         }
 
         private func saveFrame(mode: Bool, frame: NSRect) {
@@ -189,10 +210,94 @@ private struct WindowTransparencyConfigurator: NSViewRepresentable {
             }
         }
 
+        private var minimumWindowSize: NSSize {
+            avatarOnly ? WindowTransparencyConfigurator.avatarMinSize : WindowTransparencyConfigurator.fullMinSize
+        }
+
+        private func revalidateWindowFrame(window: NSWindow, persistIfAdjusted: Bool) {
+            let visibleFrames = NSScreen.screens.map(\.visibleFrame)
+            guard let clamped = WindowFrameRecovery.clampedFrame(
+                window.frame,
+                minimumSize: minimumWindowSize,
+                visibleFrames: visibleFrames
+            ) else {
+                return
+            }
+
+            let adjusted = window.frame.equalTo(clamped) == false
+            if adjusted {
+                window.setFrame(clamped, display: true, animate: false)
+            }
+
+            if persistIfAdjusted && adjusted {
+                saveFrame(mode: avatarOnly, frame: clamped)
+            }
+        }
+
         deinit {
             if let o = moveObs { NotificationCenter.default.removeObserver(o) }
             if let o = resizeObs { NotificationCenter.default.removeObserver(o) }
+            if let o = screenParamsObs { NotificationCenter.default.removeObserver(o) }
         }
+    }
+}
+
+enum WindowFrameRecovery {
+    static func clampedFrame(
+        _ frame: NSRect,
+        minimumSize: NSSize,
+        visibleFrames: [NSRect]
+    ) -> NSRect? {
+        let cleanedFrames = visibleFrames.filter { $0.width > 0 && $0.height > 0 }
+        guard cleanedFrames.isEmpty == false else { return nil }
+
+        let target = preferredVisibleFrame(for: frame, visibleFrames: cleanedFrames)
+        let width = min(target.width, max(frame.width, minimumSize.width))
+        let height = min(target.height, max(frame.height, minimumSize.height))
+
+        let minX = target.minX
+        let maxX = target.maxX - width
+        let minY = target.minY
+        let maxY = target.maxY - height
+
+        let originX = min(max(frame.minX, minX), maxX)
+        let originY = min(max(frame.minY, minY), maxY)
+
+        return NSRect(
+            x: originX,
+            y: originY,
+            width: width,
+            height: height
+        )
+    }
+
+    private static func preferredVisibleFrame(for frame: NSRect, visibleFrames: [NSRect]) -> NSRect {
+        let bestIntersection = visibleFrames.max { lhs, rhs in
+            lhs.intersection(frame).area < rhs.intersection(frame).area
+        }
+
+        if let bestIntersection, bestIntersection.intersection(frame).area > 0 {
+            return bestIntersection
+        }
+
+        let center = NSPoint(x: frame.midX, y: frame.midY)
+        return visibleFrames.min { lhs, rhs in
+            distanceSquared(from: center, to: lhs) < distanceSquared(from: center, to: rhs)
+        } ?? visibleFrames[0]
+    }
+
+    private static func distanceSquared(from point: NSPoint, to rect: NSRect) -> CGFloat {
+        let clampedX = min(max(point.x, rect.minX), rect.maxX)
+        let clampedY = min(max(point.y, rect.minY), rect.maxY)
+        let dx = point.x - clampedX
+        let dy = point.y - clampedY
+        return dx * dx + dy * dy
+    }
+}
+
+private extension NSRect {
+    var area: CGFloat {
+        width * height
     }
 }
 
@@ -280,13 +385,25 @@ private struct ComicBubbleShape: Shape {
 /// inside the avatar-only thinking bubble while Bob is processing, in place
 /// of the normal response text.
 private struct ThinkingDots: View {
+    let reduceMotion: Bool
+
     var body: some View {
-        TimelineView(.animation) { context in
-            let t = context.date.timeIntervalSinceReferenceDate
-            HStack(spacing: 6) {
-                dot(phase: t * 1.6)
-                dot(phase: t * 1.6 + 0.25)
-                dot(phase: t * 1.6 + 0.5)
+        Group {
+            if reduceMotion {
+                HStack(spacing: 6) {
+                    staticDot(opacity: 0.75)
+                    staticDot(opacity: 0.9)
+                    staticDot(opacity: 0.75)
+                }
+            } else {
+                TimelineView(.animation) { context in
+                    let t = context.date.timeIntervalSinceReferenceDate
+                    HStack(spacing: 6) {
+                        dot(phase: t * 1.6)
+                        dot(phase: t * 1.6 + 0.25)
+                        dot(phase: t * 1.6 + 0.5)
+                    }
+                }
             }
         }
     }
@@ -317,6 +434,80 @@ private struct ThinkingDots: View {
             )
             .scaleEffect(scale)
             .opacity(opacity)
+    }
+
+    private func staticDot(opacity: Double) -> some View {
+        Circle()
+            .fill(Color.black.opacity(opacity))
+            .frame(width: 8, height: 8)
+    }
+}
+
+struct AvatarBubbleLayoutMetrics: Equatable {
+    let width: CGFloat
+    let minHeight: CGFloat
+    let useScroll: Bool
+    let horizontalOffset: CGFloat
+    let tailAnchorX: CGFloat
+    let tailDX: CGFloat
+}
+
+enum AvatarBubblePresentation {
+    static let minWidth: CGFloat = 156
+    static let maxWidth: CGFloat = 336
+    static let shortMinHeight: CGFloat = 44
+    static let thinkingWidth: CGFloat = 108
+    static let thinkingMinHeight: CGFloat = 48
+
+    static func metrics(lines: [String], maxHeight: CGFloat, isThinking: Bool) -> AvatarBubbleLayoutMetrics {
+        if isThinking {
+            return AvatarBubbleLayoutMetrics(
+                width: thinkingWidth,
+                minHeight: thinkingMinHeight,
+                useScroll: false,
+                horizontalOffset: -24,
+                tailAnchorX: 0.72,
+                tailDX: 6
+            )
+        }
+
+        let sanitized = lines
+            .map {
+                $0.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            .filter { $0.isEmpty == false }
+
+        let effectiveLines = sanitized.isEmpty ? [""] : sanitized
+        let maxChars = effectiveLines.map(\.count).max() ?? 0
+        let lineCount = effectiveLines.count
+
+        let width = clamp(
+            minWidth + CGFloat(min(maxChars, 34)) * 4.4 + CGFloat(max(0, lineCount - 1)) * 8,
+            min: minWidth,
+            max: maxWidth
+        )
+
+        let widthRatio = (width - minWidth) / max(maxWidth - minWidth, 1)
+        let charactersPerLine = max(16, Int((width - 48) / 7.0))
+        let visualLineCount = effectiveLines.reduce(0) { partialResult, line in
+            partialResult + max(1, Int(ceil(Double(max(line.count, 1)) / Double(charactersPerLine))))
+        }
+        let estimatedHeight = 28 + CGFloat(visualLineCount) * 22 + CGFloat(max(0, lineCount - 1)) * 4
+        let useScroll = estimatedHeight > max(maxHeight - 6, shortMinHeight)
+
+        return AvatarBubbleLayoutMetrics(
+            width: width,
+            minHeight: shortMinHeight,
+            useScroll: useScroll,
+            horizontalOffset: -22 + 10 * widthRatio,
+            tailAnchorX: 0.80 - 0.15 * widthRatio,
+            tailDX: 10 - 6 * widthRatio
+        )
+    }
+
+    private static func clamp(_ value: CGFloat, min minimum: CGFloat, max maximum: CGFloat) -> CGFloat {
+        Swift.min(Swift.max(value, minimum), maximum)
     }
 }
 
@@ -417,6 +608,8 @@ struct BobsDeskView: View {
 
     // F12 — preferences window access
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     init(agentLoop: AgentLoop) {
         self.agentLoop = agentLoop
@@ -479,6 +672,34 @@ struct BobsDeskView: View {
         }
         let action = uncensoredModeEnabled ? "Turn off" : "Turn on"
         return "\(action) uncensored mode for this conversation. Configured tag: \(settings.effectiveUncensoredModelName)"
+    }
+
+    private var avatarSurfaceFill: Color {
+        reduceTransparency ? Color.white.opacity(0.94) : Self.bubbleFill.opacity(surfaceOpacity)
+    }
+
+    private var avatarSurfaceStroke: Color {
+        reduceTransparency ? Color.black.opacity(0.28) : Self.bubbleStroke.opacity(surfaceOpacity)
+    }
+
+    private var avatarSpeechFill: Color {
+        reduceTransparency ? Color.white.opacity(0.97) : Self.speechBubbleFill
+    }
+
+    private var avatarSpeechStroke: Color {
+        reduceTransparency ? Color.black.opacity(0.40) : Self.speechBubbleStroke
+    }
+
+    private var avatarBubbleShadow: Color {
+        Color.black.opacity(reduceTransparency ? 0.16 : 0.22)
+    }
+
+    private var avatarVisibilityAnimation: Animation? {
+        reduceMotion ? nil : .easeInOut(duration: 0.28)
+    }
+
+    private var avatarProcessingAnimation: Animation? {
+        reduceMotion ? nil : .easeInOut(duration: 0.22)
     }
 
     // F7 — persona sprite tint
@@ -549,7 +770,7 @@ struct BobsDeskView: View {
             enforceMasterUncensoredSetting()
             rebuildInterleavedItems()
             refreshContextTokensUsed()
-            withAnimation(.easeInOut(duration: 0.3)) {
+            withAnimation(avatarVisibilityAnimation) {
                 bubbleVisible = shouldShowBubble
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
@@ -558,6 +779,16 @@ struct BobsDeskView: View {
         }
         .onChange(of: settings.uncensoredModeAvailable) {
             enforceMasterUncensoredSetting()
+        }
+        .onChange(of: settings.avatarOnlyMode) { _, avatarOnlyMode in
+            if avatarOnlyMode == false {
+                showHistoryOverlay = false
+            }
+        }
+        .onChange(of: reduceMotion) { _, reduceMotionEnabled in
+            if reduceMotionEnabled {
+                breathPhase = false
+            }
         }
         .onChange(of: personaStore.activePersonaID) {
             refreshContextTokensUsed()
@@ -568,19 +799,19 @@ struct BobsDeskView: View {
         // Sync bubble visibility whenever the transcript actually changes.
         .onChange(of: session.transcriptRevision) {
             refreshContextTokensUsed()
-            withAnimation(.easeInOut(duration: 0.3)) {
+            withAnimation(avatarVisibilityAnimation) {
                 bubbleVisible = shouldShowBubble
             }
         }
         .onChange(of: session.terminalTurnRevision) {
             awaitingTurnTranscript = false
-            withAnimation(.easeInOut(duration: 0.3)) {
+            withAnimation(avatarVisibilityAnimation) {
                 bubbleVisible = shouldShowBubble
             }
         }
         .onChange(of: session.errorMessage) {
             guard agentLoop.isProcessing == false else { return }
-            withAnimation(.easeInOut(duration: 0.3)) {
+            withAnimation(avatarVisibilityAnimation) {
                 bubbleVisible = shouldShowBubble
             }
         }
@@ -588,7 +819,7 @@ struct BobsDeskView: View {
         .onReceive(agentLoop.$isProcessing) { processing in
             if processing {
                 awaitingTurnTranscript = true
-                withAnimation(.easeInOut(duration: 0.3)) {
+                withAnimation(avatarVisibilityAnimation) {
                     bubbleVisible = true
                 }
                 // F2 — start-of-turn bookkeeping
@@ -644,7 +875,7 @@ struct BobsDeskView: View {
         }
         // Plan 2 — toggle history overlay from menu bar shortcut
         .onReceive(NotificationCenter.default.publisher(for: .bobToggleHistoryOverlay)) { _ in
-            showHistoryOverlay.toggle()
+            toggleAvatarHistoryOverlay()
         }
         .onAppear {
             refreshFactCount()
@@ -719,7 +950,7 @@ struct BobsDeskView: View {
                 let portrait: CGFloat = 160
                 let inputSlot: CGFloat = 56   // pill height incl. tail + padding
                 let gapTop: CGFloat = 10
-                let gapBubbleToBob: CGFloat = 10
+                let gapBubbleToBob: CGFloat = 6
                 let gapBobToInput: CGFloat = 10
                 let gapBottom: CGFloat = 12
                 let reserved = portrait + inputSlot + gapTop + gapBubbleToBob + gapBobToInput + gapBottom
@@ -728,18 +959,15 @@ struct BobsDeskView: View {
                 VStack(spacing: 0) {
                     Spacer().frame(height: gapTop)
 
-                    ZStack(alignment: .bottom) {
-                        speechBubbleView(maxHeight: bubbleCap)
-                            .opacity(bubbleVisible || agentLoop.isProcessing ? 1 : 0)
-                            .animation(.easeInOut(duration: 0.3), value: bubbleVisible)
-                            .animation(.easeInOut(duration: 0.25), value: agentLoop.isProcessing)
-
-                        historyToggleButton
-                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                            .padding(.top, 6)
-                            .padding(.trailing, 6)
-                    }
-                    .frame(maxWidth: 360, maxHeight: bubbleCap, alignment: .bottom)
+                    speechBubbleView(maxHeight: bubbleCap)
+                        .overlay(alignment: .topTrailing) {
+                            historyToggleButton
+                                .offset(x: 8, y: -8)
+                        }
+                        .opacity(bubbleVisible || agentLoop.isProcessing ? 1 : 0)
+                        .animation(avatarVisibilityAnimation, value: bubbleVisible)
+                        .animation(avatarProcessingAnimation, value: agentLoop.isProcessing)
+                        .frame(maxWidth: AvatarBubblePresentation.maxWidth + 24, maxHeight: bubbleCap, alignment: .bottom)
                     .layoutPriority(0)
 
                     Spacer().frame(height: gapBubbleToBob)
@@ -757,7 +985,7 @@ struct BobsDeskView: View {
 
                     compactInputBubble
                         .opacity(agentLoop.isProcessing ? 0.0 : 1.0)
-                        .animation(.easeInOut(duration: 0.3), value: agentLoop.isProcessing)
+                        .animation(avatarVisibilityAnimation, value: agentLoop.isProcessing)
                         .padding(.horizontal, 20)
                         .layoutPriority(2)
 
@@ -828,8 +1056,8 @@ struct BobsDeskView: View {
 
                 speechBubbleView(maxHeight: Self.portraitBubbleMaxHeight)
                     .opacity(bubbleVisible || agentLoop.isProcessing ? 1 : 0)
-                    .animation(.easeInOut(duration: 0.3), value: bubbleVisible)
-                    .animation(.easeInOut(duration: 0.25), value: agentLoop.isProcessing)
+                    .animation(avatarVisibilityAnimation, value: bubbleVisible)
+                    .animation(avatarProcessingAnimation, value: agentLoop.isProcessing)
             }
             .frame(maxWidth: 360, minHeight: 56, maxHeight: Self.portraitBubbleMaxHeight)
             .padding(.bottom, 6)
@@ -839,9 +1067,11 @@ struct BobsDeskView: View {
         }
         .frame(maxWidth: .infinity)
         .onAppear {
-            withAnimation(
-                .easeInOut(duration: 3.5).repeatForever(autoreverses: true)
-            ) {
+            guard reduceMotion == false else {
+                breathPhase = false
+                return
+            }
+            withAnimation(.easeInOut(duration: 3.5).repeatForever(autoreverses: true)) {
                 breathPhase = true
             }
         }
@@ -855,6 +1085,7 @@ struct BobsDeskView: View {
         // full-color and need the identity color (.white) so colorMultiply is
         // a no-op — tinting them turns the shirt into sludge.
         let tint = pack.id == AvatarPacks.classicRobot.id ? spriteAccent : Color.white
+        let hasArt = pack.image(for: mood) != nil
 
         return ZStack {
             if let nsImage = pack.image(for: mood) {
@@ -865,30 +1096,44 @@ struct BobsDeskView: View {
                     .colorMultiply(tint)
                     .opacity(surfaceOpacity)
             } else {
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(Self.bgPanel.opacity(surfaceOpacity))
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(reduceTransparency ? Color.white.opacity(0.88) : Self.bgPanel.opacity(surfaceOpacity))
                     .frame(width: 140, height: 200)
-                    .overlay(
-                        Text("\(pack.filePrefix)\(mood.rawValue)")
-                            .font(.caption2)
-                            .foregroundColor(Self.phosphorGreen.opacity(0.6 * textOpacity))
-                    )
+                    .overlay {
+                        VStack(spacing: 10) {
+                            Image(systemName: "person.crop.rectangle")
+                                .font(.system(size: 42, weight: .medium))
+                                .foregroundColor(.black.opacity(0.42))
+                            Text("Bob")
+                                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                .foregroundColor(.black.opacity(0.58))
+                        }
+                    }
             }
         }
         .id(mood)
         .transition(.opacity)
-        .animation(.easeInOut(duration: 0.25), value: mood)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: mood)
         .scaleEffect(idleBreathScale(mood: mood))
         .animation(
-            mood == .idle
-                ? .easeInOut(duration: 3.5).repeatForever(autoreverses: true)
-                : .easeInOut(duration: 0.25),
+            reduceMotion
+                ? nil
+                : (mood == .idle
+                    ? .easeInOut(duration: 3.5).repeatForever(autoreverses: true)
+                    : .easeInOut(duration: 0.25)),
             value: breathPhase
+        )
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Bob avatar")
+        .accessibilityValue(
+            hasArt
+                ? "\(pack.name), \(accessibleMoodDescription(mood))"
+                : "\(accessibleMoodDescription(mood)), using fallback artwork"
         )
     }
 
     private func idleBreathScale(mood: BobMood) -> CGFloat {
-        guard mood == .idle else { return 1.0 }
+        guard mood == .idle, reduceMotion == false else { return 1.0 }
         return breathPhase ? 1.015 : 1.0
     }
 
@@ -987,8 +1232,8 @@ struct BobsDeskView: View {
         .padding(.horizontal, 14)
         .padding(.top, 9 + 10)   // extra top room so the tail doesn't overlap the field
         .padding(.bottom, 9)
-        .background(shape.fill(Self.bubbleFill.opacity(surfaceOpacity)))
-        .overlay(shape.stroke(Self.bubbleStroke.opacity(surfaceOpacity), lineWidth: 0.6))
+        .background(shape.fill(avatarSurfaceFill))
+        .overlay(shape.stroke(avatarSurfaceStroke, lineWidth: reduceTransparency ? 0.9 : 0.6))
         .compositingGroup()
         .shadow(color: .black.opacity(0.15 * surfaceOpacity), radius: 8, x: 0, y: 3)
         .fixedSize(horizontal: false, vertical: true)
@@ -1016,21 +1261,23 @@ struct BobsDeskView: View {
     // MARK: - History Overlay (Plan 2)
 
     private var historyToggleButton: some View {
-        Button(action: { showHistoryOverlay.toggle() }) {
+        Button(action: { toggleAvatarHistoryOverlay() }) {
             Image(systemName: "clock")
                 .font(.system(size: 11, weight: .medium))
                 .foregroundColor(.black.opacity(0.45 * textOpacity))
                 .padding(5)
                 .background(
                     Circle()
-                        .fill(Self.speechBubbleFill)
-                        .overlay(Circle().stroke(Self.speechBubbleStroke, lineWidth: 0.6))
+                        .fill(avatarSpeechFill)
+                        .overlay(Circle().stroke(avatarSpeechStroke, lineWidth: 0.8))
                 )
         }
         .buttonStyle(.plain)
         .opacity(bubbleVisible || agentLoop.isProcessing ? 1 : 0)
-        .animation(.easeInOut(duration: 0.3), value: bubbleVisible)
+        .animation(avatarVisibilityAnimation, value: bubbleVisible)
         .help("Show conversation history")
+        .accessibilityLabel("Show conversation history")
+        .accessibilityHint("Opens the transcript overlay for Avatar Mode.")
     }
 
     private var historyOverlay: some View {
@@ -1088,11 +1335,11 @@ struct BobsDeskView: View {
             .frame(maxWidth: 340, maxHeight: 300)
             .background(
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(Self.speechBubbleFill.opacity(0.95))
+                    .fill(reduceTransparency ? Color.white.opacity(0.98) : avatarSpeechFill.opacity(0.95))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(Self.speechBubbleStroke, lineWidth: 0.9)
+                    .stroke(avatarSpeechStroke, lineWidth: reduceTransparency ? 1.1 : 0.9)
             )
             .shadow(color: .black.opacity(0.22), radius: 12, x: 0, y: 5)
             .padding(.horizontal, 16)
@@ -1165,56 +1412,173 @@ struct BobsDeskView: View {
     /// available window height for avatar-only mode, or a fixed slot
     /// height for portrait mode). Text always scrolls inside so the
     /// bubble's frame is stable as new tokens stream in.
+    @ViewBuilder
     private func speechBubbleView(maxHeight: CGFloat) -> some View {
         let preview = latestAssistantPreview
         let greetingText = latestGreetingLine ?? ""
-        let shape = ComicBubbleShape(tailAnchorX: Self.avatarBubbleTailAnchorX, tailDirection: .down)
         let isAvatarOnly = settings.avatarOnlyMode
         let textFont = Font.system(
             size: isAvatarOnly ? 15 : 13,
             weight: isAvatarOnly ? .semibold : .medium,
             design: .rounded
         )
+        let isThinking = agentLoop.isProcessing || awaitingTurnTranscript
+
+        if isAvatarOnly {
+            avatarOnlySpeechBubbleView(
+                preview: preview,
+                greetingText: greetingText,
+                textFont: textFont,
+                maxHeight: maxHeight,
+                isThinking: isThinking
+            )
+        } else {
+            fullModeSpeechBubbleView(
+                preview: preview,
+                greetingText: greetingText,
+                textFont: textFont,
+                maxHeight: maxHeight,
+                isThinking: isThinking
+            )
+        }
+    }
+
+    private func avatarOnlySpeechBubbleView(
+        preview: ChatBubbleRendering.AvatarPreview?,
+        greetingText: String,
+        textFont: Font,
+        maxHeight: CGFloat,
+        isThinking: Bool
+    ) -> some View {
+        let metrics = AvatarBubblePresentation.metrics(
+            lines: avatarSpeechLines(preview: preview, greetingText: greetingText),
+            maxHeight: maxHeight,
+            isThinking: isThinking
+        )
+        let shape = ComicBubbleShape(
+            tailDX: metrics.tailDX,
+            tailAnchorX: metrics.tailAnchorX,
+            cornerRadius: 18,
+            tailWidth: 18,
+            tailHeight: 16,
+            tailDirection: .down
+        )
+
+        return Group {
+            if metrics.useScroll {
+                ScrollView(.vertical, showsIndicators: true) {
+                    speechBubbleContent(
+                        preview: preview,
+                        greetingText: greetingText,
+                        textFont: textFont,
+                        isAvatarOnly: true,
+                        expandToFillWidth: true,
+                        isThinking: isThinking
+                    )
+                    .padding(.horizontal, 18)
+                    .padding(.top, 14)
+                    .padding(.bottom, 24)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(maxWidth: metrics.width, maxHeight: maxHeight, alignment: .topLeading)
+            } else {
+                speechBubbleContent(
+                    preview: preview,
+                    greetingText: greetingText,
+                    textFont: textFont,
+                    isAvatarOnly: true,
+                    expandToFillWidth: false,
+                    isThinking: isThinking
+                )
+                .padding(.horizontal, 18)
+                .padding(.top, 14)
+                .padding(.bottom, 24)
+                .frame(maxWidth: metrics.width, alignment: .leading)
+            }
+        }
+        .background(shape.fill(avatarSpeechFill))
+        .overlay(shape.stroke(avatarSpeechStroke, lineWidth: reduceTransparency ? 1.4 : 1.2))
+        .clipShape(shape)
+        .compositingGroup()
+        .shadow(color: avatarBubbleShadow, radius: reduceTransparency ? 8 : 12, x: 0, y: reduceTransparency ? 3 : 5)
+        .offset(x: metrics.horizontalOffset)
+        .frame(minHeight: metrics.minHeight, alignment: .bottomLeading)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(isThinking ? "Bob is thinking" : "Bob says")
+        .accessibilityValue(avatarSpeechAccessibilityValue(preview: preview, greetingText: greetingText, isThinking: isThinking))
+    }
+
+    private func fullModeSpeechBubbleView(
+        preview: ChatBubbleRendering.AvatarPreview?,
+        greetingText: String,
+        textFont: Font,
+        maxHeight: CGFloat,
+        isThinking: Bool
+    ) -> some View {
+        let shape = ComicBubbleShape(tailAnchorX: Self.avatarBubbleTailAnchorX, tailDirection: .down)
 
         return ScrollView(.vertical, showsIndicators: false) {
-            Group {
-                if agentLoop.isProcessing || awaitingTurnTranscript {
-                    ThinkingDots()
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                } else if let preview, preview.blocks.isEmpty == false {
-                    avatarBubblePreviewContent(preview.blocks, textFont: textFont, isAvatarOnly: isAvatarOnly)
-                } else {
-                    Text(greetingText)
-                        .font(textFont)
-                        .foregroundColor(.black.opacity(0.9 * textOpacity))
-                        .multilineTextAlignment(.leading)
-                        .lineSpacing(isAvatarOnly ? 2 : 1)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .shadow(color: .white.opacity(0.12), radius: 0.4, x: 0, y: 0.4)
-                        .textSelection(.enabled)
-                }
-            }
-            .padding(.horizontal, isAvatarOnly ? 18 : 16)
-            .padding(.top, isAvatarOnly ? 14 : 12)
-            .padding(.bottom, isAvatarOnly ? 24 : 22)
+            speechBubbleContent(
+                preview: preview,
+                greetingText: greetingText,
+                textFont: textFont,
+                isAvatarOnly: false,
+                expandToFillWidth: true,
+                isThinking: isThinking
+            )
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+            .padding(.bottom, 22)
         }
         .background(shape.fill(Self.speechBubbleFill))
-        .overlay(shape.stroke(Self.speechBubbleStroke, lineWidth: isAvatarOnly ? 1.2 : 0.9))
+        .overlay(shape.stroke(Self.speechBubbleStroke, lineWidth: 0.9))
         .clipShape(shape)
         .compositingGroup()
         .shadow(color: .black.opacity(0.22), radius: 12, x: 0, y: 5)
-        .frame(maxWidth: isAvatarOnly ? 360 : 332)
+        .frame(maxWidth: 332)
         .frame(minHeight: Self.minBubbleHeight,
                maxHeight: (bubbleVisible || agentLoop.isProcessing) ? maxHeight : Self.minBubbleHeight)
-        .animation(.easeInOut(duration: 0.3), value: bubbleVisible)
-        .animation(.easeInOut(duration: 0.25), value: agentLoop.isProcessing)
+        .animation(avatarVisibilityAnimation, value: bubbleVisible)
+        .animation(avatarProcessingAnimation, value: agentLoop.isProcessing)
+    }
+
+    @ViewBuilder
+    private func speechBubbleContent(
+        preview: ChatBubbleRendering.AvatarPreview?,
+        greetingText: String,
+        textFont: Font,
+        isAvatarOnly: Bool,
+        expandToFillWidth: Bool,
+        isThinking: Bool
+    ) -> some View {
+        if isThinking {
+            ThinkingDots(reduceMotion: reduceMotion)
+                .frame(maxWidth: expandToFillWidth ? .infinity : nil, alignment: .leading)
+        } else if let preview, preview.blocks.isEmpty == false {
+            avatarBubblePreviewContent(
+                preview.blocks,
+                textFont: textFont,
+                isAvatarOnly: isAvatarOnly,
+                expandToFillWidth: expandToFillWidth
+            )
+        } else {
+            Text(greetingText)
+                .font(textFont)
+                .foregroundColor(.black.opacity(0.9 * textOpacity))
+                .multilineTextAlignment(.leading)
+                .lineSpacing(isAvatarOnly ? 2 : 1)
+                .frame(maxWidth: expandToFillWidth ? .infinity : nil, alignment: .leading)
+                .shadow(color: .white.opacity(0.12), radius: 0.4, x: 0, y: 0.4)
+                .textSelection(.enabled)
+        }
     }
 
     @ViewBuilder
     private func avatarBubblePreviewContent(
         _ blocks: [ChatBubbleRendering.Block],
         textFont: Font,
-        isAvatarOnly: Bool
+        isAvatarOnly: Bool,
+        expandToFillWidth: Bool
     ) -> some View {
         VStack(alignment: .leading, spacing: isAvatarOnly ? 10 : 8) {
             ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
@@ -1226,7 +1590,7 @@ struct BobsDeskView: View {
                         .multilineTextAlignment(.leading)
                         .lineSpacing(isAvatarOnly ? 2 : 1)
                         .lineLimit(isAvatarOnly ? 5 : 4)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .frame(maxWidth: expandToFillWidth ? .infinity : nil, alignment: .leading)
                         .tint(.accentColor)
                         .textSelection(.enabled)
                 case .code(let language, let content):
@@ -1242,7 +1606,7 @@ struct BobsDeskView: View {
                             .foregroundColor(.black.opacity(0.9 * textOpacity))
                             .lineSpacing(1)
                             .lineLimit(isAvatarOnly ? 5 : 4)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .frame(maxWidth: expandToFillWidth ? .infinity : nil, alignment: .leading)
                             .textSelection(.enabled)
                     }
                     .padding(.horizontal, 10)
@@ -1252,7 +1616,66 @@ struct BobsDeskView: View {
                 }
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: expandToFillWidth ? .infinity : nil, alignment: .leading)
+    }
+
+    private func avatarSpeechLines(
+        preview: ChatBubbleRendering.AvatarPreview?,
+        greetingText: String
+    ) -> [String] {
+        if let preview, preview.blocks.isEmpty == false {
+            return preview.blocks.compactMap { block in
+                switch block {
+                case .markdown(let attributed):
+                    let text = String(attributed.characters).trimmingCharacters(in: .whitespacesAndNewlines)
+                    return text.isEmpty ? nil : text
+                case .code(_, let content):
+                    let text = content.trimmingCharacters(in: .whitespacesAndNewlines)
+                    return text.isEmpty ? nil : text
+                }
+            }
+        }
+
+        return greetingText
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { $0.isEmpty == false }
+    }
+
+    private func avatarSpeechAccessibilityValue(
+        preview: ChatBubbleRendering.AvatarPreview?,
+        greetingText: String,
+        isThinking: Bool
+    ) -> String {
+        guard isThinking == false else { return "Generating a reply." }
+
+        let speech = avatarSpeechLines(preview: preview, greetingText: greetingText).joined(separator: " ")
+        return speech.isEmpty ? "No reply yet." : speech
+    }
+
+    private func toggleAvatarHistoryOverlay() {
+        guard settings.avatarOnlyMode else {
+            showHistoryOverlay = false
+            return
+        }
+        showHistoryOverlay.toggle()
+    }
+
+    private func accessibleMoodDescription(_ mood: BobMood) -> String {
+        switch mood {
+        case .idle:
+            return "idle"
+        case .thinking:
+            return "thinking"
+        case .typing:
+            return "typing"
+        case .happy:
+            return "happy"
+        case .sheepish:
+            return "sheepish"
+        case .confused:
+            return "confused"
+        }
     }
 
     // MARK: - Status Line
@@ -1608,13 +2031,13 @@ struct BobsDeskView: View {
         systemNotices.append(notice)
         hasGreeted = true
         BobSayings.play(.greeting)
-        withAnimation(.easeInOut(duration: 0.3)) {
+        withAnimation(avatarVisibilityAnimation) {
             bubbleVisible = true
         }
     }
 
     private func updateBubbleForGreeting() {
-        withAnimation(.easeInOut(duration: 0.3)) {
+        withAnimation(avatarVisibilityAnimation) {
             bubbleVisible = shouldShowBubble
         }
     }
