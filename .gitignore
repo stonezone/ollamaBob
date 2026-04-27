@@ -15,6 +15,9 @@ xcuserdata/
 *.xcuserstate
 *.xcworkspace/xcshareddata/
 *.xcresult/
+*.xcarchive/
+*.dSYM/
+*.app/
 
 # Test / coverage output
 coverage/
@@ -40,7 +43,16 @@ jarvis-address-book.local.json
 *.p12
 *.mobileprovision
 
-# Logs and temp artifacts
+# Local agent / workspace state
+.claude/
+.codex/
+.context/
+.gstack/
+.local-docs/
+.worktrees/
+CLAUDE.local.md
+
+# Logs, scratch, and temp artifacts
 *.log
 logs/
 bob_mockups/
@@ -49,6 +61,15 @@ scratch/
 *.tmp
 *.pid
 *.pid.lock
+
+# Local archives / exports
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.dmg
+*.pkg
+archive.zip
 
 # Merge / patch backups
 *.orig
@@ -71,10 +92,6 @@ out/
 .idea/
 .vscode/
 *.code-workspace
-
-# Claude Code local artifacts (not needed on remote)
-.claude/
-CLAUDE.local.md
 
 # Archived compiled artifacts — sources tracked, binaries ignored
 archive/**/*.app/

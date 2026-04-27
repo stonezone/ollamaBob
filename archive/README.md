@@ -1,26 +1,37 @@
 # Archive
 
-Historical artifacts from earlier phases of OllamaBob. Preserved for reference
-but no longer part of the active project. Everything here is still useful as a
-"why did we decide X?" reference — it's just not day-to-day reading.
+Historical artifacts from earlier OllamaBob phases. Files here are preserved for decision history, not as active implementation instructions.
+
+For current work, start with:
+
+- `README.md`
+- `AGENTS.md`
+- `CLAUDE.md`
+- `docs/CURRENT_HANDOFF.md`
+- `docs/OPERATOR_QA.md`
+- `docs/ARCHITECTURE_NOTES.md`
 
 ## Contents
 
-| Path | What it is | Phase | Still relevant for |
-|------|-----------|-------|--------------------|
-| `OLAMMABOB_PROMPT.md` | Original V1 kickoff prompt handed to the first implementation agent. | V1 | Historical context only. **References the deprecated `/v1/chat/completions` endpoint — the codebase uses `/api/chat`.** See CLAUDE.md errata. |
-| `phase0/` | Pre-implementation investigations — `num_ctx` benchmarks (`invA*`), tool-call wire-format samples (`invB*`), jq bundle viability check (`invC*`). | Pre-V1 (2026-04) | Revisit before revisiting any of the decisions those benchmarks produced (e.g. `num_ctx: 8192` default, no-bundled-jq stance). |
-| `PHASE0_RESULTS.md` | Narrative write-up of the phase-0 investigation results. Companion to `phase0/`. | Pre-V1 | Same as above. |
-| `OLLAMABOB_V2_PLAN_DRAFT.md` | Earlier V2 scope draft, kept for context. **Superseded by `docs/OLLAMABOB_V2_PLAN_FINAL.md`.** | V2 planning | Delta-reading against `_FINAL` if you want the backstory of the cut items (`sqlite-vec`, etc.). |
-| `OLLAMA_CLAUDE_V2.5_plan.md` | Autonomous orchestration plan used to ship V2.5 "Make Bob Sing". | V2.5 | Reference only — V2.5 is shipped. |
-| `OLLAMABOB_V2.9_PHASE_A_PLAN.md` | Handoff plan that shipped V2.9 Phase A (OCR / speak / weather / units / sips / yt-dlp). | V2.9 Phase A | Copy its structure if you're writing a new Codex handoff — it's the canonical "how we hand off bounded work" template. |
-| `FINDINGS_TO_REVIEW_2026-04-20.md` | Blind peer-review memo for the post-V2.10 chat/rendering pass. | V2.10 hardening | Historical record of the findings sweep that fed the rendering/performance cleanup. |
-| `future_features/` | Parked feature ideas. Currently just `generate_images.txt` (prompts for future image-gen tool). | Ongoing | Reactivate when a feature's turn comes up. |
+| Path | What it is | Status |
+|------|------------|--------|
+| `OLAMMABOB_PROMPT.md` | Original V1 kickoff prompt. | Historical. References obsolete endpoint assumptions. |
+| `OLLAMABOB_V1.1_PLAN.md` | Original V1/V1.1 architecture plan. | Superseded by current source, `AGENTS.md`, and `CLAUDE.md`. |
+| `OLLAMABOB_V2_PLAN_FINAL.md` | Locked V2 scope plan. | Shipped historical plan. |
+| `OLLAMABOB_V2_PLAN_DRAFT.md` | Earlier V2 draft. | Superseded by the V2 final plan. |
+| `OLLAMA_CLAUDE_V2.5_plan.md` | V2.5 voice/orchestration plan. | Shipped historical plan. |
+| `OLLAMABOB_V2.9_PHASE_A_PLAN.md` | V2.9 native-tool expansion handoff. | Shipped historical plan. |
+| `OLLAMABOB_V2.9.2_HANDOFF.md` | AppleScript/TCC and avatar-only handoff. | Superseded by current handoff. |
+| `MULTIMEDIA_BOB.md` | Rich presentation design/spec. | Implemented in V2.10. |
+| `NAUGHTYBOB_PLAN.md` | Uncensored-mode product plan. | Implemented as Naughty Bob v1. |
+| `JARVIS_BOB_CALLS.md` | Jarvis phone integration plan. | Implemented app-side V1. |
+| `CODEX-JARVIS-CALL-HANDOFF.md` | Session handoff for Jarvis phone work. | Superseded by current handoff. |
+| `CHAT_REVIEW_REMEDIATION_PLAN.md` | Post-review chat/rendering remediation plan. | Completed/superseded. |
+| `FINDINGS_TO_REVIEW_2026-04-20.md` | Blind peer-review memo for chat/rendering cleanup. | Historical review record. |
+| `PHASE0_RESULTS.md` | Narrative phase-0 investigation write-up. | Historical investigation record. |
+| `phase0/` | Raw phase-0 scripts and results. | Historical investigation data. |
+| `future_features/` | Parked future feature notes. | Ideas only. |
 
-## Why these are archived, not deleted
+## Archive Rule
 
-Each of these shaped a real decision the project is still living with. Keeping
-them in the repo means the reasoning behind the decision stays recoverable
-(via git history and file content) even after the originating doc is no longer
-relevant day-to-day. Binaries that were part of those investigations are
-gitignored via `archive/**/*.app/` patterns in the root `.gitignore`.
+If a doc describes a completed implementation, a superseded plan, a one-session handoff, or old review findings, keep it here. Active `docs/` should stay small and only contain current operational guidance.

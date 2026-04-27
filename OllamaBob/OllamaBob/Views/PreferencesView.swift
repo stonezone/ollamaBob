@@ -1476,8 +1476,11 @@ struct PreferencesView: View {
                     """)
 
                 helpSection(title: "Learn more", body: """
-                    • Project plan: docs/OLLAMABOB_V1.1_PLAN.md
-                    • V2 status: OLLAMA_CLAUDE.md
+                    • Current handoff: docs/CURRENT_HANDOFF.md
+                    • Operator QA: docs/OPERATOR_QA.md
+                    • Historical plans: archive/
+                    • Agent guide: AGENTS.md
+                    • Claude guide: CLAUDE.md
                     • Your memory is in ~/Library/Application \
                     Support/OllamaBob/ollamabob.sqlite
                     • Issues or feedback? Drop a note in the repo.

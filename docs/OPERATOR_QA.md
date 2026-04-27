@@ -1,8 +1,18 @@
 # OllamaBob Operator QA Notes
 
-**Date:** 2026-04-20
+**Date:** 2026-04-27
 
 ## Core Manual Checks
+
+### Repo / Docs Handoff
+
+1. `git status --short --branch` is clean on `main`.
+2. Start new work from:
+   - `AGENTS.md`
+   - `docs/CURRENT_HANDOFF.md`
+   - `CLAUDE.md`
+3. Confirm old plans and completed handoffs are under `archive/`, not mixed into active `docs/`.
+4. Confirm Preferences -> Help -> Learn more points at current docs and `archive/`.
 
 ### Rich Presentation
 
