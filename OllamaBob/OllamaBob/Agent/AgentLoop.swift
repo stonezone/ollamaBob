@@ -72,6 +72,7 @@ final class AgentLoop: ObservableObject {
     /// per conversation.
     private var currentConversationId: String?
     private var currentUserMessage: String?
+    private var currentPhoneCallContext: String?
     private var currentUncensoredMode = false
 
     var approvalHandler: ApprovalHandler?
@@ -117,6 +118,7 @@ final class AgentLoop: ObservableObject {
             isProcessing = false
             currentConversationId = nil
             currentUserMessage = nil
+            currentPhoneCallContext = nil
             currentUncensoredMode = false
         }
 
@@ -158,6 +160,10 @@ final class AgentLoop: ObservableObject {
             let after = ConversationCompactor.approxTokens(messages)
             logCompaction(beforeTokens: before, afterTokens: after, numCtx: numCtx)
         }
+        currentPhoneCallContext = Self.phoneCallContext(
+            from: messages + [.user(userMessage)],
+            conversationId: conversationId
+        )
 
         let composed = PromptComposer.composeWithBreakdown(
             persona: PersonaStore.shared.activePersona,
@@ -253,6 +259,10 @@ final class AgentLoop: ObservableObject {
             // Both stages together keep the context small *and* the model
             // honest. See BobOperatingRules for the matching rules.
             for call in toolCalls {
+                currentPhoneCallContext = Self.phoneCallContext(
+                    from: messages,
+                    conversationId: conversationId
+                )
                 let rawResult = await executeToolCall(call)
                 lastToolResult = rawResult
                 if rawResult.success {
@@ -265,6 +275,10 @@ final class AgentLoop: ObservableObject {
                 let spilled = await spilloutIfNeeded(rawResult)
                 let wrapped = UntrustedWrapper.wrap(spilled.content)
                 messages.append(.toolResult(name: spilled.toolName, content: wrapped))
+                currentPhoneCallContext = Self.phoneCallContext(
+                    from: messages,
+                    conversationId: conversationId
+                )
             }
         }
 
@@ -301,6 +315,222 @@ final class AgentLoop: ObservableObject {
             maxIterations: AppConfig.agentLoopMaxIterations,
             timeoutSeconds: AppConfig.agentLoopTimeoutSeconds
         )
+    }
+
+    // MARK: - Phone Call Context
+
+    nonisolated static func phoneCallContext(
+        from messages: [OllamaMessage],
+        conversationId: String,
+        maxCharacters: Int = 1500
+    ) -> String? {
+        guard maxCharacters > 80 else { return nil }
+        let header = "OllamaBob conversation context (\(conversationId)). Use naturally; do not read this verbatim."
+        let highlightLines = phoneCallHighlightLine(from: messages).map { [$0] } ?? []
+        let prefixLines = [header] + highlightLines
+        let prefixText = prefixLines.joined(separator: "\n")
+        guard prefixText.count < maxCharacters else {
+            return truncated(prefixText, maxCharacters: maxCharacters)
+        }
+
+        let lines = messages.compactMap(phoneCallContextLine(from:))
+        guard lines.isEmpty == false else { return nil }
+
+        var selected: [String] = []
+        var used = prefixText.count
+        for line in lines.reversed() {
+            let separatorCost = selected.isEmpty ? 2 : 1
+            let remaining = maxCharacters - used - separatorCost
+            guard remaining > 0 else { break }
+
+            if line.count <= remaining {
+                selected.insert(line, at: 0)
+                used += separatorCost + line.count
+            } else if remaining >= 48 {
+                selected.insert(truncated(line, maxCharacters: remaining), at: 0)
+                break
+            } else {
+                break
+            }
+        }
+
+        guard selected.isEmpty == false else {
+            return truncated(prefixText, maxCharacters: maxCharacters)
+        }
+        return (prefixLines + selected).joined(separator: "\n")
+    }
+
+    nonisolated static func mergedPhoneCallContext(
+        explicit: String?,
+        automatic: String?,
+        maxCharacters: Int = 1500
+    ) -> String? {
+        let explicit = cleanedPhoneContextText(explicit ?? "")
+        let automatic = cleanedPhoneContextText(automatic ?? "")
+        let parts: [String]
+        if explicit.isEmpty == false, automatic.isEmpty == false {
+            parts = [
+                "Requested call context: \(explicit)",
+                "Recent OllamaBob session:\n\(automatic)"
+            ]
+        } else if explicit.isEmpty == false {
+            parts = [explicit]
+        } else if automatic.isEmpty == false {
+            parts = [automatic]
+        } else {
+            return nil
+        }
+        return truncated(parts.joined(separator: "\n\n"), maxCharacters: maxCharacters)
+    }
+
+    nonisolated static func shouldAttachAutomaticPhoneContext(
+        purpose: String,
+        userMessage: String
+    ) -> Bool {
+        let haystack = cleanedPhoneContextText("\(purpose) \(userMessage)")
+            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+            .lowercased()
+        let sessionContextPhrases = [
+            "what you did",
+            "what bob did",
+            "what we did",
+            "what we've done",
+            "what we have done",
+            "what we talked",
+            "current ollamabob session",
+            "current session",
+            "current conversation",
+            "this conversation",
+            "this chat",
+            "recent session",
+            "session context",
+            "status update",
+            "progress update",
+            "quick recap",
+            "recap of",
+            "summarize our",
+            "summary of our",
+            "working on",
+            "we worked on"
+        ]
+        return sessionContextPhrases.contains { haystack.contains($0) }
+    }
+
+    nonisolated static func phoneCallApprovalDescription(args: [String: Any]) -> String {
+        let rawPersona = args["persona"] as? String ?? ""
+        let persona = PhoneTool.resolvedCallerLabel(rawPersona)
+        let to = args["to"] as? String ?? "unknown"
+        let purpose = cleanedPhoneContextText(args["purpose"] as? String ?? "")
+        let context = cleanedPhoneContextText(args["context"] as? String ?? "")
+        let shortPurpose = truncated(purpose, maxCharacters: 200)
+
+        var lines = [
+            "Bob wants to place a phone call to \(to) as \(persona).",
+            "Purpose: \(shortPurpose)"
+        ]
+        if context.isEmpty == false {
+            lines.append("Context: \(truncated(context, maxCharacters: 500))")
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    private nonisolated static func phoneCallContextLine(from message: OllamaMessage) -> String? {
+        switch message.role {
+        case "user":
+            return labeledPhoneContextLine(label: "User", text: message.content)
+        case "assistant":
+            if let line = labeledPhoneContextLine(label: "Bob", text: message.content) {
+                return line
+            }
+            guard let names = message.toolCalls?.map(\.function.name), names.isEmpty == false else {
+                return nil
+            }
+            return "Bob requested tools: \(names.joined(separator: ", "))"
+        case "tool":
+            let name = message.toolName ?? "unknown"
+            return labeledPhoneContextLine(label: "Tool \(name)", text: message.content)
+        default:
+            return nil
+        }
+    }
+
+    private nonisolated static func phoneCallHighlightLine(from messages: [OllamaMessage]) -> String? {
+        let haystack = messages
+            .filter { $0.role != "system" }
+            .map { cleanedPhoneContextText($0.content) }
+            .joined(separator: " ")
+            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+            .lowercased()
+        guard haystack.isEmpty == false else { return nil }
+
+        var highlights: [String] = []
+        appendHighlight(
+            "music/download work",
+            to: &highlights,
+            if: haystackContainsAny(haystack, [
+                "download", "album", "song", "songs", "track", "tracks",
+                "mp3", "flac", "youtube", "yt-dlp", "music", "audio"
+            ])
+        )
+        appendHighlight(
+            "mail triage",
+            to: &highlights,
+            if: haystackContainsAny(haystack, ["mail", "email", "inbox", "unread"])
+        )
+        appendHighlight(
+            "contacts/address book",
+            to: &highlights,
+            if: haystackContainsAny(haystack, ["contact", "contacts", "address book", "vcf", "vcard"])
+        )
+        appendHighlight(
+            "tool permissions/approvals",
+            to: &highlights,
+            if: haystackContainsAny(haystack, ["permission", "permissions", "approval", "approved", "auto", "ask", "deny"])
+        )
+        appendHighlight(
+            "phone/Jarvis call work",
+            to: &highlights,
+            if: haystackContainsAny(haystack, ["phone", "call", "calls", "jarvis"])
+        )
+        appendHighlight(
+            "build/version/git work",
+            to: &highlights,
+            if: haystackContainsAny(haystack, ["build", "test", "version", "commit", "push", "git"])
+        )
+
+        guard highlights.isEmpty == false else { return nil }
+        return "Earlier highlights: \(highlights.prefix(5).joined(separator: "; "))"
+    }
+
+    private nonisolated static func appendHighlight(_ highlight: String, to highlights: inout [String], if condition: Bool) {
+        if condition {
+            highlights.append(highlight)
+        }
+    }
+
+    private nonisolated static func haystackContainsAny(_ haystack: String, _ needles: [String]) -> Bool {
+        needles.contains { haystack.contains($0) }
+    }
+
+    private nonisolated static func labeledPhoneContextLine(label: String, text: String) -> String? {
+        let cleaned = cleanedPhoneContextText(text)
+        guard cleaned.isEmpty == false else { return nil }
+        return "\(label): \(truncated(cleaned, maxCharacters: 260))"
+    }
+
+    private nonisolated static func cleanedPhoneContextText(_ text: String) -> String {
+        text
+            .replacingOccurrences(of: "<untrusted>", with: "")
+            .replacingOccurrences(of: "</untrusted>", with: "")
+            .components(separatedBy: .whitespacesAndNewlines)
+            .filter { $0.isEmpty == false }
+            .joined(separator: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private nonisolated static func truncated(_ text: String, maxCharacters: Int) -> String {
+        guard maxCharacters > 1, text.count > maxCharacters else { return text }
+        return "\(text.prefix(maxCharacters - 1))…"
     }
 
     static func shouldForceBatchAudioContinuation(
@@ -564,7 +794,8 @@ final class AgentLoop: ObservableObject {
 
     private func executeToolCall(_ call: OllamaToolCall) async -> ToolResult {
         let name = call.function.name
-        let args = call.function.parsedArguments
+        var args = call.function.parsedArguments
+        args = phoneCallArgumentsWithContextIfNeeded(name: name, args: args)
 
         // Validate tool exists
         guard registry.has(name) else {
@@ -703,7 +934,14 @@ final class AgentLoop: ObservableObject {
             let to = args["to"] as? String ?? ""
             let purpose = args["purpose"] as? String ?? ""
             let maxMinutes = Self.parseInt(args["max_minutes"])
-            return await PhoneTool.execute(persona: persona, to: to, purpose: purpose, maxMinutes: maxMinutes)
+            let context = args["context"] as? String
+            return await PhoneTool.execute(
+                persona: persona,
+                to: to,
+                purpose: purpose,
+                maxMinutes: maxMinutes,
+                context: context
+            )
 
         case "phone_hangup":
             let callID = args["call_id"] as? String ?? ""
@@ -790,6 +1028,24 @@ final class AgentLoop: ObservableObject {
         default:
             return .failure(tool: name, error: "Tool not implemented", durationMs: 0)
         }
+    }
+
+    private func phoneCallArgumentsWithContextIfNeeded(name: String, args: [String: Any]) -> [String: Any] {
+        guard name == "phone_call" else { return args }
+        let purpose = args["purpose"] as? String ?? ""
+        let shouldAttachAutomaticContext = Self.shouldAttachAutomaticPhoneContext(
+            purpose: purpose,
+            userMessage: currentUserMessage ?? ""
+        )
+        let merged = Self.mergedPhoneCallContext(
+            explicit: args["context"] as? String,
+            automatic: shouldAttachAutomaticContext ? currentPhoneCallContext : nil
+        )
+        guard let merged, merged.isEmpty == false else { return args }
+
+        var updated = args
+        updated["context"] = merged
+        return updated
     }
 
     /// Meta-tool handler for `tool_help`. Zero-cost lookup from the in-memory
@@ -1571,13 +1827,7 @@ final class AgentLoop: ObservableObject {
         case "web_search":
             return "Web search: \(args["query"] as? String ?? "unknown")"
         case "phone_call":
-            let rawPersona = args["persona"] as? String ?? ""
-            let persona = PhoneTool.resolvedCallerLabel(rawPersona)
-            let to = args["to"] as? String ?? "unknown"
-            let purpose = (args["purpose"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            let shortPurpose = String(purpose.prefix(200))
-            let ellipsis = purpose.count > 200 ? "…" : ""
-            return "Bob wants to place a phone call to \(to) as \(persona).\nPurpose: \(shortPurpose)\(ellipsis)"
+            return Self.phoneCallApprovalDescription(args: args)
         case "phone_hangup":
             return "Hang up call: \(args["call_id"] as? String ?? "unknown")"
         case "phone_status":

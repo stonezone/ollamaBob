@@ -2,7 +2,7 @@
 
 OllamaBob is a native macOS menu-bar assistant for local Ollama models. It is a SwiftUI/AppKit app that talks directly to `http://localhost:11434/api/chat`, owns its agent loop in Swift, runs first-party tools, and stores local data in SQLite through GRDB.
 
-Current app version: `1.0.12`
+Current app version: `1.0.14`
 
 ## Quick Start
 
@@ -50,7 +50,7 @@ swift run OllamaBob
 - Batch audio work gets a larger tool-loop budget so Bob can finish multi-song downloads or local FLAC-to-MP3 conversions without stopping after each item.
 - Preferences tool badges can be clicked to set per-tool `Auto`, `Ask`, or `Deny` behavior.
 - Naughty Bob v1 as a per-conversation uncensored mode. Tools and compaction are disabled while uncensored mode is active, and the app does not silently fall back to the standard model stack.
-- Jarvis phone tools behind explicit Preferences gating and a modal approval for outbound calls.
+- Jarvis phone tools behind explicit Preferences gating and a modal approval for outbound calls, with recent OllamaBob session context and earlier-work highlights attached for context-aware recap calls.
 
 ## Safety Model
 

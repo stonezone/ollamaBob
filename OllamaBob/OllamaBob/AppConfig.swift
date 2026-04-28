@@ -10,8 +10,8 @@ struct AppConfig {
     }
 
     // MARK: - App Version
-    static let appVersion = "1.0.12"
-    static let appBuild = "112"
+    static let appVersion = "1.0.14"
+    static let appBuild = "114"
 
     // MARK: - Models
     static let primaryModel = "gemma4:e4b"

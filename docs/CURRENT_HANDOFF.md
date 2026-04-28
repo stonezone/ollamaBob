@@ -8,7 +8,7 @@
 - Active branch should be `main`.
 - No active execution plan is tracked in `docs/`.
 - Active docs are intentionally small; historical plans and old handoffs are in `archive/`.
-- Current visible app version: `1.0.12`.
+- Current visible app version: `1.0.14`.
 
 Local-only note for Zack's workstation:
 
@@ -34,7 +34,7 @@ OllamaBob is live as a single local macOS menu-bar product with:
 - agent-loop batch-continuation guard that rejects status-only final replies like "Next up..." during batch audio turns and internally nudges Bob to call the next tool
 - agent-loop batch completion audit for pasted track lists: Bob compares requested track names with downloaded MP3 filenames before accepting a batch as complete and emits a visible downloaded/missing/unmatched summary
 - Naughty Bob v1 as a per-conversation uncensored mode
-- Jarvis phone tools gated by Preferences and both Jarvis secrets
+- Jarvis phone tools gated by Preferences and both Jarvis secrets, with bounded recent OllamaBob session context plus earlier-work highlights attached to outbound recap calls when useful
 
 Runtime UI note:
 
@@ -146,12 +146,12 @@ swift test
 ./build.sh --run
 ```
 
-Last verified during the 2026-04-27 contact VCF workflow pass:
+Last verified during the 2026-04-27 phone call context highlight pass:
 
 - `swift build` passed
-- `swift test` passed: 127 tests, 0 failures
+- `swift test` passed: 132 tests, 0 failures
 - `./build.sh` passed and assembled `build/OllamaBob.app`
-- generated bundle metadata reports `CFBundleShortVersionString = 1.0.12` and `CFBundleVersion = 112`
+- generated bundle metadata reports `CFBundleShortVersionString = 1.0.14` and `CFBundleVersion = 114`
 - `./build.sh --run` passed and launched the rebuilt app from `build/OllamaBob.app`
 
 Known warning note:

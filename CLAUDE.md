@@ -6,7 +6,7 @@ This is the Claude-facing project guide. For task execution, read it with `AGENT
 
 OllamaBob is a native macOS menu-bar assistant that runs locally. It talks directly to Ollama over the native `/api/chat` endpoint, owns its agent loop in Swift, executes first-party tools, persists local state in SQLite through GRDB, and uses native approval dialogs before risky actions.
 
-Current app version: `1.0.12`
+Current app version: `1.0.14`
 
 ## Current Product State
 
@@ -18,7 +18,7 @@ Shipped capabilities:
 - First-party tools for files, shell, git, web search, Apple Mail checks and triage previews, phone calls, rich presentation, OCR/media, utilities, YouTube, clipboard, AppleScript, and memory.
 - Rich presentation through one `present` tool and `PresentationService`.
 - Naughty Bob v1 as a per-conversation uncensored mode.
-- Jarvis phone tools gated by Preferences, `JARVIS_API_KEY`, and `OPERATOR_API_SECRET`.
+- Jarvis phone tools gated by Preferences, `JARVIS_API_KEY`, and `OPERATOR_API_SECRET`; outbound recap calls can include recent OllamaBob session context plus earlier-work highlights for the phone persona.
 - Local Jarvis address book aliases from env vars, JSON maps, and VCF exports such as `~/Downloads/bobs_contacts.vcf`.
 - Bundled Bob voice clips and persona-aware avatar behavior.
 

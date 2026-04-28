@@ -30,8 +30,8 @@
       "beta": false,
       "bundled": true,
       "shortDescription": "Place a real phone call through the Jarvis phone service (requires both Jarvis secrets)",
-      "whenToUse": "User asks Bob to place a phone call and provides a destination plus a purpose; omit persona to call as bob by default. `to` may be a contact name, `me`, or an explicit phone number.",
-      "example": "phone_call(to: 'me', purpose: 'Tell me dinner is ready', max_minutes: 10)",
+      "whenToUse": "User asks Bob to place a phone call and provides a destination plus a purpose; omit persona to call as bob by default. `to` may be a contact name, `me`, or an explicit phone number. Include `context` when the call should reference the current OllamaBob session.",
+      "example": "phone_call(to: 'me', purpose: 'Tell me what Bob did today', context: 'Recent session: Bob checked unread mail, imported contacts, and pushed main.', max_minutes: 10)",
       "commonFlags": []
     },
     {

@@ -10,13 +10,22 @@ enum PhoneTool {
         JarvisConfiguration.baseURL != nil
     }
 
-    static func execute(persona: String, to: String, purpose: String, maxMinutes: Int?) async -> ToolResult {
+    static func execute(
+        persona: String,
+        to: String,
+        purpose: String,
+        maxMinutes: Int?,
+        context: String? = nil
+    ) async -> ToolResult {
         let start = Date()
         let resolvedDestination = resolvedDestinationLabel(to)
+        let cleanedContext = context?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedContext = cleanedContext?.isEmpty == false ? cleanedContext : nil
         let request = PhoneCallRequest(
             caller: resolvedCallerLabel(persona),
             to: resolvedDestination,
             missionBrief: purpose.trimmingCharacters(in: .whitespacesAndNewlines),
+            context: trimmedContext,
             maxDurationSeconds: (maxMinutes ?? 10) * 60
         )
 
@@ -355,6 +364,7 @@ private struct PhoneCallRequest: Encodable {
     let caller: String
     let to: String
     let missionBrief: String
+    let context: String?
     let maxDurationSeconds: Int
 }
 

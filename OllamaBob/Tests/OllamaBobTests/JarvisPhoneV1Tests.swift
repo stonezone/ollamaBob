@@ -110,6 +110,156 @@ final class JarvisPhoneV1Tests: XCTestCase {
         XCTAssertTrue(result.content.contains("callSid=call_456"), result.content)
     }
 
+    func testPhoneToolSendsOptionalCallContextToJarvis() async {
+        let override = JarvisDefaultsScope(apiKey: "unit-test-key", operatorSecret: "unit-test-operator")
+        defer { _ = override }
+
+        JarvisURLProtocol.requestHandler = { request in
+            let body = try XCTUnwrap(Self.requestBodyData(from: request))
+            let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body, options: []) as? [String: Any])
+            XCTAssertEqual(
+                object["context"] as? String,
+                "Recent OllamaBob session: added mail triage, imported contacts, and pushed main."
+            )
+
+            let responseJSON = Data(#"{"callSid":"call_789","status":"queued","message":"Queued"}"#.utf8)
+            let response = HTTPURLResponse(
+                url: try XCTUnwrap(request.url),
+                statusCode: 200,
+                httpVersion: "HTTP/1.1",
+                headerFields: ["Content-Type": "application/json"]
+            )!
+            return (response, responseJSON)
+        }
+        defer { JarvisURLProtocol.requestHandler = nil }
+
+        let result = await PhoneTool.execute(
+            persona: "bob",
+            to: "me",
+            purpose: "Tell Zack what Bob did today",
+            maxMinutes: 5,
+            context: "Recent OllamaBob session: added mail triage, imported contacts, and pushed main."
+        )
+
+        XCTAssertTrue(result.success, result.content)
+        XCTAssertTrue(result.content.contains("callSid=call_789"), result.content)
+    }
+
+    func testAgentLoopBuildsBoundedPhoneCallContextFromRecentSession() {
+        let messages: [OllamaMessage] = [
+            .system("Do not include system rules."),
+            .user("Check my unread mail and tell me what needs attention."),
+            .toolResult(
+                name: "mail_triage",
+                content: "<untrusted>OpenAI notice may need attention. Venmo receipt is informational.</untrusted>"
+            ),
+            .assistant("I found one OpenAI notice that may need attention and a few receipts that look informational."),
+            .user("Call me and tell me what you did today.")
+        ]
+
+        let context = AgentLoop.phoneCallContext(
+            from: messages,
+            conversationId: "conversation-123",
+            maxCharacters: 360
+        )
+
+        let unwrapped = try! XCTUnwrap(context)
+        XCTAssertLessThanOrEqual(unwrapped.count, 360)
+        XCTAssertTrue(unwrapped.contains("OllamaBob conversation context"), unwrapped)
+        XCTAssertTrue(unwrapped.contains("conversation-123"), unwrapped)
+        XCTAssertTrue(unwrapped.contains("Bob: I found one OpenAI notice"), unwrapped)
+        XCTAssertTrue(unwrapped.contains("User: Call me and tell me what you did today."), unwrapped)
+        XCTAssertFalse(unwrapped.contains("<untrusted>"), unwrapped)
+        XCTAssertFalse(unwrapped.contains("Do not include system rules."), unwrapped)
+    }
+
+    func testAgentLoopPhoneContextKeepsEarlierMusicHighlightWhenRecentTailIsCrowded() {
+        var messages: [OllamaMessage] = [
+            .user("Help me download the Violent Femmes album from my old CDs as MP3 files."),
+            .toolResult(name: "youtube_download", content: "Downloaded to /Users/zack/Music/Bob/Violent_Femmes/01_Blister_In_The_Sun.mp3"),
+            .assistant("I downloaded several requested music tracks and checked the local folder.")
+        ]
+        for index in 1...8 {
+            messages.append(.user("Phone call context implementation detail \(index)"))
+            messages.append(.assistant("Worked on Jarvis phone call context plumbing detail \(index)."))
+        }
+        messages.append(.user("Call me and tell me what we worked on today."))
+
+        let context = AgentLoop.phoneCallContext(
+            from: messages,
+            conversationId: "conversation-123",
+            maxCharacters: 520
+        )
+
+        let unwrapped = try! XCTUnwrap(context)
+        XCTAssertLessThanOrEqual(unwrapped.count, 520)
+        XCTAssertTrue(unwrapped.contains("Earlier highlights: music/download work"), unwrapped)
+        XCTAssertTrue(unwrapped.contains("User: Call me and tell me what we worked on today."), unwrapped)
+    }
+
+    func testAgentLoopOnlyAutoAttachesPhoneContextForSessionAwareCalls() {
+        XCTAssertTrue(
+            AgentLoop.shouldAttachAutomaticPhoneContext(
+                purpose: "Tell Zack what Bob did today",
+                userMessage: "call me and tell me what you did today"
+            )
+        )
+        XCTAssertTrue(
+            AgentLoop.shouldAttachAutomaticPhoneContext(
+                purpose: "Give a quick recap of our current OllamaBob session",
+                userMessage: "call me with a status update"
+            )
+        )
+        XCTAssertFalse(
+            AgentLoop.shouldAttachAutomaticPhoneContext(
+                purpose: "Ask the restaurant if they are open tonight",
+                userMessage: "call the restaurant"
+            )
+        )
+    }
+
+    @MainActor
+    func testPhoneToolSchemaAndApprovalPreviewExposeContext() throws {
+        let settings = AppSettings.shared
+        let originalEnabled = settings.jarvisPhoneEnabled
+        let originalKey = settings.jarvisAPIKey
+        let originalOperatorSecret = settings.jarvisOperatorSecret
+        defer {
+            settings.jarvisPhoneEnabled = originalEnabled
+            settings.jarvisAPIKey = originalKey
+            settings.jarvisOperatorSecret = originalOperatorSecret
+        }
+
+        settings.jarvisPhoneEnabled = true
+        settings.jarvisAPIKey = "local-test-key"
+        settings.jarvisOperatorSecret = "local-operator-secret"
+
+        let registry = ToolRegistry(braveKeyAvailable: false)
+        let phoneDef = try XCTUnwrap(registry.toolDefs.first { $0.function.name == "phone_call" })
+        XCTAssertNotNil(phoneDef.function.parameters.properties["context"])
+        XCTAssertTrue(
+            registry.validateArgs(
+                "phone_call",
+                [
+                    "to": "me",
+                    "purpose": "Tell me what Bob did today",
+                    "context": "Recent session briefing"
+                ]
+            )
+        )
+
+        let preview = AgentLoop.phoneCallApprovalDescription(
+            args: [
+                "persona": "bob",
+                "to": "me",
+                "purpose": "Tell me what Bob did today",
+                "context": "Recent session briefing that should be visible before the call starts."
+            ]
+        )
+        XCTAssertTrue(preview.contains("Purpose: Tell me what Bob did today"), preview)
+        XCTAssertTrue(preview.contains("Context: Recent session briefing"), preview)
+    }
+
     func testPhoneToolNormalizesNorthAmericanNumbersBeforeSending() {
         XCTAssertEqual(PhoneTool.resolvedDestinationLabel("8082925669"), "+18082925669")
         XCTAssertEqual(PhoneTool.resolvedDestinationLabel("1-808-292-5669"), "+18082925669")

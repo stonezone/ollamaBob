@@ -104,6 +104,7 @@
 3. `Test connection` returns healthy reachability.
 4. Ask Bob to place a call:
    - expected: approval modal for `phone_call`
+   - expected: if the call should reference current work, the approval modal includes a concise `Context:` preview from the recent OllamaBob session plus earlier-work highlights when older same-day work would otherwise fall out of the tail
    - after approval: either a returned `callSid` or a precise auth failure
 5. If the daemon returns `401`:
    - capital-`U` `Unauthorized` means the operator secret failed
@@ -129,7 +130,8 @@ When checking Bob's actual behavior, verify these prompt/policy rules:
 9. Bob should not ask for the operator's number again when the user says `call me` and the local shortcut data exists.
 10. If the request is ambiguous, such as `call buddy`, Bob should clarify whether `buddy` is the caller persona or the callee.
 11. If the user gives no clear purpose and the mission is not obvious from context, Bob should ask 1-2 short clarifying questions before placing the call.
-12. After a successful call, Bob should preserve or surface the `callSid` so status/hangup follow-ups can work.
+12. If the user asks Bob to call about current OllamaBob work, the call should include bounded session context and earlier-work highlights instead of only a generic mission.
+13. After a successful call, Bob should preserve or surface the `callSid` so status/hangup follow-ups can work.
 
 ## Operator Gotchas
 

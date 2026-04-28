@@ -118,6 +118,7 @@ struct ToolRegistry {
                     "persona": ("string", "Optional caller label. Supported values: bob, jarvis, buddy, zack, glennel, glennel_naggy. Defaults to bob."),
                     "to": ("string", "Address-book name, `me`, or an explicit phone number/E.164 destination."),
                     "purpose": ("string", "Short reason for the call."),
+                    "context": ("string", "Optional concise background from the current OllamaBob session for the phone persona to use naturally. Do not include secrets."),
                     "max_minutes": ("integer", "Optional call length cap in minutes.")
                 ],
                 required: ["to", "purpose"]

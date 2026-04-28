@@ -61,6 +61,7 @@ enum BobOperatingRules {
                 - If the user does not specify a caller persona, omit `persona` or set it to `bob`.
                 - Never invent unsupported caller labels like `friend`, `assistant`, or `default`.
                 - Always include a clear purpose when placing a call.
+                - If the call should reference the current OllamaBob conversation or what you just did, include a concise `context` summary. The app also attaches recent visible session context automatically.
                 - If the user says `call me`, pass `to` as `me` unless they already gave an explicit number. The app resolves `me` to the operator's configured number locally.
                 - If the user gives a plain local number like `8082925669`, pass that number directly. The app normalizes it before sending the request.
                 - If the user answers a follow-up question with the missing phone number or missing purpose, keep the other call details from the current request instead of starting over.
