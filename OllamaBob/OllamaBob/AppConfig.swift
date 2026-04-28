@@ -1,13 +1,43 @@
 import Foundation
 
 struct AppConfig {
+    struct StandardModelOption: Identifiable, Equatable {
+        let tag: String
+        let title: String
+        let subtitle: String
+
+        var id: String { tag }
+    }
+
     // MARK: - App Version
-    static let appVersion = "1.0.3"
-    static let appBuild = "103"
+    static let appVersion = "1.0.12"
+    static let appBuild = "112"
 
     // MARK: - Models
     static let primaryModel = "gemma4:e4b"
     static let fallbackModel = "qwen3:14b"
+    static let standardModelOptions: [StandardModelOption] = [
+        StandardModelOption(
+            tag: primaryModel,
+            title: "Gemma 4 E4B",
+            subtitle: "Fast default for everyday Bob turns"
+        ),
+        StandardModelOption(
+            tag: "gemma4:26b",
+            title: "Gemma 4 26B",
+            subtitle: "Higher quality local generalist"
+        ),
+        StandardModelOption(
+            tag: "qwen3.6:27b",
+            title: "Qwen 3.6 27B",
+            subtitle: "Deeper reasoning and coding"
+        ),
+        StandardModelOption(
+            tag: "gpt-oss:20b",
+            title: "gpt-oss 20B",
+            subtitle: "OpenAI open-weight reasoning model"
+        )
+    ]
     /// Model used for conversation compaction (Phase 5). qwen3:14b is
     /// more reliable at structured extraction than gemma4:e4b. Uses
     /// keep_alive=0 so it unloads immediately after compaction.
@@ -49,6 +79,9 @@ struct AppConfig {
     static let toolTimeoutSeconds: TimeInterval = 30
     static let agentLoopMaxIterations = 10
     static let agentLoopTimeoutSeconds: TimeInterval = 120
+    static let batchAudioAgentLoopMaxIterations = 160
+    static let batchAudioAgentLoopTimeoutSeconds: TimeInterval = 3_600
+    static let batchAudioContinuationNudgeMax = 64
 
     // MARK: - Brave Search
     static var braveAPIKey: String {

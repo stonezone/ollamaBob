@@ -11,6 +11,7 @@ final class AppSettings: ObservableObject {
     nonisolated static let jarvisPhoneEnabledKey = "jarvisPhoneEnabled"
     nonisolated static let jarvisAPIKeyKey = "jarvisAPIKey"
     nonisolated static let jarvisOperatorSecretKey = "jarvisOperatorSecret"
+    nonisolated static let toolApprovalOverridesKey = "toolApprovalOverrides"
 
     @Published var showBob: Bool {
         didSet { UserDefaults.standard.set(showBob, forKey: Keys.showBob) }
@@ -27,12 +28,24 @@ final class AppSettings: ObservableObject {
         didSet { UserDefaults.standard.set(numCtx, forKey: Keys.numCtx) }
     }
 
+    /// Standard-mode model tag. Uncensored conversations use
+    /// `uncensoredModelName` instead and keep tools/compaction disabled.
+    @Published var standardModelName: String {
+        didSet { UserDefaults.standard.set(standardModelName, forKey: Keys.standardModelName) }
+    }
+
     /// Master switch for beta tools (Phase 3.5). Default OFF. When off,
     /// ToolRuntime.isLive returns false for any catalog entry with beta=true,
     /// which hides them from the cheat sheet, tool_help("list"), and the
     /// approval policy stays at .forbidden for them.
     @Published var betaToolsEnabled: Bool {
         didSet { UserDefaults.standard.set(betaToolsEnabled, forKey: Keys.betaToolsEnabled) }
+    }
+
+    /// Per-tool approval overrides from Preferences > Tools. Values are
+    /// `ToolApprovalSetting.rawValue`; missing keys use the built-in policy.
+    @Published var toolApprovalOverrides: [String: String] {
+        didSet { UserDefaults.standard.set(toolApprovalOverrides, forKey: Self.toolApprovalOverridesKey) }
     }
 
     @Published var soundsEnabled: Bool {
@@ -130,6 +143,7 @@ final class AppSettings: ObservableObject {
         static let showBob               = "showBob"
         static let chatWindowOpacity     = "chatWindowOpacity"
         static let numCtx                = "numCtx"
+        static let standardModelName     = "standardModelName"
         static let betaToolsEnabled      = "betaToolsEnabled"
         static let soundsEnabled         = "soundsEnabled"
         static let bobVoiceEnabled       = "bobVoiceEnabled"
@@ -156,6 +170,9 @@ final class AppSettings: ObservableObject {
         }
         if defaults.object(forKey: Keys.numCtx) == nil {
             defaults.set(AppConfig.numCtx, forKey: Keys.numCtx)
+        }
+        if defaults.object(forKey: Keys.standardModelName) == nil {
+            defaults.set(AppConfig.primaryModel, forKey: Keys.standardModelName)
         }
         // Beta tools default OFF per V2 plan §3.5.
         if defaults.object(forKey: Keys.betaToolsEnabled) == nil {
@@ -200,7 +217,9 @@ final class AppSettings: ObservableObject {
 
         self.showBob               = defaults.bool(forKey: Keys.showBob)
         self.chatWindowOpacity     = defaults.double(forKey: Keys.chatWindowOpacity)
+        self.standardModelName     = defaults.string(forKey: Keys.standardModelName) ?? AppConfig.primaryModel
         self.betaToolsEnabled      = defaults.bool(forKey: Keys.betaToolsEnabled)
+        self.toolApprovalOverrides = defaults.dictionary(forKey: Self.toolApprovalOverridesKey) as? [String: String] ?? [:]
         self.soundsEnabled         = defaults.bool(forKey: Keys.soundsEnabled)
         self.bobVoiceEnabled       = defaults.bool(forKey: Keys.bobVoiceEnabled)
         self.heartbeatEnabled      = defaults.bool(forKey: Keys.heartbeatEnabled)
@@ -223,5 +242,32 @@ final class AppSettings: ObservableObject {
     var effectiveUncensoredModelName: String {
         let trimmed = uncensoredModelName.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? Self.defaultUncensoredModelName : trimmed
+    }
+
+    var effectiveStandardModelName: String {
+        let trimmed = standardModelName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? AppConfig.primaryModel : trimmed
+    }
+
+    nonisolated static func storedToolApprovalOverride(for toolName: String) -> ToolApprovalSetting? {
+        guard let raw = (UserDefaults.standard.dictionary(forKey: toolApprovalOverridesKey) as? [String: String])?[toolName] else {
+            return nil
+        }
+        return ToolApprovalSetting(rawValue: raw)
+    }
+
+    func toolApprovalOverride(for toolName: String) -> ToolApprovalSetting? {
+        guard let raw = toolApprovalOverrides[toolName] else { return nil }
+        return ToolApprovalSetting(rawValue: raw)
+    }
+
+    func setToolApprovalOverride(_ setting: ToolApprovalSetting, for toolName: String) {
+        var overrides = toolApprovalOverrides
+        overrides[toolName] = setting.rawValue
+        toolApprovalOverrides = overrides
+    }
+
+    func cycleToolApprovalOverride(for toolName: String, defaultSetting: ToolApprovalSetting) {
+        setToolApprovalOverride((toolApprovalOverride(for: toolName) ?? defaultSetting).next, for: toolName)
     }
 }

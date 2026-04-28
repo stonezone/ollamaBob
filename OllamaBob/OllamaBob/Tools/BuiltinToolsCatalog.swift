@@ -44,6 +44,10 @@ enum BuiltinToolsCatalog {
         // MARK: Web
         Entry(name: "web_search", category: "web", posture: .none, description: "Brave web search, top 5 results"),
 
+        // MARK: Mail
+        Entry(name: "mail_check", category: "mail", posture: .modal, description: "Check Apple Mail inbox summaries"),
+        Entry(name: "mail_triage", category: "mail", posture: .modal, description: "Read short Apple Mail previews for attention triage"),
+
         // MARK: Phone
         Entry(name: "phone_call", category: "phone", posture: .modal, description: "Place a real phone call through the Jarvis phone service (defaults to Bob as caller; requires both Jarvis secrets)"),
         Entry(name: "phone_hangup", category: "phone", posture: .none, description: "End an active Jarvis phone call"),
@@ -63,7 +67,7 @@ enum BuiltinToolsCatalog {
 
         // MARK: YouTube
         Entry(name: "youtube_search",   category: "youtube", posture: .none,  description: "Search YouTube via yt-dlp (top 10)"),
-        Entry(name: "youtube_download", category: "youtube", posture: .modal, description: "Download audio/video via yt-dlp"),
+        Entry(name: "youtube_download", category: "youtube", posture: .modal, description: "Download confirmed audio/video via yt-dlp"),
 
         // MARK: Clipboard
         Entry(name: "clipboard_read",  category: "clipboard", posture: .none,  description: "Read current clipboard as text"),
@@ -84,7 +88,7 @@ enum BuiltinToolsCatalog {
 
     /// Rendering order for categories in the Preferences UI.
     static let categoryOrder: [String] = [
-        "files", "shell", "git", "web", "phone", "presentation", "media", "utility",
+        "files", "shell", "git", "web", "mail", "phone", "presentation", "media", "utility",
         "youtube", "clipboard", "automation", "memory", "meta"
     ]
 

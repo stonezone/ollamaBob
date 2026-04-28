@@ -2,7 +2,7 @@
 
 OllamaBob is a native macOS menu-bar assistant for local Ollama models. It is a SwiftUI/AppKit app that talks directly to `http://localhost:11434/api/chat`, owns its agent loop in Swift, runs first-party tools, and stores local data in SQLite through GRDB.
 
-Current app version: `1.0.3`
+Current app version: `1.0.12`
 
 ## Quick Start
 
@@ -45,7 +45,10 @@ swift run OllamaBob
 - Local Ollama chat over the native `/api/chat` endpoint with `stream: false`.
 - Menu-bar app with Bob's desk/chat window, avatar-only mode, conversation history, and persistent local storage.
 - Rich presentation through `present(kind=html|url|file)` and transcript artifact chips.
-- First-party tool catalog for files, shell, git, web search, phone calls, presentation, OCR/media, utility commands, YouTube, clipboard, AppleScript automation, and memory.
+- First-party tool catalog for files, shell, git, web search, Apple Mail inbox checks and triage previews, phone calls, presentation, OCR/media, utility commands, YouTube, clipboard, AppleScript automation, and memory.
+- Authorized personal music collection workflow: Bob can resolve album track lists, auto-pick high-confidence YouTube matches by title/duration, request clarification only for ambiguous tracks, save approved MP3 downloads into underscore-safe folders like `~/Music/Bob/<Artist>_<Album>`, and use a whole-album single-file workflow when explicitly requested.
+- Batch audio work gets a larger tool-loop budget so Bob can finish multi-song downloads or local FLAC-to-MP3 conversions without stopping after each item.
+- Preferences tool badges can be clicked to set per-tool `Auto`, `Ask`, or `Deny` behavior.
 - Naughty Bob v1 as a per-conversation uncensored mode. Tools and compaction are disabled while uncensored mode is active, and the app does not silently fall back to the standard model stack.
 - Jarvis phone tools behind explicit Preferences gating and a modal approval for outbound calls.
 
@@ -55,6 +58,7 @@ The app sandbox is off because Bob can run local tools. Safety depends on first-
 
 - Read-only tools can run silently.
 - Writes, file moves, clipboard writes, AppleScript, YouTube downloads, and phone calls require modal approval.
+- Per-tool Preferences overrides can make a tool automatic, ask every time, or deny it, but they cannot bypass path policy or forbidden shell-command blocks.
 - Forbidden shell shapes such as `sudo`, destructive root deletes, and download-execute chains are blocked.
 - Sensitive paths route through path policy before execution.
 - Tool output is wrapped as untrusted text before it is sent back to the model.
@@ -65,7 +69,7 @@ Set these through Preferences or a local gitignored `.env` file:
 
 - `BRAVE_API_KEY` enables `web_search`.
 - `JARVIS_API_KEY` and `OPERATOR_API_SECRET` enable Jarvis phone routes.
-- `ZACK_PERSONAL_NUMBER`, `GLENNEL_PERSONAL_NUMBER`, and `jarvis-address-book.local.json` provide local phone aliases.
+- `ZACK_PERSONAL_NUMBER`, `GLENNEL_PERSONAL_NUMBER`, `jarvis-address-book.local.json`, and local VCF exports such as `~/Downloads/bobs_contacts.vcf` provide local phone aliases.
 - `ELEVENLABS_API_KEY` and `OLLAMABOB_VOICE_ID` are only needed when regenerating bundled voice clips.
 
 External CLI dependency:

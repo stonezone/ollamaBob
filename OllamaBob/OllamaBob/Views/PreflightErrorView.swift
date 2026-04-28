@@ -26,7 +26,7 @@ struct PreflightErrorView: View {
                     errorRow(
                         icon: "cpu",
                         title: "Model not installed",
-                        fix: "Run: ollama pull \(AppConfig.primaryModel)"
+                        fix: "Run: ollama pull \(status.requiredModelName)"
                     )
                 }
 

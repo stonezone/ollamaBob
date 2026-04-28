@@ -149,12 +149,37 @@ struct ToolRegistry {
         if braveKeyAvailable {
             defs["web_search"] = .tool(
                 name: "web_search",
-                description: "Search the web. Returns top 5 results with titles, URLs, and snippets.",
+                description: "Search the web. Returns top 5 results with titles, URLs, and snippets. For music album workflows, use this for album metadata and official track lists, not YouTube candidate picking when youtube_search is available.",
                 properties: ["query": ("string", "Search query")],
                 required: ["query"]
             )
             reqs["web_search"] = ["query"]
         }
+
+        defs["mail_check"] = .tool(
+            name: "mail_check",
+            description: "Check Apple Mail inbox summaries through a first-class read-only tool. Use for unread-mail checks and simple sender/subject searches before falling back to generic AppleScript. Returns date, read state, sender, and subject only; no message bodies. Requires approval.",
+            properties: [
+                "query": ("string", "Optional sender or subject text to search for."),
+                "unread_only": ("boolean", "Optional; true to return only unread messages. Defaults to true."),
+                "limit": ("integer", "Optional result limit from 1 to 20. Defaults to 10.")
+            ],
+            required: []
+        )
+        reqs["mail_check"] = []
+
+        defs["mail_triage"] = .tool(
+            name: "mail_triage",
+            description: "Read short Apple Mail message previews for explicit triage requests such as 'read my unread mail and tell me what needs attention'. Returns date, read state, sender, subject, and a truncated preview only. Does not send, delete, archive, or mark messages read. Requires approval.",
+            properties: [
+                "query": ("string", "Optional sender or subject text to search for."),
+                "unread_only": ("boolean", "Optional; true to return only unread messages. Defaults to true."),
+                "limit": ("integer", "Optional result limit from 1 to 10. Defaults to 10."),
+                "preview_chars": ("integer", "Optional preview length from 80 to 500 characters per message. Defaults to 400.")
+            ],
+            required: []
+        )
+        reqs["mail_triage"] = []
 
         defs["present"] = .tool(
             name: "present",
@@ -321,7 +346,7 @@ struct ToolRegistry {
 
         defs["youtube_search"] = .tool(
             name: "youtube_search",
-            description: "Search YouTube and return up to 10 candidate videos with title, uploader, duration, and URL. Use this before `youtube_download` to let the user pick the right result. Requires yt-dlp to be installed (brew install yt-dlp).",
+            description: "Search YouTube and return up to 10 candidate videos with title, uploader, duration, and URL. For owned-album workflows, use this to find per-track candidate URLs yourself; do not ask the user to provide YouTube URLs. Auto-select the best high-confidence match by artist/title and duration; ask the user only when candidates are genuinely ambiguous. Requires yt-dlp to be installed (brew install yt-dlp).",
             properties: [
                 "query": ("string", "Free-text YouTube search query."),
                 "limit": ("integer", "Optional result count from 1 to 10 (default 5).")
@@ -332,11 +357,12 @@ struct ToolRegistry {
 
         defs["youtube_download"] = .tool(
             name: "youtube_download",
-            description: "Download audio or video from a YouTube URL using yt-dlp. `format` is mp3/m4a/mp4/bestaudio/bestvideo. Default output dirs: ~/Music/Bob/ for audio, ~/Downloads/Bob/ for video. Requires approval.",
+            description: "Download audio or video from a confirmed, authorized YouTube URL using yt-dlp. `format` is mp3/m4a/mp4/bestaudio/bestvideo. Default output dirs: ~/Music/Bob/ for audio, ~/Downloads/Bob/ for video. For Bob-created album workflows, pass `output_dir` like ~/Music/Bob/<Artist>_<Album>. Requires approval.",
             properties: [
                 "url": ("string", "Full YouTube URL."),
                 "format": ("string", "One of: mp3, m4a, mp4, bestaudio, bestvideo."),
-                "output_dir": ("string", "Optional absolute output directory.")
+                "output_dir": ("string", "Optional output directory, absolute or tilde-expanded. For new albums use ~/Music/Bob/<Artist>_<Album>; existing user folders with spaces are accepted."),
+                "filename": ("string", "Optional output filename stem. For albums use a clean no-space track name like '01_Track_Title'. Do not include path separators.")
             ],
             required: ["url", "format"]
         )

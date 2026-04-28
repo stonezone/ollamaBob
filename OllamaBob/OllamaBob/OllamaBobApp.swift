@@ -167,8 +167,9 @@ final class AppState: ObservableObject {
     }
 
     func runPreflight() {
+        let standardModelName = AppSettings.shared.effectiveStandardModelName
         Task {
-            let status = await Preflight.run()
+            let status = await Preflight.run(standardModelName: standardModelName)
             preflightStatus = status
             preflightPassed = status.canLaunch
         }

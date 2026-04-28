@@ -12,6 +12,32 @@ For any non-trivial task, read in this order:
 
 If an active execution plan exists, it wins over general guidance in this file.
 
+## Claude OS / Codex OS Workflow
+
+Claude OS is project-specific development RAG, not part of the OllamaBob runtime. Do not add MCP, Python, watcher, or Claude OS dependencies to the shipped app.
+
+For this repository, the Claude OS project is:
+
+- Project name: `ollamaBob`
+- Project path: `/Users/zack/ollamaBob`
+- KB filter: `ollamaBob-`
+- Expected KBs: `ollamaBob-project_memories`, `ollamaBob-project_profile`, `ollamaBob-project_index`, `ollamaBob-knowledge_docs`
+
+Before any non-trivial code or architecture work:
+
+1. Use the `mcp__code-forge__` tools if they are exposed in the session.
+2. If those tools are not exposed, use the local API at `http://localhost:8051`.
+3. Search with `kb_filter: "ollamaBob-"` for relevant prior decisions, project profile, and code index entries.
+4. Treat fresh repo files and active docs as authoritative when they conflict with stale RAG content.
+
+After code or active-doc changes:
+
+1. Add or update a concise memory in `ollamaBob-project_memories` describing the shipped change and verification.
+2. Refresh `ollamaBob-knowledge_docs` when README, AGENTS, CLAUDE, or `docs/` change.
+3. Refresh `ollamaBob-project_profile` when architecture, workflow, or constraints change.
+4. Refresh `ollamaBob-project_index` when Swift source, tests, or tool contracts change.
+5. Run `kb_lifecycle_health` or the equivalent `/api/kb/{name}/lifecycle/health` check when available and report stale or failed indexing.
+
 ## Project Overview
 
 OllamaBob is a native macOS menu-bar AI assistant that runs locally. It is a SwiftUI/AppKit app targeting macOS 14+, built with Swift Package Manager. The app talks directly to the local Ollama native `/api/chat` endpoint, owns its agent loop in Swift, executes first-party tools, and shows native approval dialogs before risky actions.
@@ -26,7 +52,7 @@ Key constraints:
 
 ## Current State
 
-Current visible app version: `1.0.3`
+Current visible app version: `1.0.12`
 
 Current model defaults:
 
@@ -40,9 +66,12 @@ Current shipped surface:
 - Bob's desk/chat window and avatar-only mode.
 - Conversation persistence and history management.
 - Rich presentation via `present(kind=html|url|file)`.
-- First-party tools for files, shell, git, web, phone, presentation, media, utility, YouTube, clipboard, AppleScript, and memory.
+- First-party tools for files, shell, git, web, Apple Mail inbox checks and triage previews, phone, presentation, media, utility, YouTube, clipboard, AppleScript, and memory.
+- Batch audio workflows use the larger `batchAudioAgentLoopMaxIterations` / `batchAudioAgentLoopTimeoutSeconds` budget and the batch-continuation guard so album downloads and FLAC-to-MP3 conversions can complete without per-item check-ins.
+- Preferences tool badges support persisted per-tool `Auto` / `Ask` / `Deny` overrides, with path policy and forbidden shell-command blocks preserved as non-bypassable floors.
 - Naughty Bob v1 as a per-conversation uncensored mode with tools and compaction disabled.
 - Jarvis phone tools gated by Preferences and both Jarvis secrets.
+- Local Jarvis address book resolves env aliases, JSON alias maps, and VCF exports such as `~/Downloads/bobs_contacts.vcf`.
 
 ## Active Task Protocol
 
@@ -91,6 +120,19 @@ swift run OllamaBob
 ```
 
 The app expects Ollama at `http://localhost:11434`.
+
+## Version Policy
+
+Every user-visible Bob change must bump the visible version before handoff. Keep these files synchronized:
+
+- `OllamaBob/OllamaBob/AppConfig.swift` (`appVersion`, `appBuild`)
+- `OllamaBob/build.sh` (`CFBundleShortVersionString`, `CFBundleVersion`)
+- `README.md`
+- `CLAUDE.md`
+- `AGENTS.md`
+- `docs/CURRENT_HANDOFF.md`
+
+Use patch bumps for normal fixes/features unless the user requests a larger release bump. Run the version consistency test with the normal test suite.
 
 ## Project Structure
 
@@ -144,6 +186,7 @@ Approval levels:
 - `none`: silent execution for read-only operations.
 - `modal`: explicit user approval required.
 - `forbidden`: never execute.
+- User-facing tool permission overrides are `Auto`, `Ask`, and `Deny`; `Auto` may only reduce approval when the path/shell safety floor allows it.
 
 Path policy:
 

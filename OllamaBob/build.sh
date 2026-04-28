@@ -41,9 +41,9 @@ cat > "$CONTENTS/Info.plist" <<'PLIST'
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0.3</string>
+    <string>1.0.12</string>
     <key>CFBundleVersion</key>
-    <string>103</string>
+    <string>112</string>
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
     <key>LSUIElement</key>
@@ -59,7 +59,7 @@ cat > "$CONTENTS/Info.plist" <<'PLIST'
     <key>NSRemovableVolumesUsageDescription</key>
     <string>OllamaBob reads and writes files on external drives (USB sticks, SD cards) when you ask Bob to work with files stored there.</string>
     <key>NSAppleEventsUsageDescription</key>
-    <string>OllamaBob drives other Mac apps (Mail, Calendar, Reminders, Contacts, Music, Finder, System Events) via AppleScript when you ask Bob to — for example, "do I have new mail?" or "add a reminder to call mom". Every AppleScript run requires your approval in Bob first.</string>
+    <string>OllamaBob drives other Mac apps (Mail, Calendar, Reminders, Contacts, Music, Finder, System Events) via AppleScript when you ask Bob to — for example, "do I have new mail?", "triage my unread mail", or "add a reminder to call mom". Every AppleScript run requires your approval in Bob first.</string>
     <key>NSContactsUsageDescription</key>
     <string>OllamaBob reads your Contacts when you ask Bob to look up a person's phone, email, or address.</string>
     <key>NSCalendarsUsageDescription</key>

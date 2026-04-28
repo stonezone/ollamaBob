@@ -13,6 +13,19 @@
    - `CLAUDE.md`
 3. Confirm old plans and completed handoffs are under `archive/`, not mixed into active `docs/`.
 4. Confirm Preferences -> Help -> Learn more points at current docs and `archive/`.
+5. Confirm every user-visible app change bumped the version consistently in `AppConfig.swift`, `build.sh`, `README.md`, `CLAUDE.md`, `AGENTS.md`, and `docs/CURRENT_HANDOFF.md`.
+
+### Claude OS / Codex OS RAG
+
+1. Confirm Claude OS is reachable at `http://localhost:8051/health`.
+2. Confirm project `ollamaBob` exists for `/Users/zack/ollamaBob`.
+3. Confirm these KBs exist and are searchable with filter `ollamaBob-`:
+   - `ollamaBob-project_memories`
+   - `ollamaBob-project_profile`
+   - `ollamaBob-project_index`
+   - `ollamaBob-knowledge_docs`
+4. Before non-trivial code work, search Claude OS for relevant decisions and code-index context.
+5. After code or active-doc changes, update project memory/docs/profile and refresh the project index when source or tests changed.
 
 ### Rich Presentation
 
@@ -35,11 +48,52 @@
 
 ### Tools
 
-1. Preferences -> Tools shows the full built-in catalog. Verify expected categories: Files, Shell, Git, Web, Phone, Presentation, Media, Utility, YouTube, Clipboard, Automation, Memory.
+1. Preferences -> Tools shows the full built-in catalog. Verify expected categories: Files, Shell, Git, Web, Mail, Phone, Presentation, Media, Utility, YouTube, Clipboard, Automation, Memory.
 2. `youtube_search` and `youtube_download` require `yt-dlp` on PATH. If missing, Bob returns "yt-dlp not found on PATH. Install with: brew install yt-dlp".
 3. `phone_call`, `phone_hangup`, `phone_status` only appear when Jarvis phone is enabled in Preferences and both `JARVIS_API_KEY` and `OPERATOR_API_SECRET` are configured.
 4. `web_search` only appears when `BRAVE_API_KEY` is configured.
 5. Read-only tools (green dot) should run silently. Write/ASK tools (orange dot) should show a modal approval dialog.
+6. Click a built-in tool permission badge and verify it cycles through `Auto`, `Ask`, and `Deny`.
+7. Verify an `Auto` override does not bypass path policy or forbidden shell-command blocks; sensitive paths should still require approval or be denied.
+8. In Tool Activity, "Tool execution allowed" means Bob's runtime policy/user approval allowed the tool call. It is separate from macOS Automation permissions.
+
+### Apple Mail
+
+1. Preferences -> Tools -> Mac App Permissions -> Mail should show `granted` after a successful check. This proves the app can send Apple Events to Mail; it is separate from Bob's Auto / Ask / Deny tool policy.
+2. Ask Bob "do I have unread mail?".
+3. Expected: Bob uses `mail_check`, shows a native approval dialog, and returns message metadata only: received date, read state, sender, and subject.
+4. Ask Bob "any mail from <sender>?".
+5. Expected: Bob uses `mail_check` with a query instead of generic `applescript`.
+6. Bob should not read message bodies, send mail, delete mail, archive mail, or mark messages read through `mail_check`.
+7. Ask Bob "read my unread mail and tell me what needs attention".
+8. Expected: Bob uses `mail_triage`, shows a native approval dialog, and returns a short attention summary based on truncated previews.
+9. `mail_triage` may read short previews, but it should not send mail, delete mail, archive mail, or mark messages read.
+10. If the model produces an empty final answer after a mail tool succeeds, Bob should still show a visible fallback summary instead of leaving only the earlier "one moment" bubble.
+11. If macOS returns a Mail Automation denial, Bob should tell the user to open Preferences -> Tools -> Mac App Permissions and grant Mail.
+
+### Authorized Music MP3 Workflow
+
+1. Ask Bob for an album you own on CD, using artist and album name.
+2. Bob should resolve album ambiguity before downloading, especially when the requested phrase is a song title rather than an album title.
+3. Bob should gather an official or reliable track list and create an output folder shaped like `~/Music/Bob/<Artist>_<Album>` for newly-created music folders.
+4. Bob should use `youtube_search` per track, auto-pick a high-confidence title/duration match, and ask you to choose only when candidates are genuinely ambiguous.
+5. Bob should avoid playlists, full-album uploads, lyric videos, covers, live versions, and remixes unless explicitly selected or no clean studio track is available.
+6. Bob should continue through the album after each successful track instead of stopping after one download.
+7. If one full-album MP3 is explicitly requested, Bob should find a single full-album video, verify the runtime is close to the album runtime, and save one file named like `<Artist>_<Album>`.
+8. If a full-album upload split is explicitly requested, Bob should prefer reliable chapters/timestamps/track-time metadata and use silence detection only as a fallback check.
+9. After confirmation and modal approval, `youtube_download` should save MP3 files with clean numbered filenames.
+10. For "get N different songs by this artist" requests, Bob should pick distinct popular studio tracks and continue the whole batch without asking after each song.
+11. For a pasted song list, Bob should preserve list order, use durations if provided, and continue through every listed item unless a track is ambiguous or denied.
+12. If Bob tries to end a batch turn with status-only text such as "Next up is...", the agent loop should continue internally and call the next tool instead of stopping.
+13. If asked what is missing from the output folder, Bob should use `list_directory` or quote the folder path correctly, then report downloaded/missing/extra files without asking which requested track is next.
+
+### Local Audio Conversion
+
+1. Give Bob a folder containing `.flac` files and ask him to convert the folder to MP3.
+2. Bob should inspect the folder, create/use an output folder such as `MP3`, and use `ffmpeg` locally.
+3. Bob should convert every `.flac` in the batch without asking after each file.
+4. Bob should preserve base filenames and avoid overwriting existing MP3s unless explicitly asked.
+5. Final status should include converted count, skipped existing files, failed files, and output folder.
 
 ### Jarvis Phone
 
@@ -104,8 +158,10 @@ When checking Bob's actual behavior, verify these prompt/policy rules:
   - `ZACK_PERSONAL_NUMBER`
   - `GLENNEL_PERSONAL_NUMBER`
   - `jarvis-address-book.local.json`
+  - `~/Downloads/bobs_contacts.vcf`
 - `jarvis-address-book.local.json` is gitignored.
 - Use [jarvis-address-book.example.json](/Users/zack/ollamaBob/jarvis-address-book.example.json) as the template.
+- VCF aliases come from full name, nickname, organization, and unique given name. Preferred/mobile phone numbers win when multiple phone numbers exist.
 
 ### Jarvis Live Feature Surface
 

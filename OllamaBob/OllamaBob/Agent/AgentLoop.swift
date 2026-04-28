@@ -1,17 +1,17 @@
 import Foundation
 
 enum AgentLoopError: Error, LocalizedError {
-    case maxIterationsReached
-    case totalTimeoutReached
+    case maxIterationsReached(Int)
+    case totalTimeoutReached(TimeInterval)
     case ollamaUnavailable(String)
     case uncensoredModelUnavailable(String)
 
     var errorDescription: String? {
         switch self {
-        case .maxIterationsReached:
-            return "Reached maximum tool call iterations (\(AppConfig.agentLoopMaxIterations))"
-        case .totalTimeoutReached:
-            return "Agent loop timed out after \(Int(AppConfig.agentLoopTimeoutSeconds))s"
+        case .maxIterationsReached(let limit):
+            return "Reached maximum tool call iterations (\(limit))"
+        case .totalTimeoutReached(let seconds):
+            return "Agent loop timed out after \(Int(seconds))s"
         case .ollamaUnavailable(let msg):
             return msg
         case .uncensoredModelUnavailable(let model):
@@ -50,6 +50,19 @@ final class AgentLoop: ObservableObject {
         let at: Date
     }
 
+    struct LoopBudget: Equatable {
+        let maxIterations: Int
+        let timeoutSeconds: TimeInterval
+    }
+
+    struct BatchAudioAudit: Equatable {
+        let requestedTracks: [String]
+        let downloadedTracks: [String]
+        let missingTracks: [String]
+        let unmatchedDownloads: [String]
+        let outputDirectory: String?
+    }
+
     private let client: OllamaClient
     private let registry: ToolRegistry
     private var searchProvider: SearchProvider?
@@ -78,6 +91,7 @@ final class AgentLoop: ObservableObject {
     init(client: OllamaClient = OllamaClient(), braveKeyAvailable: Bool = !AppConfig.braveAPIKey.isEmpty) {
         self.client = client
         self.registry = ToolRegistry(braveKeyAvailable: braveKeyAvailable)
+        self.currentModel = AppSettings.shared.effectiveStandardModelName
         if braveKeyAvailable {
             self.searchProvider = BraveSearchProvider(apiKey: AppConfig.braveAPIKey)
         }
@@ -108,7 +122,7 @@ final class AgentLoop: ObservableObject {
 
         let effectiveModel = uncensoredMode
             ? AppSettings.shared.effectiveUncensoredModelName
-            : AppConfig.primaryModel
+            : AppSettings.shared.effectiveStandardModelName
         let effectiveTools: [OllamaToolDef] = uncensoredMode ? [] : registry.toolDefs
 
         if uncensoredMode {
@@ -122,6 +136,8 @@ final class AgentLoop: ObservableObject {
         await updateCurrentModelForTurn(effectiveModel, notify: currentModel != effectiveModel)
 
         let loopStart = Date()
+        let loopBudget = Self.loopBudget(for: userMessage)
+        var batchContinuationNudges = 0
         var turnHadToolFailure = false
         var lastFailedToolResult: ToolResult?
         var lastToolResult: ToolResult?
@@ -152,11 +168,11 @@ final class AgentLoop: ObservableObject {
         messages.append(.user(userMessage))
         logPromptBreakdown(composed.breakdown)
 
-        for _ in 0..<AppConfig.agentLoopMaxIterations {
+        for _ in 0..<loopBudget.maxIterations {
             // Check total timeout
-            if Date().timeIntervalSince(loopStart) > AppConfig.agentLoopTimeoutSeconds {
+            if Date().timeIntervalSince(loopStart) > loopBudget.timeoutSeconds {
                 bobMood = .confused
-                throw AgentLoopError.totalTimeoutReached
+                throw AgentLoopError.totalTimeoutReached(loopBudget.timeoutSeconds)
             }
 
             // Send to Ollama
@@ -184,6 +200,35 @@ final class AgentLoop: ObservableObject {
                     lastFailedToolResult: lastFailedToolResult,
                     lastToolResult: lastToolResult
                 )
+                if Self.shouldForceBatchAudioContinuation(
+                    userMessage: userMessage,
+                    assistantContent: assistantMessage.content,
+                    lastToolResult: lastToolResult,
+                    loopBudget: loopBudget,
+                    nudgeCount: batchContinuationNudges
+                ) {
+                    batchContinuationNudges += 1
+                    messages.append(.system(Self.batchAudioContinuationNudge(for: assistantMessage.content)))
+                    bobMood = .thinking
+                    continue
+                }
+                let batchAudit = Self.batchAudioAudit(userMessage: userMessage, messages: messages)
+                if Self.shouldForceBatchAudioAuditContinuation(
+                    audit: batchAudit,
+                    assistantContent: assistantMessage.content,
+                    lastToolResult: lastToolResult,
+                    loopBudget: loopBudget,
+                    nudgeCount: batchContinuationNudges
+                ) {
+                    batchContinuationNudges += 1
+                    messages.append(.system(Self.batchAudioAuditNudge(audit: batchAudit!)))
+                    bobMood = .thinking
+                    continue
+                }
+                if let batchAudit,
+                   Self.shouldReplaceBatchAudioFinalContent(assistantMessage.content, audit: batchAudit) {
+                    assistantMessage.content = Self.batchAudioFinalSummary(audit: batchAudit)
+                }
                 messages.append(assistantMessage)
                 if lastToolResult?.success != false {
                     consecutiveFailures = 0
@@ -224,7 +269,295 @@ final class AgentLoop: ObservableObject {
         }
 
         bobMood = .confused
-        throw AgentLoopError.maxIterationsReached
+        throw AgentLoopError.maxIterationsReached(loopBudget.maxIterations)
+    }
+
+    static func loopBudget(for userMessage: String) -> LoopBudget {
+        let normalized = userMessage
+            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+            .lowercased()
+
+        let actionTerms = [
+            "download", "get", "save", "rip", "convert", "transcode",
+            "grab", "fetch", "pull", "collect"
+        ]
+        let audioTerms = [
+            "album", "albums", "playlist", "song", "songs", "track", "tracks",
+            "mp3", "m4a", "flac", "audio", "music"
+        ]
+        let isAudioBatch = actionTerms.contains { normalized.contains($0) }
+            && audioTerms.contains { normalized.contains($0) }
+        let isListedTrackBatch = normalized.contains("all these")
+            && (normalized.contains("track") || normalized.contains("song"))
+
+        if isAudioBatch || isListedTrackBatch {
+            return LoopBudget(
+                maxIterations: AppConfig.batchAudioAgentLoopMaxIterations,
+                timeoutSeconds: AppConfig.batchAudioAgentLoopTimeoutSeconds
+            )
+        }
+
+        return LoopBudget(
+            maxIterations: AppConfig.agentLoopMaxIterations,
+            timeoutSeconds: AppConfig.agentLoopTimeoutSeconds
+        )
+    }
+
+    static func shouldForceBatchAudioContinuation(
+        userMessage: String,
+        assistantContent: String,
+        lastToolResult: ToolResult?,
+        loopBudget: LoopBudget,
+        nudgeCount: Int
+    ) -> Bool {
+        guard loopBudget == LoopBudget(
+            maxIterations: AppConfig.batchAudioAgentLoopMaxIterations,
+            timeoutSeconds: AppConfig.batchAudioAgentLoopTimeoutSeconds
+        ) else {
+            return false
+        }
+        guard nudgeCount < AppConfig.batchAudioContinuationNudgeMax else {
+            return false
+        }
+        guard lastToolResult?.success == true else {
+            return false
+        }
+
+        let normalizedUser = userMessage
+            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+            .lowercased()
+        let normalizedContent = assistantContent
+            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+            .lowercased()
+
+        let batchMarkers = [
+            "all these", "remaining", "next up", "track list",
+            "songs", "tracks", "album", "playlist"
+        ]
+        guard batchMarkers.contains(where: { normalizedUser.contains($0) }) else {
+            return false
+        }
+
+        let statusOnlyContinuationMarkers = [
+            "next up", "next track", "is the track", "<channel|>"
+        ]
+        return statusOnlyContinuationMarkers.contains { normalizedContent.contains($0) }
+    }
+
+    static func batchAudioAudit(userMessage: String, messages: [OllamaMessage]) -> BatchAudioAudit? {
+        let requested = requestedBatchAudioTracks(userMessage: userMessage, messages: messages)
+        guard requested.count >= 2 else { return nil }
+
+        let downloadedPaths = messages
+            .filter { $0.role == "tool" && $0.toolName == "youtube_download" }
+            .compactMap { downloadedPath(from: $0.content) }
+
+        let downloadedTracks = downloadedPaths.map { trackTitle(fromDownloadedPath: $0) }
+        let downloadedKeys = Set(downloadedTracks.map(normalizedTrackKey))
+        let missing = requested.filter { downloadedKeys.contains(normalizedTrackKey($0)) == false }
+        let requestedKeys = Set(requested.map(normalizedTrackKey))
+        let unmatched = downloadedTracks.filter { requestedKeys.contains(normalizedTrackKey($0)) == false }
+        let outputDirectory = mostRecentCommonDirectory(from: downloadedPaths)
+
+        return BatchAudioAudit(
+            requestedTracks: requested,
+            downloadedTracks: downloadedTracks,
+            missingTracks: missing,
+            unmatchedDownloads: unmatched,
+            outputDirectory: outputDirectory
+        )
+    }
+
+    static func requestedBatchAudioTracks(userMessage: String, messages: [OllamaMessage]) -> [String] {
+        var candidates = [userMessage]
+        candidates.append(contentsOf: messages
+            .filter { $0.role == "user" }
+            .map(\.content)
+            .reversed())
+
+        var seenMessages = Set<String>()
+        for candidate in candidates {
+            let key = candidate
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+                .lowercased()
+            guard key.isEmpty == false, seenMessages.insert(key).inserted else { continue }
+            let tracks = requestedBatchAudioTracks(from: candidate)
+            if tracks.count >= 2 {
+                return tracks
+            }
+        }
+        return []
+    }
+
+    static func requestedBatchAudioTracks(from userMessage: String) -> [String] {
+        let rawLines = userMessage
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .map(String.init)
+
+        var candidates: [String] = []
+        for (index, rawLine) in rawLines.enumerated() {
+            var line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !line.isEmpty else { continue }
+
+            if index == 0, let colon = line.lastIndex(of: ":") {
+                line = String(line[line.index(after: colon)...]).trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+
+            line = line.replacingOccurrences(
+                of: #"^\s*(?:[-*•]\s+|\d{1,3}[\.)-]\s*)"#,
+                with: "",
+                options: .regularExpression
+            )
+            line = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard isLikelyTrackLine(line) else { continue }
+            candidates.append(line)
+        }
+
+        var seen = Set<String>()
+        return candidates.filter { track in
+            let key = normalizedTrackKey(track)
+            guard !key.isEmpty, seen.contains(key) == false else { return false }
+            seen.insert(key)
+            return true
+        }
+    }
+
+    static func shouldForceBatchAudioAuditContinuation(
+        audit: BatchAudioAudit?,
+        assistantContent: String,
+        lastToolResult: ToolResult?,
+        loopBudget: LoopBudget,
+        nudgeCount: Int
+    ) -> Bool {
+        guard let audit, audit.missingTracks.isEmpty == false else { return false }
+        guard loopBudget == LoopBudget(
+            maxIterations: AppConfig.batchAudioAgentLoopMaxIterations,
+            timeoutSeconds: AppConfig.batchAudioAgentLoopTimeoutSeconds
+        ) else {
+            return false
+        }
+        guard nudgeCount < AppConfig.batchAudioContinuationNudgeMax else { return false }
+        guard lastToolResult?.success == true else { return false }
+
+        let normalizedContent = assistantContent
+            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+            .lowercased()
+        if normalizedContent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return true
+        }
+        let completionClaims = [
+            "complete", "completed", "done", "finished", "all tools finished",
+            "successful", "successfully", "got them", "downloaded them"
+        ]
+        return completionClaims.contains { normalizedContent.contains($0) }
+    }
+
+    static func shouldReplaceBatchAudioFinalContent(_ content: String, audit: BatchAudioAudit) -> Bool {
+        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return true }
+
+        let normalizedContent = trimmed
+            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+            .lowercased()
+        let hasCount = normalizedContent.contains("\(audit.downloadedTracks.count)")
+            && normalizedContent.contains("\(audit.requestedTracks.count)")
+        if audit.missingTracks.isEmpty {
+            return hasCount == false
+        }
+        let mentionsMissing = normalizedContent.contains("missing")
+            || normalizedContent.contains("skipped")
+            || normalizedContent.contains("failed")
+        return mentionsMissing == false
+    }
+
+    static func batchAudioAuditNudge(audit: BatchAudioAudit) -> String {
+        let missingPreview = audit.missingTracks.prefix(12).joined(separator: ", ")
+        let more = audit.missingTracks.count > 12 ? ", ..." : ""
+        return """
+        Batch audio audit: only \(audit.downloadedTracks.count) of \(audit.requestedTracks.count) requested tracks have a matching downloaded MP3. Missing: \(missingPreview)\(more).
+        Do not claim completion. Immediately continue the batch by calling `youtube_search` for the first missing track: \(audit.missingTracks.first ?? "unknown"). Continue through the remaining missing tracks unless a track is truly ambiguous, denied, or fails.
+        """
+    }
+
+    static func batchAudioFinalSummary(audit: BatchAudioAudit) -> String {
+        var lines: [String] = []
+        let location = audit.outputDirectory.map { " in \($0)" } ?? ""
+        lines.append("Downloaded \(audit.downloadedTracks.count) of \(audit.requestedTracks.count) requested tracks\(location).")
+        if audit.missingTracks.isEmpty {
+            lines.append("No requested tracks are missing.")
+        } else {
+            lines.append("Missing: \(audit.missingTracks.joined(separator: ", ")).")
+        }
+        if audit.unmatchedDownloads.isEmpty == false {
+            lines.append("Extra/unmatched downloads: \(audit.unmatchedDownloads.joined(separator: ", ")).")
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    static func batchAudioContinuationNudge(for assistantContent: String) -> String {
+        let preview = assistantContent
+            .replacingOccurrences(of: "\n", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .prefix(300)
+        return """
+        Batch audio task is still in progress. Your last reply was status-only: "\(preview)".
+        Do not answer with text only. If requested tracks remain, immediately call `youtube_search` for the next named track, or `youtube_download` if you already have a confirmed URL. Continue the batch until all listed tracks are complete, a track is truly ambiguous, a download is denied, or a tool fails.
+        """
+    }
+
+    private static func isLikelyTrackLine(_ line: String) -> Bool {
+        guard line.count >= 2, line.count <= 120 else { return false }
+        let lowered = line.lowercased()
+        let instructionPrefixes = [
+            "search ", "download ", "grab ", "get ", "save ", "convert ",
+            "please ", "bob ", "continue ", "skip ", "only "
+        ]
+        if instructionPrefixes.contains(where: { lowered.hasPrefix($0) }) {
+            return false
+        }
+        let sentenceMarkers = [":", "http://", "https://"]
+        if sentenceMarkers.contains(where: { lowered.contains($0) }) {
+            return false
+        }
+        return true
+    }
+
+    private static func downloadedPath(from content: String) -> String? {
+        guard let range = content.range(of: "Downloaded to ") else { return nil }
+        let tail = content[range.upperBound...]
+            .split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false)
+            .first
+            .map(String.init)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return tail.isEmpty ? nil : tail
+    }
+
+    private static func trackTitle(fromDownloadedPath path: String) -> String {
+        URL(fileURLWithPath: path)
+            .deletingPathExtension()
+            .lastPathComponent
+            .replacingOccurrences(
+                of: #"^\s*\d{1,3}\s*[-_.]\s*"#,
+                with: "",
+                options: .regularExpression
+            )
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func normalizedTrackKey(_ value: String) -> String {
+        value
+            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+            .lowercased()
+            .replacingOccurrences(of: #"[^a-z0-9]+"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+    }
+
+    private static func mostRecentCommonDirectory(from paths: [String]) -> String? {
+        paths.last.map { URL(fileURLWithPath: $0).deletingLastPathComponent().path }
     }
 
     // MARK: - Tool Execution
@@ -352,6 +685,19 @@ final class AgentLoop: ObservableObject {
             }
             return await WebSearchTool.execute(query: query, provider: provider)
 
+        case "mail_check":
+            let query = args["query"] as? String
+            let unreadOnly = Self.parseBool(args["unread_only"])
+            let limit = Self.parseInt(args["limit"])
+            return await MailTool.checkInbox(query: query, unreadOnly: unreadOnly, limit: limit)
+
+        case "mail_triage":
+            let query = args["query"] as? String
+            let unreadOnly = Self.parseBool(args["unread_only"])
+            let limit = Self.parseInt(args["limit"])
+            let previewChars = Self.parseInt(args["preview_chars"])
+            return await MailTool.triageInbox(query: query, unreadOnly: unreadOnly, limit: limit, previewChars: previewChars)
+
         case "phone_call":
             let persona = args["persona"] as? String ?? ""
             let to = args["to"] as? String ?? ""
@@ -438,7 +784,8 @@ final class AgentLoop: ObservableObject {
             let url = args["url"] as? String ?? ""
             let format = args["format"] as? String ?? ""
             let outputDir = args["output_dir"] as? String
-            return await YouTubeTool.download(url: url, format: format, outputDir: outputDir)
+            let filename = args["filename"] as? String
+            return await YouTubeTool.download(url: url, format: format, outputDir: outputDir, filename: filename)
 
         default:
             return .failure(tool: name, error: "Tool not implemented", durationMs: 0)
@@ -547,6 +894,12 @@ final class AgentLoop: ObservableObject {
         if result.toolName == "tool_help", result.content.count <= 12_000 {
             return result
         }
+        if result.toolName == "mail_triage", result.content.count <= 6_000 {
+            // The point of mail_triage is for the local model to rank short
+            // previews. Keep bounded approved previews inline; very large
+            // triage outputs still spill to the output store.
+            return result
+        }
         guard result.content.count > AppConfig.toolInlineMax,
               let convoId = currentConversationId else {
             return result
@@ -616,6 +969,17 @@ final class AgentLoop: ObservableObject {
         if let n = value as? NSNumber { return n.intValue }
         if let s = value as? String { return Int(s.trimmingCharacters(in: .whitespaces)) }
         return nil
+    }
+
+    private static func parseBool(_ value: Any?) -> Bool? {
+        if let b = value as? Bool { return b }
+        if let n = value as? NSNumber { return n.boolValue }
+        guard let s = value as? String else { return nil }
+        switch s.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "true", "yes", "y", "1": return true
+        case "false", "no", "n", "0": return false
+        default: return nil
+        }
     }
 
     private func redirectedReadFileOpenIntentIfNeeded(name: String, args: [String: Any]) -> ToolResult? {
@@ -759,6 +1123,13 @@ final class AgentLoop: ObservableObject {
             return conciseSuccessReply(for: userMessage, from: lastToolResult)
         }
 
+        if trimmed.isEmpty,
+           let lastToolResult,
+           lastToolResult.success,
+           let mailReply = fallbackMailReply(from: lastToolResult) {
+            return mailReply
+        }
+
         if turnHadToolFailure,
            let lastFailedToolResult,
            (contentAcknowledgesFailure(trimmed) == false || finalFailureReplyShouldOverride(content: trimmed, userMessage: userMessage, result: lastFailedToolResult)) {
@@ -774,6 +1145,20 @@ final class AgentLoop: ObservableObject {
         }
 
         return trimmed
+    }
+
+    private static func fallbackMailReply(from result: ToolResult) -> String? {
+        let detail = result.content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard detail.isEmpty == false else { return nil }
+
+        switch result.toolName {
+        case "mail_check":
+            return "I found these Mail messages:\n\(detail)"
+        case "mail_triage":
+            return "I pulled these Mail previews for triage, but I could not finish the ranking in this turn. Here are the previews I found:\n\(detail)"
+        default:
+            return nil
+        }
     }
 
     private static func explicitMarkdownImageResponse(for userMessage: String) -> String? {

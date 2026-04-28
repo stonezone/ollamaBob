@@ -12,6 +12,7 @@ Prefer first-class tools before falling back to `shell`:
 
 - File and directory work: `read_file`, `list_directory`, `create_directory`, `write_file`, `move_file`
 - Git inspection: `git_status`, `git_diff`
+- Apple Mail reads: `mail_check` for inbox unread/search summaries and `mail_triage` for explicit short-preview attention triage before generic AppleScript
 
 These tools exist to keep approvals predictable, reduce shell-quoting failure modes, and make regression testing possible.
 
@@ -25,7 +26,9 @@ These tools exist to keep approvals predictable, reduce shell-quoting failure mo
 `Tools/` hosts types the model can call. `Services/` hosts app-level infrastructure the user or the app itself invokes — not the model. Two examples:
 
 - `PromptComposerMemoryStore` — the narrow seam `PromptComposer` reads facts through, keeping direct DB calls out of prompt assembly.
-- `AutomationProbe` (added V2.9.2) — a `@MainActor ObservableObject` singleton that fires trivial `tell application "X" to return name` probes against Mail/Calendar/Reminders/Contacts/Music/Finder/System Events. Drives the onboarding Permissions step and the Preferences → Tools → Mac App Permissions section. The probe is never reachable from the agent loop; keeping it in `Services/` makes that separation explicit.
+- `AutomationProbe` (added V2.9.2) — a `@MainActor ObservableObject` singleton that fires cheap read-only probes against Mail/Calendar/Reminders/Contacts/Music/Finder/System Events. Mail counts accounts; the others return app names. Drives the onboarding Permissions step and the Preferences → Tools → Mac App Permissions section. The probe is never reachable from the agent loop; keeping it in `Services/` makes that separation explicit.
+- `MailTool` — model-callable, modal-gated Apple Mail helpers. `mail_check` is metadata-only (date/read state/sender/subject). `mail_triage` is only for explicit attention-triage requests and adds short truncated previews without mutating Mail. Both use hardcoded AppleScript so common mail checks do not require the model to generate arbitrary Mail scripts.
+- `LocalAddressBook` — runtime phone alias loader for Jarvis calls. It merges env aliases, local JSON maps, and VCF exports such as `~/Downloads/bobs_contacts.vcf`; it is not a full Contacts database.
 
 ## TCC / Automation
 

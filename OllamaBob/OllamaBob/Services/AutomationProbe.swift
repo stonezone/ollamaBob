@@ -37,7 +37,7 @@ final class AutomationProbe: ObservableObject {
     /// Bob prompt.
     static let targets: [AutomationTarget] = [
         AutomationTarget(id: "mail", displayName: "Mail", emoji: "📧",
-                         probeScript: "tell application \"Mail\" to return name"),
+                         probeScript: "tell application \"Mail\" to return (count of accounts) as string"),
         AutomationTarget(id: "calendar", displayName: "Calendar", emoji: "📅",
                          probeScript: "tell application \"Calendar\" to return name"),
         AutomationTarget(id: "reminders", displayName: "Reminders", emoji: "✅",

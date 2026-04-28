@@ -75,12 +75,12 @@ struct ToolActivityRow: View {
                     ActivityExpandedField(title: "Output", content: entry.output, maxHeight: 180)
 
                     HStack {
-                        Text("Approval: \(entry.approval.rawValue)")
-                        Text("Approved: \(entry.approved ? "Yes" : "No")")
+                        Text("Tool policy: \(entry.approval.rawValue)")
+                        Text("Tool execution allowed: \(entry.approved ? "Yes" : "No")")
                     }
                     .font(.caption)
                     .foregroundColor(.secondary)
-                    .accessibilityLabel("Approval \(entry.approval.rawValue). Approved \(entry.approved ? "yes" : "no")")
+                    .accessibilityLabel("Tool policy \(entry.approval.rawValue). Tool execution allowed \(entry.approved ? "yes" : "no"). This is separate from macOS Automation permissions.")
                 }
                 .padding(.leading, 24)
             }

@@ -3,6 +3,11 @@ import Foundation
 enum ApprovalPolicy {
     /// Determine the approval level for a tool call.
     static func check(toolName: String, arguments: [String: Any]) -> ApprovalLevel {
+        let base = baseCheck(toolName: toolName, arguments: arguments)
+        return applyUserOverride(toolName: toolName, arguments: arguments, base: base)
+    }
+
+    private static func baseCheck(toolName: String, arguments: [String: Any]) -> ApprovalLevel {
         switch toolName {
         case "read_file":
             let path = arguments["path"] as? String ?? ""
@@ -48,6 +53,14 @@ enum ApprovalPolicy {
 
         case "web_search":
             return .none
+
+        case "mail_check":
+            // Mail metadata is private even when read-only. Always ask.
+            return .modal
+
+        case "mail_triage":
+            // Message previews are sensitive even when read-only. Always ask.
+            return .modal
 
         case "present":
             return .none
@@ -119,6 +132,80 @@ enum ApprovalPolicy {
         default:
             return .modal  // unknown tool = always ask
         }
+    }
+
+    private static func applyUserOverride(toolName: String, arguments: [String: Any], base: ApprovalLevel) -> ApprovalLevel {
+        guard let setting = AppSettings.storedToolApprovalOverride(for: toolName) else {
+            return base
+        }
+
+        let floor = safetyFloor(toolName: toolName, arguments: arguments)
+        if floor == .forbidden || base == .forbidden {
+            return .forbidden
+        }
+
+        switch setting {
+        case .deny:
+            return .forbidden
+        case .ask:
+            return .modal
+        case .auto:
+            return floor == .modal ? .modal : .none
+        }
+    }
+
+    /// Non-negotiable safety checks that user overrides cannot bypass.
+    private static func safetyFloor(toolName: String, arguments: [String: Any]) -> ApprovalLevel {
+        switch toolName {
+        case "read_file":
+            return requiredPathApproval(arguments["path"] as? String ?? "")
+        case "create_directory", "list_directory", "write_file":
+            return requiredPathApproval(arguments["path"] as? String ?? "")
+        case "move_file":
+            return maxApproval(
+                requiredPathApproval(arguments["source"] as? String ?? ""),
+                requiredPathApproval(arguments["destination"] as? String ?? "")
+            )
+        case "git_status", "git_diff":
+            return requiredPathApproval(arguments["repo_path"] as? String ?? "")
+        case "search_files":
+            return requiredPathApproval(arguments["path"] as? String ?? NSHomeDirectory())
+        case "shell":
+            let cmd = (arguments["command"] as? String ?? "").trimmingCharacters(in: .whitespaces)
+            let lower = cmd.lowercased()
+            let forbiddenPatterns = [
+                "sudo ", "su ", "mkfs", "dd if=", "> /dev/",
+                "rm -rf /", "chmod -r 777 /", "chmod 777 /"
+            ]
+            if forbiddenPatterns.contains(where: { lower.contains($0) }) {
+                return .forbidden
+            }
+            let downloaders = ["curl ", "wget "]
+            let shellSinks = ["| sh", "|sh", "| bash", "|bash", "| zsh", "|zsh"]
+            if downloaders.contains(where: { lower.contains($0) })
+                && (shellSinks.contains(where: { lower.contains($0) }) || containsDownloadThenExecuteChain(lower)) {
+                return .forbidden
+            }
+            return extractPathApproval(from: cmd)
+        case "applescript", "mail_check", "mail_triage", "phone_call":
+            return .modal
+        default:
+            return .none
+        }
+    }
+
+    private static func requiredPathApproval(_ path: String) -> ApprovalLevel {
+        switch PathPolicy.check(path) {
+        case .denied: return .forbidden
+        case .requiresApproval: return .modal
+        case .allowed: return .none
+        }
+    }
+
+    private static func maxApproval(_ lhs: ApprovalLevel, _ rhs: ApprovalLevel) -> ApprovalLevel {
+        if lhs == .forbidden || rhs == .forbidden { return .forbidden }
+        if lhs == .modal || rhs == .modal { return .modal }
+        return .none
     }
 
     // MARK: - Shell Command Analysis

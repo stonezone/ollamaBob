@@ -96,6 +96,13 @@ struct PreferencesView: View {
                 .padding(.horizontal, 24)
                 .padding(.top, 12)
 
+            standardModelSection
+
+            Divider()
+                .background(PreferencesView.phosphorGreen.opacity(0.2))
+                .padding(.horizontal, 24)
+                .padding(.top, 12)
+
             uncensoredModeSection
 
             Divider()
@@ -201,6 +208,46 @@ struct PreferencesView: View {
 
     private static func formatNumCtx(_ value: Int) -> String {
         "\(value / 1024)K"
+    }
+
+    private var standardModelSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("STANDARD MODEL")
+                    .font(.system(.caption, design: .monospaced).weight(.bold))
+                    .foregroundColor(PreferencesView.phosphorGreen)
+                Text("Used for normal Bob conversations. Uncensored mode has its own separate model below.")
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundColor(PreferencesView.textGrey)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .lineSpacing(2)
+            }
+
+            Picker("Standard model", selection: $settings.standardModelName) {
+                ForEach(AppConfig.standardModelOptions) { option in
+                    Text(option.title).tag(option.tag)
+                }
+            }
+            .pickerStyle(.menu)
+            .labelsHidden()
+            .tint(PreferencesView.phosphorGreen)
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            if let option = AppConfig.standardModelOptions.first(where: { $0.tag == settings.effectiveStandardModelName }) {
+                Text("\(option.tag) — \(option.subtitle)")
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundColor(PreferencesView.textGrey)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                Text(settings.effectiveStandardModelName)
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundColor(PreferencesView.textGrey)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 14)
+        .background(PreferencesView.bgPanel)
     }
 
     private var uncensoredModeSection: some View {
@@ -345,7 +392,7 @@ struct PreferencesView: View {
             Text("BUILT-IN TOOLS")
                 .font(.system(.caption, design: .monospaced).weight(.bold))
                 .foregroundColor(PreferencesView.phosphorGreen)
-            Text("Native Swift tools Bob can always call. Green = runs silently, orange = asks first.")
+            Text("Native Swift tools Bob can call. Click a permission badge to cycle Auto / Ask / Deny. Non-bypassable floors still apply for sensitive actions like Mail, AppleScript, and phone calls.")
                 .font(.system(.caption2, design: .monospaced))
                 .foregroundColor(PreferencesView.textGrey)
         }
@@ -535,7 +582,7 @@ struct PreferencesView: View {
                 Text("MAC APP PERMISSIONS")
                     .font(.system(.caption, design: .monospaced).weight(.bold))
                     .foregroundColor(PreferencesView.phosphorGreen)
-                Text("macOS Automation (TCC) grants for apps Bob can drive via AppleScript. If \"denied\" appears, open System Settings → Privacy & Security → Automation and toggle OllamaBob back on.")
+                Text("macOS Automation (TCC) grants for apps Bob can drive via AppleScript. This is separate from Bob's Auto / Ask / Deny tool policy. If \"denied\" appears, open System Settings → Privacy & Security → Automation and toggle OllamaBob back on.")
                     .font(.system(.caption2, design: .monospaced))
                     .foregroundColor(PreferencesView.textGrey)
                     .fixedSize(horizontal: false, vertical: true)
@@ -686,13 +733,19 @@ struct PreferencesView: View {
                 .font(.system(.caption, design: .monospaced).weight(.medium))
                 .foregroundColor(.white)
 
-            Text(postureBadge(for: entry.posture))
-                .font(.system(size: 8, weight: .bold, design: .monospaced))
-                .foregroundColor(.black)
-                .padding(.horizontal, 4)
-                .padding(.vertical, 1)
-                .background(builtinDotColor(for: entry.posture))
-                .cornerRadius(2)
+            Button {
+                settings.setToolApprovalOverride(nextToolApprovalSetting(for: entry), for: entry.name)
+            } label: {
+                Text(toolApprovalBadge(for: entry))
+                    .font(.system(size: 8, weight: .bold, design: .monospaced))
+                    .foregroundColor(.black)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 1)
+                    .background(toolApprovalBadgeColor(for: entry))
+                    .cornerRadius(2)
+            }
+            .buttonStyle(.plain)
+            .help("Click to cycle Auto / Ask / Deny for \(entry.name)")
 
             Spacer()
 
@@ -720,6 +773,46 @@ struct PreferencesView: View {
         case .none:    return "AUTO"
         case .modal:   return "ASK"
         case .dynamic: return "DYN"
+        }
+    }
+
+    private func defaultToolApprovalSetting(for posture: BuiltinToolsCatalog.ApprovalPosture) -> ToolApprovalSetting {
+        switch posture {
+        case .none:    return .auto
+        case .modal:   return .ask
+        case .dynamic: return .auto
+        }
+    }
+
+    private func toolApprovalBadge(for entry: BuiltinToolsCatalog.Entry) -> String {
+        if let override = settings.toolApprovalOverride(for: entry.name) {
+            return override.badgeLabel
+        }
+        return postureBadge(for: entry.posture)
+    }
+
+    private func toolApprovalBadgeColor(for entry: BuiltinToolsCatalog.Entry) -> Color {
+        if let override = settings.toolApprovalOverride(for: entry.name) {
+            return color(for: override)
+        }
+        return builtinDotColor(for: entry.posture)
+    }
+
+    private func nextToolApprovalSetting(for entry: BuiltinToolsCatalog.Entry) -> ToolApprovalSetting {
+        if let override = settings.toolApprovalOverride(for: entry.name) {
+            return override.next
+        }
+        if entry.posture == .dynamic {
+            return .auto
+        }
+        return defaultToolApprovalSetting(for: entry.posture).next
+    }
+
+    private func color(for setting: ToolApprovalSetting) -> Color {
+        switch setting {
+        case .auto: return PreferencesView.phosphorGreen
+        case .ask:  return .orange
+        case .deny: return Color(red: 1.0, green: 0.45, blue: 0.35)
         }
     }
 

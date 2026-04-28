@@ -237,6 +237,249 @@ final class MultimediaBobTests: XCTestCase {
         XCTAssertTrue(prompt.contains("say what was refused and why in one short sentence"))
     }
 
+    func testOperatingRulesDescribeAuthorizedMusicAlbumWorkflow() {
+        let prompt = BobOperatingRules.systemPrompt
+
+        XCTAssertTrue(prompt.contains("Authorized music collection workflow"), prompt)
+        XCTAssertTrue(prompt.contains("~/Music/Bob/<Artist>_<Album>"), prompt)
+        XCTAssertTrue(prompt.contains("Do not ask the user to provide a YouTube URL for an album request"), prompt)
+        XCTAssertTrue(prompt.contains("An album request is not a request for one \"full album\" YouTube link"), prompt)
+        XCTAssertTrue(prompt.contains("Auto-select the best candidate when it has a near-exact artist and track-title match"), prompt)
+        XCTAssertTrue(prompt.contains("Do not make the user choose between routine candidates"), prompt)
+        XCTAssertTrue(prompt.contains("Do not stop after one successful track"), prompt)
+        XCTAssertTrue(prompt.contains("If the user asks for a number of songs by an artist"), prompt)
+        XCTAssertTrue(prompt.contains("If the user pastes a track list"), prompt)
+        XCTAssertTrue(prompt.contains("a message like \"Next up is...\" is not enough"), prompt)
+        XCTAssertTrue(prompt.contains("If the user explicitly asks for the album as one file"), prompt)
+        XCTAssertTrue(prompt.contains("Do not split that file"), prompt)
+        XCTAssertTrue(prompt.contains("full-album split workflow"), prompt)
+        XCTAssertTrue(prompt.contains("Local audio conversion workflow"), prompt)
+        XCTAssertTrue(prompt.contains("folder of `.flac` files"), prompt)
+        XCTAssertTrue(prompt.contains("Do not ask after each file whether to continue"), prompt)
+        XCTAssertTrue(prompt.contains("use `list_directory` with the exact folder path"), prompt)
+        XCTAssertTrue(prompt.contains("quote paths that contain spaces"), prompt)
+        XCTAssertTrue(prompt.contains("downloaded, missing, and any extra/unmatched files"), prompt)
+        XCTAssertTrue(prompt.contains("Use silence detection only as a secondary QA/fallback"), prompt)
+        XCTAssertTrue(prompt.contains("Only call `youtube_download` for URLs the user authorized you to save"), prompt)
+        XCTAssertTrue(prompt.contains("pass `filename` like `01_Track_Title`"), prompt)
+        XCTAssertTrue(prompt.contains("Existing folders may still have spaces"), prompt)
+    }
+
+    func testOperatingRulesPreferMailCheckForMailQuestions() {
+        let prompt = BobOperatingRules.systemPrompt
+
+        XCTAssertTrue(prompt.contains("- mail_check: Check Apple Mail inbox summaries"), prompt)
+        XCTAssertTrue(prompt.contains("- mail_triage: Read short Apple Mail previews"), prompt)
+        XCTAssertTrue(prompt.contains("Mail workflow"), prompt)
+        XCTAssertTrue(prompt.contains("use `mail_check` before generic `applescript`"), prompt)
+        XCTAssertTrue(prompt.contains("use `mail_triage`, not `mail_check`"), prompt)
+        XCTAssertTrue(prompt.contains("does not read message bodies"), prompt)
+        XCTAssertTrue(prompt.contains("needs attention, what is important, or what needs a reply"), prompt)
+        XCTAssertTrue(prompt.contains("no first-class mail write tool yet"), prompt)
+    }
+
+    func testEmptyFinalMailCheckReplyFallsBackToVisibleToolResult() {
+        let normalized = AgentLoop.normalizedFinalAssistantContent(
+            "",
+            for: "check my unread mail",
+            turnHadToolFailure: false,
+            lastFailedToolResult: nil,
+            lastToolResult: .success(
+                tool: "mail_check",
+                content: "Showing 1 Mail message(s).\nMonday | unread | OpenAI <noreply@example.com> | Account notice",
+                durationMs: 12
+            )
+        )
+
+        XCTAssertTrue(normalized.contains("I found these Mail messages:"), normalized)
+        XCTAssertTrue(normalized.contains("OpenAI <noreply@example.com>"), normalized)
+    }
+
+    func testEmptyFinalMailTriageReplyFallsBackToVisiblePreviewResult() {
+        let normalized = AgentLoop.normalizedFinalAssistantContent(
+            "   \n",
+            for: "read my unread mail and tell me what needs attention",
+            turnHadToolFailure: false,
+            lastFailedToolResult: nil,
+            lastToolResult: .success(
+                tool: "mail_triage",
+                content: "Showing 1 Mail triage preview(s).\nDate: Monday\nStatus: unread\nSender: Boss\nSubject: Need approval\nPreview: Please approve this today.",
+                durationMs: 12
+            )
+        )
+
+        XCTAssertTrue(normalized.contains("I pulled these Mail previews for triage"), normalized)
+        XCTAssertTrue(normalized.contains("Need approval"), normalized)
+    }
+
+    func testBatchAudioRequestsUseExpandedAgentLoopBudget() {
+        let popularSongsBudget = AgentLoop.loopBudget(for: "Get me 15 different Ben Bohmer songs as mp3s")
+        XCTAssertEqual(popularSongsBudget.maxIterations, AppConfig.batchAudioAgentLoopMaxIterations)
+        XCTAssertEqual(popularSongsBudget.timeoutSeconds, AppConfig.batchAudioAgentLoopTimeoutSeconds)
+
+        let pastedListBudget = AgentLoop.loopBudget(for: "search and grab all these tracks from ben bohmer that i used to have before i lost my cds")
+        XCTAssertEqual(pastedListBudget.maxIterations, AppConfig.batchAudioAgentLoopMaxIterations)
+        XCTAssertEqual(pastedListBudget.timeoutSeconds, AppConfig.batchAudioAgentLoopTimeoutSeconds)
+
+        let flacBudget = AgentLoop.loopBudget(for: "Convert the FLAC folder to MP3")
+        XCTAssertEqual(flacBudget.maxIterations, AppConfig.batchAudioAgentLoopMaxIterations)
+        XCTAssertEqual(flacBudget.timeoutSeconds, AppConfig.batchAudioAgentLoopTimeoutSeconds)
+
+        let normalBudget = AgentLoop.loopBudget(for: "What is on my calendar today?")
+        XCTAssertEqual(normalBudget.maxIterations, AppConfig.agentLoopMaxIterations)
+        XCTAssertEqual(normalBudget.timeoutSeconds, AppConfig.agentLoopTimeoutSeconds)
+    }
+
+    func testBatchAudioContinuationGuardRejectsStatusOnlyNextUpReply() {
+        let userMessage = "search and grab all these tracks from ben bohmer that i used to have before i lost my cds"
+        let budget = AgentLoop.loopBudget(for: userMessage)
+        let lastDownload = ToolResult.success(
+            tool: "youtube_download",
+            content: "Downloaded to /Users/zack/Music/Bob/Ben Bohmer/Hiding.mp3",
+            durationMs: 10
+        )
+
+        XCTAssertTrue(
+            AgentLoop.shouldForceBatchAudioContinuation(
+                userMessage: userMessage,
+                assistantContent: "Bob has downloaded Hiding for you. Next up, sir, is the track Cappadocia!<channel|>",
+                lastToolResult: lastDownload,
+                loopBudget: budget,
+                nudgeCount: 0
+            )
+        )
+
+        XCTAssertFalse(
+            AgentLoop.shouldForceBatchAudioContinuation(
+                userMessage: userMessage,
+                assistantContent: "Downloaded 28 tracks to /Users/zack/Music/Bob/Ben Bohmer.",
+                lastToolResult: lastDownload,
+                loopBudget: budget,
+                nudgeCount: 0
+            )
+        )
+        XCTAssertFalse(
+            AgentLoop.shouldForceBatchAudioContinuation(
+                userMessage: "what is the weather?",
+                assistantContent: "Next up is tomorrow.",
+                lastToolResult: lastDownload,
+                loopBudget: AgentLoop.loopBudget(for: "what is the weather?"),
+                nudgeCount: 0
+            )
+        )
+        XCTAssertFalse(
+            AgentLoop.shouldForceBatchAudioContinuation(
+                userMessage: userMessage,
+                assistantContent: "Next up, sir, is Cappadocia.",
+                lastToolResult: lastDownload,
+                loopBudget: budget,
+                nudgeCount: AppConfig.batchAudioContinuationNudgeMax
+            )
+        )
+    }
+
+    func testBatchAudioAuditParsesRequestedTracksAndDownloadedFiles() {
+        let userMessage = """
+        search and grab all these tracks from ben bohmer that i used to have before i lost my cds: Breathing
+        Weightless (jamesjamesjames Remix)
+        Beyond Beliefs
+        Begin Again
+        Erase
+        Rust
+        Hiding
+        Cappadocia
+        Voodoo
+        Run Away
+        """
+        let messages: [OllamaMessage] = [
+            .toolResult(name: "youtube_download", content: "<untrusted>\nDownloaded to /Users/zack/Music/Bob/Ben Bohmer - Missing CDs/01 - Breathing.mp3\n</untrusted>"),
+            .toolResult(name: "youtube_download", content: "<untrusted>\nDownloaded to /Users/zack/Music/Bob/Ben Bohmer - Missing CDs/03 - Beyond Beliefs.mp3\n</untrusted>"),
+            .toolResult(name: "youtube_download", content: "<untrusted>\nDownloaded to /Users/zack/Music/Bob/Ben Bohmer - Missing CDs/06 - Best of Ben Böhmer (Mix).mp3\n</untrusted>"),
+            .toolResult(name: "youtube_download", content: "<untrusted>\nDownloaded to /Users/zack/Music/Bob/Ben Bohmer - Missing CDs/08 - Hiding.mp3\n</untrusted>")
+        ]
+
+        let requested = AgentLoop.requestedBatchAudioTracks(from: userMessage)
+        XCTAssertEqual(requested.first, "Breathing")
+        XCTAssertEqual(requested.count, 10)
+
+        let audit = AgentLoop.batchAudioAudit(userMessage: userMessage, messages: messages)
+        XCTAssertEqual(audit?.requestedTracks.count, 10)
+        XCTAssertEqual(audit?.downloadedTracks.count, 4)
+        XCTAssertEqual(audit?.outputDirectory, "/Users/zack/Music/Bob/Ben Bohmer - Missing CDs")
+        XCTAssertEqual(
+            audit?.missingTracks,
+            [
+                "Weightless (jamesjamesjames Remix)",
+                "Begin Again",
+                "Erase",
+                "Rust",
+                "Cappadocia",
+                "Voodoo",
+                "Run Away"
+            ]
+        )
+        XCTAssertEqual(audit?.unmatchedDownloads, ["Best of Ben Böhmer (Mix)"])
+    }
+
+    func testBatchAudioAuditFindsPriorPastedListForFollowUpFolderQuestion() {
+        let originalRequest = """
+        search and grab all these tracks from ben bohmer:
+        Breathing
+        Beyond Beliefs
+        Cappadocia
+        """
+        let messages: [OllamaMessage] = [
+            .user(originalRequest),
+            .toolResult(name: "youtube_download", content: "Downloaded to /Users/zack/Music/Bob/Ben_Bohmer_Missing_CDs/01_Breathing.mp3"),
+            .user("i dont see all the songs in the local folder")
+        ]
+
+        let audit = AgentLoop.batchAudioAudit(
+            userMessage: "i dont see all the songs in the local folder",
+            messages: messages
+        )
+
+        XCTAssertEqual(audit?.requestedTracks, ["Breathing", "Beyond Beliefs", "Cappadocia"])
+        XCTAssertEqual(audit?.downloadedTracks, ["Breathing"])
+        XCTAssertEqual(audit?.missingTracks, ["Beyond Beliefs", "Cappadocia"])
+        XCTAssertEqual(audit?.outputDirectory, "/Users/zack/Music/Bob/Ben_Bohmer_Missing_CDs")
+    }
+
+    func testBatchAudioAuditRejectsFalseCompletionAndProducesVisibleSummary() {
+        let userMessage = """
+        search and grab all these tracks from ben bohmer:
+        Breathing
+        Beyond Beliefs
+        Cappadocia
+        """
+        let messages: [OllamaMessage] = [
+            .toolResult(name: "youtube_download", content: "Downloaded to /Users/zack/Music/Bob/Ben Bohmer - Missing CDs/01 - Breathing.mp3")
+        ]
+        let audit = AgentLoop.batchAudioAudit(userMessage: userMessage, messages: messages)
+        let lastDownload = ToolResult.success(
+            tool: "youtube_download",
+            content: "Downloaded to /Users/zack/Music/Bob/Ben Bohmer - Missing CDs/01 - Breathing.mp3",
+            durationMs: 10
+        )
+
+        XCTAssertTrue(
+            AgentLoop.shouldForceBatchAudioAuditContinuation(
+                audit: audit,
+                assistantContent: "All tools finished sir, most wery successful.",
+                lastToolResult: lastDownload,
+                loopBudget: AgentLoop.loopBudget(for: userMessage),
+                nudgeCount: 0
+            )
+        )
+        XCTAssertTrue(
+            AgentLoop.shouldReplaceBatchAudioFinalContent("", audit: audit!)
+        )
+
+        let summary = AgentLoop.batchAudioFinalSummary(audit: audit!)
+        XCTAssertTrue(summary.contains("Downloaded 1 of 3 requested tracks"), summary)
+        XCTAssertTrue(summary.contains("Missing: Beyond Beliefs, Cappadocia."), summary)
+    }
+
     func testToolHelpListIncludesBuiltInInventory() {
         let help = ToolRuntime.shared.renderToolHelpList()
 

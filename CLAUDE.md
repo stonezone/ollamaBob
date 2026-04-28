@@ -6,7 +6,7 @@ This is the Claude-facing project guide. For task execution, read it with `AGENT
 
 OllamaBob is a native macOS menu-bar assistant that runs locally. It talks directly to Ollama over the native `/api/chat` endpoint, owns its agent loop in Swift, executes first-party tools, persists local state in SQLite through GRDB, and uses native approval dialogs before risky actions.
 
-Current app version: `1.0.3`
+Current app version: `1.0.12`
 
 ## Current Product State
 
@@ -15,10 +15,11 @@ Shipped capabilities:
 - SwiftUI/AppKit menu-bar app with Bob's desk window and avatar-only mode.
 - Local Ollama chat with `stream: false`.
 - Conversation persistence, conversation manager, search, pinning, rename, and delete.
-- First-party tools for files, shell, git, web search, phone calls, rich presentation, OCR/media, utilities, YouTube, clipboard, AppleScript, and memory.
+- First-party tools for files, shell, git, web search, Apple Mail checks and triage previews, phone calls, rich presentation, OCR/media, utilities, YouTube, clipboard, AppleScript, and memory.
 - Rich presentation through one `present` tool and `PresentationService`.
 - Naughty Bob v1 as a per-conversation uncensored mode.
 - Jarvis phone tools gated by Preferences, `JARVIS_API_KEY`, and `OPERATOR_API_SECRET`.
+- Local Jarvis address book aliases from env vars, JSON maps, and VCF exports such as `~/Downloads/bobs_contacts.vcf`.
 - Bundled Bob voice clips and persona-aware avatar behavior.
 
 Authoritative current handoff: `docs/CURRENT_HANDOFF.md`
@@ -55,7 +56,7 @@ Uncensored mode does not silently fall back to the normal model stack.
 
 ## Approval Policy
 
-Read-only tools may run silently. Writes and real-world side effects require modal approval.
+Read-only tools may run silently. Writes and real-world side effects require modal approval unless the user has explicitly changed that tool badge in Preferences.
 
 Examples that require approval:
 
@@ -64,6 +65,8 @@ Examples that require approval:
 - `create_directory`
 - `clipboard_write`
 - `applescript`
+- `mail_check`
+- `mail_triage`
 - `phone_call`
 - `youtube_download`
 - image conversion or other file-writing tools
@@ -86,6 +89,7 @@ Examples that are silent:
 - `phone_status`
 
 Always preserve forbidden-command handling and path policy.
+Preferences tool badges are persisted per-tool `Auto` / `Ask` / `Deny` overrides. `Deny` maps to forbidden, `Ask` maps to modal approval, and `Auto` may only run silently when path policy and forbidden shell-command checks also allow it.
 
 ## Ollama API Notes
 
@@ -109,6 +113,19 @@ swift test
 ```
 
 `build.sh` assembles `build/OllamaBob.app`, copies the SPM resource bundle, writes the app plist, and ad-hoc signs the bundle so local launches work after framework changes.
+
+## Version And RAG Gates
+
+For every user-visible Bob change, bump the visible app version before handoff. Keep these in sync:
+
+- `OllamaBob/OllamaBob/AppConfig.swift` (`appVersion`, `appBuild`)
+- `OllamaBob/build.sh` (`CFBundleShortVersionString`, `CFBundleVersion`)
+- `README.md`
+- `CLAUDE.md`
+- `AGENTS.md`
+- `docs/CURRENT_HANDOFF.md`
+
+Before non-trivial work, search the Claude OS project KBs with the `ollamaBob-` filter when the tools or local API are available. After code or active-doc changes, update Claude OS with the new project memory/docs and refresh `ollamaBob-project_index` when code changed. Claude OS is development tooling only; do not add MCP, watcher, Python, or other Claude OS dependencies to the OllamaBob app runtime.
 
 ## Decision Log
 

@@ -3,6 +3,7 @@ import Foundation
 struct PreflightStatus {
     var ollamaReachable: Bool = false
     var modelInstalled: Bool = false
+    var requiredModelName: String = AppConfig.primaryModel
     var braveKeyPresent: Bool = false
     var jarvisPhoneEnabled: Bool = false
     var jarvisAPIKeyPresent: Bool = false
@@ -17,6 +18,7 @@ struct PreflightStatus {
 
 enum Preflight {
     static func run(
+        standardModelName: String = AppConfig.primaryModel,
         clientReachable: @escaping () async -> Bool = {
             await OllamaClient().isReachable()
         },
@@ -35,6 +37,10 @@ enum Preflight {
         }
     ) async -> PreflightStatus {
         var status = PreflightStatus()
+        let requiredModel = standardModelName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? AppConfig.primaryModel
+            : standardModelName.trimmingCharacters(in: .whitespacesAndNewlines)
+        status.requiredModelName = requiredModel
 
         // 1. Ollama reachable
         status.ollamaReachable = await clientReachable()
@@ -43,7 +49,7 @@ enum Preflight {
         if status.ollamaReachable {
             let models = await installedModels()
             status.modelInstalled = models.contains(where: { name in
-                name.hasPrefix(AppConfig.primaryModel) || name.hasPrefix(AppConfig.fallbackModel)
+                name.hasPrefix(requiredModel)
             })
         }
 

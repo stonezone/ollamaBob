@@ -45,6 +45,7 @@ jarvis-address-book.local.json
 
 # Local agent / workspace state
 .claude/
+.claude-os/
 .codex/
 .context/
 .gstack/

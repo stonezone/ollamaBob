@@ -50,7 +50,7 @@ enum YouTubeTool {
         return .success(tool: "youtube_search", content: OutputLimits.truncate(body, max: maxSearchChars), durationMs: durationMs)
     }
 
-    static func download(url: String, format: String, outputDir: String?) async -> ToolResult {
+    static func download(url: String, format: String, outputDir: String?, filename: String? = nil) async -> ToolResult {
         let start = Date()
         let trimmedURL = url.trimmingCharacters(in: .whitespacesAndNewlines)
         let normalizedFormat = format.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -83,20 +83,8 @@ enum YouTubeTool {
             return .failure(tool: "youtube_download", error: error.localizedDescription, durationMs: durationMs)
         }
 
-        let outputTemplate = "\(resolvedDir)/%(title)s.%(ext)s"
-        var args: [String]
-        switch normalizedFormat {
-        case "mp3":
-            args = ["-x", "--audio-format", "mp3", "-o", outputTemplate, trimmedURL]
-        case "m4a":
-            args = ["-x", "--audio-format", "m4a", "-o", outputTemplate, trimmedURL]
-        case "bestaudio":
-            args = ["-f", "bestaudio", "-o", outputTemplate, trimmedURL]
-        case "mp4":
-            args = ["-f", "bestvideo[ext=mp4]+bestaudio[ext=m4a]/mp4", "-o", outputTemplate, trimmedURL]
-        default:
-            args = ["-f", "bestvideo", "-o", outputTemplate, trimmedURL]
-        }
+        let outputTemplate = outputTemplate(resolvedDir: resolvedDir, filename: filename, format: normalizedFormat)
+        let args = downloadArguments(url: trimmedURL, format: normalizedFormat, outputTemplate: outputTemplate)
 
         let run = await ProcessRunner.run(executable: ytdlp, arguments: args, timeout: 300)
         let durationMs = Int(Date().timeIntervalSince(start) * 1000)
@@ -109,17 +97,76 @@ enum YouTubeTool {
         }
 
         var savedPath: String?
-        for raw in run.stderr.split(whereSeparator: \.isNewline) {
-            let line = String(raw)
+        let pathOutput = [run.stderr, run.stdout].joined(separator: "\n")
+        let savedPathPrefix = resolvedDir.hasSuffix("/") ? resolvedDir : "\(resolvedDir)/"
+        for raw in pathOutput.split(whereSeparator: \.isNewline) {
+            let line = String(raw).trimmingCharacters(in: .whitespacesAndNewlines)
             if let range = line.range(of: "[download] Destination: ") {
                 savedPath = String(line[range.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
             }
             if let range = line.range(of: "[ExtractAudio] Destination: ") {
                 savedPath = String(line[range.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
             }
+            if line.hasPrefix(savedPathPrefix) {
+                savedPath = line
+            }
         }
         let finalPath = savedPath?.isEmpty == false ? savedPath! : resolvedDir
         return .success(tool: "youtube_download", content: "Downloaded to \(finalPath)", durationMs: durationMs)
+    }
+
+    static func downloadArguments(url: String, format: String, outputTemplate: String) -> [String] {
+        let common = ["--no-playlist", "--print", "after_move:filepath", "-o", outputTemplate]
+        switch format {
+        case "mp3":
+            return ["-x", "--audio-format", "mp3"] + common + [url]
+        case "m4a":
+            return ["-x", "--audio-format", "m4a"] + common + [url]
+        case "bestaudio":
+            return ["-f", "bestaudio"] + common + [url]
+        case "mp4":
+            return ["-f", "bestvideo[ext=mp4]+bestaudio[ext=m4a]/mp4"] + common + [url]
+        default:
+            return ["-f", "bestvideo"] + common + [url]
+        }
+    }
+
+    static func outputTemplate(resolvedDir: String, filename: String?, format: String) -> String {
+        let cleanDir = resolvedDir.hasSuffix("/") && resolvedDir.count > 1
+            ? String(resolvedDir.dropLast())
+            : resolvedDir
+        let stem = sanitizedOutputStem(filename: filename, format: format) ?? "%(title)s"
+        return "\(cleanDir)/\(stem).%(ext)s"
+    }
+
+    private static func sanitizedOutputStem(filename: String?, format: String) -> String? {
+        guard var stem = filename?.trimmingCharacters(in: .whitespacesAndNewlines), !stem.isEmpty else {
+            return nil
+        }
+
+        for separator in ["/", ":", "\\"] {
+            stem = stem.replacingOccurrences(of: separator, with: "_")
+        }
+        stem = stem
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: "_")
+            .replacingOccurrences(of: #"_+"#, with: "_", options: .regularExpression)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "._- "))
+
+        let mediaExtensions: Set<String> = ["mp3", "m4a", "mp4", "webm", "opus", "mkv"]
+        let nsStem = stem as NSString
+        let ext = nsStem.pathExtension.lowercased()
+        if mediaExtensions.contains(ext) {
+            stem = nsStem.deletingPathExtension
+                .replacingOccurrences(of: #"_+"#, with: "_", options: .regularExpression)
+                .trimmingCharacters(in: CharacterSet(charactersIn: "._- "))
+        }
+
+        if stem.count > 180 {
+            stem = String(stem.prefix(180)).trimmingCharacters(in: CharacterSet(charactersIn: "._- "))
+        }
+
+        return stem.isEmpty ? nil : stem
     }
 
     private static func whichYtDlp() async -> String? {

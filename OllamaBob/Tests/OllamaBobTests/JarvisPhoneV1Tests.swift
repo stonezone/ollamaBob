@@ -146,6 +146,35 @@ final class JarvisPhoneV1Tests: XCTestCase {
         )
     }
 
+    func testLocalAddressBookParsesVCardPhoneAliases() {
+        let vcf = """
+        BEGIN:VCARD
+        VERSION:3.0
+        N:Doe;Jane;;;
+        FN:Jane Doe
+        NICKNAME:JD
+        TEL;TYPE=CELL:+1 (808) 555-0101
+        END:VCARD
+        BEGIN:VCARD
+        VERSION:3.0
+        N:Support;Shop;;;
+        FN:Shop Support
+        TEL;TYPE=WORK;TYPE=PREF:tel:+18085550102
+        END:VCARD
+        """
+
+        let parsed = LocalAddressBook.parse(Data(vcf.utf8))
+
+        XCTAssertEqual(parsed["jane doe"], "+1 (808) 555-0101")
+        XCTAssertEqual(parsed["jane"], "+1 (808) 555-0101")
+        XCTAssertEqual(parsed["jd"], "+1 (808) 555-0101")
+        XCTAssertEqual(parsed["shop support"], "+18085550102")
+        XCTAssertEqual(
+            PhoneTool.resolvedDestinationLabel("Jane", addressBookLookup: { parsed[$0] }),
+            "+18085550101"
+        )
+    }
+
     func testPhoneToolRejectsMissingInputsBeforeNetwork() async {
         let result = await PhoneTool.execute(persona: " ", to: "", purpose: "", maxMinutes: nil)
 

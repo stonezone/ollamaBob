@@ -25,6 +25,141 @@ final class Phase2_9ToolTests: XCTestCase {
             ),
             .modal
         )
+        XCTAssertEqual(ApprovalPolicy.check(toolName: "mail_check", arguments: [:]), .modal)
+        XCTAssertEqual(ApprovalPolicy.check(toolName: "mail_triage", arguments: [:]), .modal)
+    }
+
+    @MainActor
+    func testYouTubeToolDescriptionsSteerAlbumWorkflowToConfirmedAuthorizedURLs() {
+        let registry = ToolRegistry(braveKeyAvailable: false)
+        let searchDescription = registry.toolDefs
+            .first { $0.function.name == "youtube_search" }?
+            .function
+            .description ?? ""
+        let downloadDefinition = registry.toolDefs
+            .first { $0.function.name == "youtube_download" }?
+            .function
+
+        XCTAssertTrue(searchDescription.contains("Auto-select the best high-confidence match"), searchDescription)
+        XCTAssertTrue(searchDescription.contains("ask the user only when candidates are genuinely ambiguous"), searchDescription)
+        XCTAssertTrue(searchDescription.contains("do not ask the user to provide YouTube URLs"), searchDescription)
+        XCTAssertTrue(downloadDefinition?.description.contains("confirmed, authorized") == true, downloadDefinition?.description ?? "")
+        XCTAssertTrue(downloadDefinition?.parameters.properties["output_dir"]?.description.contains("~/Music/Bob/<Artist>_<Album>") == true)
+        XCTAssertTrue(downloadDefinition?.parameters.properties["filename"]?.description.contains("01_Track_Title") == true)
+    }
+
+    @MainActor
+    func testWebSearchDescriptionKeepsAlbumMetadataSeparateFromYoutubeCandidatePicking() {
+        let registry = ToolRegistry(braveKeyAvailable: true)
+        let webDescription = registry.toolDefs
+            .first { $0.function.name == "web_search" }?
+            .function
+            .description ?? ""
+
+        XCTAssertTrue(webDescription.contains("album metadata and official track lists"), webDescription)
+        XCTAssertTrue(webDescription.contains("not YouTube candidate picking"), webDescription)
+    }
+
+    func testYouTubeDownloadOutputTemplateCanUseCleanAlbumTrackFilename() {
+        let template = YouTubeTool.outputTemplate(
+            resolvedDir: "/tmp/Rage Against The Machine - Rage Against The Machine",
+            filename: "05 / Bullet in the Head.mp3",
+            format: "mp3"
+        )
+
+        XCTAssertEqual(
+            template,
+            "/tmp/Rage Against The Machine - Rage Against The Machine/05_Bullet_in_the_Head.%(ext)s"
+        )
+    }
+
+    func testYouTubeDownloadArgumentsDisablePlaylistExpansion() {
+        let args = YouTubeTool.downloadArguments(
+            url: "https://youtube.com/watch?v=abc&list=playlist",
+            format: "mp3",
+            outputTemplate: "/tmp/01 - Track.%(ext)s"
+        )
+
+        XCTAssertTrue(args.contains("--no-playlist"), args.joined(separator: " "))
+        XCTAssertTrue(args.contains("--print"), args.joined(separator: " "))
+        XCTAssertTrue(args.contains("after_move:filepath"), args.joined(separator: " "))
+    }
+
+    @MainActor
+    func testMailCheckToolIsRegisteredAsFirstClassInboxSummaryTool() {
+        let registry = ToolRegistry(braveKeyAvailable: false)
+        let definition = registry.toolDefs
+            .first { $0.function.name == "mail_check" }?
+            .function
+
+        XCTAssertNotNil(definition)
+        XCTAssertTrue(definition?.description.contains("Apple Mail inbox summaries") == true, definition?.description ?? "")
+        XCTAssertTrue(definition?.description.contains("no message bodies") == true, definition?.description ?? "")
+        XCTAssertTrue(definition?.parameters.properties.keys.contains("query") == true)
+        XCTAssertTrue(definition?.parameters.properties.keys.contains("unread_only") == true)
+        XCTAssertTrue(definition?.parameters.properties.keys.contains("limit") == true)
+        XCTAssertTrue(BuiltinToolsCatalog.entries(for: "mail").contains { $0.name == "mail_check" })
+    }
+
+    @MainActor
+    func testMailTriageToolIsRegisteredAsPreviewOnlyTool() {
+        let registry = ToolRegistry(braveKeyAvailable: false)
+        let definition = registry.toolDefs
+            .first { $0.function.name == "mail_triage" }?
+            .function
+
+        XCTAssertNotNil(definition)
+        XCTAssertTrue(definition?.description.contains("short Apple Mail message previews") == true, definition?.description ?? "")
+        XCTAssertTrue(definition?.description.contains("Does not send, delete, archive, or mark messages read") == true, definition?.description ?? "")
+        XCTAssertTrue(definition?.parameters.properties.keys.contains("preview_chars") == true)
+        XCTAssertTrue(BuiltinToolsCatalog.entries(for: "mail").contains { $0.name == "mail_triage" })
+    }
+
+    func testMailCheckBuildsEscapedLimitedReadOnlyInboxScript() {
+        let script = MailTool.buildInboxScript(
+            query: #"Boss "Urgent" \ now"#,
+            unreadOnly: false,
+            limit: 99
+        )
+
+        XCTAssertTrue(script.contains(#"set maxItems to 20"#), script)
+        XCTAssertTrue(script.contains(#"set searchText to "Boss \"Urgent\" \\ now""#), script)
+        XCTAssertTrue(script.contains("set unreadOnly to false"), script)
+        XCTAssertTrue(script.contains("sender of msg"), script)
+        XCTAssertTrue(script.contains("subject of msg"), script)
+        XCTAssertFalse(script.localizedCaseInsensitiveContains("content of msg"), script)
+        XCTAssertFalse(script.localizedCaseInsensitiveContains("do shell script"), script)
+    }
+
+    func testMailTriageBuildsLimitedPreviewScript() {
+        let script = MailTool.buildTriageScript(
+            query: "OpenAI",
+            unreadOnly: true,
+            limit: 99,
+            previewChars: 9_999
+        )
+
+        XCTAssertTrue(script.contains(#"set maxItems to 10"#), script)
+        XCTAssertTrue(script.contains(#"set maxPreviewChars to 500"#), script)
+        XCTAssertTrue(script.contains(#"set searchText to "OpenAI""#), script)
+        XCTAssertTrue(script.contains("set unreadOnly to true"), script)
+        XCTAssertTrue(script.contains("content of msg as text"), script)
+        XCTAssertTrue(script.contains("Preview: "), script)
+        XCTAssertFalse(script.localizedCaseInsensitiveContains("delete msg"), script)
+        XCTAssertFalse(script.localizedCaseInsensitiveContains("set read status"), script)
+        XCTAssertFalse(script.localizedCaseInsensitiveContains("do shell script"), script)
+    }
+
+    func testMailCheckNormalizesQueryAndClampsLimit() {
+        XCTAssertEqual(MailTool.normalizedQuery("  alpha\n beta\tgamma  "), "alpha beta gamma")
+        XCTAssertEqual(MailTool.clampedLimit(nil), 10)
+        XCTAssertEqual(MailTool.clampedLimit(0), 1)
+        XCTAssertEqual(MailTool.clampedLimit(25), 20)
+        XCTAssertEqual(MailTool.clampedTriageLimit(nil), 10)
+        XCTAssertEqual(MailTool.clampedTriageLimit(25), 10)
+        XCTAssertEqual(MailTool.clampedPreviewChars(nil), 400)
+        XCTAssertEqual(MailTool.clampedPreviewChars(20), 80)
+        XCTAssertEqual(MailTool.clampedPreviewChars(9_999), 500)
     }
 
     // MARK: - OCR
