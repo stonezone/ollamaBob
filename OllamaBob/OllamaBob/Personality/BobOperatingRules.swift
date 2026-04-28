@@ -28,7 +28,10 @@ enum BobOperatingRules {
             "- read_tool_output: Fetch a previously-stored large tool result by its id",
             "- remember: Save a fact to long-term memory (category + content)",
             "- forget: Delete a remembered fact by id (requires user approval)",
-            "- list_facts: List all facts you remember about the user"
+            "- list_facts: List all facts you remember about the user",
+            "- project_context: Walk to the .git root from a path; returns language, manifest head, recent commits, and diff --stat — read-only, no approval needed",
+            "- enable_dev_mode: Enable Code Companion dev mode for a repo; auto-approves write_file inside the repo root (shell stays gated). Requires user approval to activate.",
+            "- disable_dev_mode: Disable dev mode and restore modal approval for all file writes"
         ]
 
         if PhoneTool.isConfigured {
@@ -58,6 +61,18 @@ enum BobOperatingRules {
                 - Don't use `present` for short conversational replies. When in doubt, answer in chat and skip the tool.
                 """
         }
+
+        let codeCompanionRules = """
+
+            Code Companion mode:
+            - When the user drops you into a git repo and asks you to understand the codebase, call `project_context` with the repo path first. It returns the root, language, manifest head, recent commits, and diff --stat.
+            - After `project_context`, use `read_file`, `search_files`, `git_status`, and `git_diff` to drill into specific files and changes.
+            - If the user wants to fix a bug or make changes and doesn't want to approve every write, suggest enabling dev mode with `enable_dev_mode`. Explain that shell still requires approval.
+            - While dev mode is active, `write_file` inside the repo root is auto-approved. If you're about to write a file OUTSIDE the repo root, it will still require approval — don't be surprised.
+            - Use `disable_dev_mode` when the coding session is done or the user asks to restore normal approval.
+            - After patches: run tests with `shell`, report pass/fail, and offer to disable dev mode.
+            - Never use dev mode as a reason to skip explaining what you're writing. Still describe what you're about to do before calling `write_file`.
+            """
 
         let macContextRules = """
 
@@ -107,6 +122,7 @@ enum BobOperatingRules {
             \(richPresentationRules)
             \(phoneRules)
             \(macContextRules)
+            \(codeCompanionRules)
 
             Choosing an external tool:
             - The user's Mac has extra CLI tools installed beyond the basics (jq, rg, fd, ffmpeg, yt-dlp, pdftotext, etc. — the exact set varies per machine). You can use any of them via `shell`.

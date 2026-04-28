@@ -435,6 +435,41 @@ struct ToolRegistry {
         )
         reqs["current_context"] = []
 
+        // MARK: - Code Companion (Phase 6)
+
+        // project_context — read-only repo analysis. No approval needed.
+        defs["project_context"] = .tool(
+            name: "project_context",
+            description: "Walk up from a given path to find the nearest .git root, identify the project language from manifest files (Package.swift, Cargo.toml, go.mod, package.json, pyproject.toml, Gemfile, pom.xml, .xcodeproj), and return the repo root, language, manifest head, recent git log (-10 --oneline), and diff --stat HEAD. Fully read-only — no writes, no side effects.",
+            properties: [
+                "path": ("string", "Absolute or tilde-relative path inside the repository.")
+            ],
+            required: ["path"]
+        )
+        reqs["project_context"] = ["path"]
+
+        // enable_dev_mode — walks to .git root and stores it in DevModeStore.
+        // Relaxes write_file approval to auto inside the repo. Modal approval
+        // because it changes session policy.
+        defs["enable_dev_mode"] = .tool(
+            name: "enable_dev_mode",
+            description: "Enable Code Companion dev mode for the repository containing the given path. While active, write_file calls whose target is inside the repo root are auto-approved (no modal). shell is NEVER auto-approved in dev mode. Requires user approval to activate.",
+            properties: [
+                "path": ("string", "Absolute or tilde-relative path inside the repository.")
+            ],
+            required: ["path"]
+        )
+        reqs["enable_dev_mode"] = ["path"]
+
+        // disable_dev_mode — clears DevModeStore. Approval: .none (safe direction).
+        defs["disable_dev_mode"] = .tool(
+            name: "disable_dev_mode",
+            description: "Disable Code Companion dev mode. All file writes return to modal approval.",
+            properties: [:],
+            required: []
+        )
+        reqs["disable_dev_mode"] = []
+
         self.tools = defs
         self.requiredArgs = reqs
     }

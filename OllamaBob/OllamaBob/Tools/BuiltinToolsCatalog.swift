@@ -93,12 +93,17 @@ enum BuiltinToolsCatalog {
         Entry(name: "selected_items",  category: "context", posture: .none, description: "Return Finder-selected file paths (max 50)"),
         Entry(name: "screen_ocr",      category: "context", posture: .none, description: "Capture screen and extract text via Vision OCR"),
         Entry(name: "current_context", category: "context", posture: .none, description: "Composite: active app + Finder selection + clipboard metadata"),
+
+        // MARK: Code (Phase 6 — Code Companion)
+        Entry(name: "project_context",  category: "code", posture: .none,  description: "Walk to .git root, identify language, return manifest head + recent log + diff --stat"),
+        Entry(name: "enable_dev_mode",  category: "code", posture: .modal, description: "Enable dev mode: auto-approve write_file inside the repo root (shell stays gated)"),
+        Entry(name: "disable_dev_mode", category: "code", posture: .none,  description: "Disable dev mode and restore modal approval for all file writes"),
     ]
 
     /// Rendering order for categories in the Preferences UI.
     static let categoryOrder: [String] = [
         "files", "shell", "git", "web", "mail", "phone", "presentation", "media", "utility",
-        "youtube", "clipboard", "automation", "memory", "meta", "context"
+        "youtube", "clipboard", "automation", "memory", "meta", "context", "code"
     ]
 
     static func entries(for category: String) -> [Entry] {
