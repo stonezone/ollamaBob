@@ -43,7 +43,8 @@ struct PreferencesView: View {
                     case 3:  memoryTab
                     case 4:  shortcutsTab
                     case 5:  appearanceTab
-                    case 6:  helpTab
+                    case 6:  privacyTab
+                    case 7:  helpTab
                     default: generalTab
                     }
                 }
@@ -63,7 +64,8 @@ struct PreferencesView: View {
             tabButton("Memory", index: 3)
             tabButton("Keys", index: 4)
             tabButton("Look", index: 5)
-            tabButton("Help", index: 6)
+            tabButton("Privacy", index: 6)
+            tabButton("Help", index: 7)
             Spacer()
         }
         .padding(.horizontal, 16)
@@ -1481,6 +1483,10 @@ struct PreferencesView: View {
     }
 
     // MARK: - Help Tab
+
+    private var privacyTab: some View {
+        PrivacyLedgerView()
+    }
 
     private var helpTab: some View {
         ScrollView {
