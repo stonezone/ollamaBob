@@ -269,6 +269,20 @@ extension AgentLoop {
             let filename = args["filename"] as? String
             return await YouTubeTool.download(url: url, format: format, outputDir: outputDir, filename: filename)
 
+        // MARK: Mac Context (Phase 3)
+        // All four are read-only — NOT in isSideEffectingTool, NOT logged.
+        case "active_window":
+            return await ActiveWindowTool.execute()
+
+        case "selected_items":
+            return await SelectedItemsTool.execute()
+
+        case "screen_ocr":
+            return await ScreenOCRTool.execute()
+
+        case "current_context":
+            return await CurrentContextTool.execute()
+
         default:
             return .failure(tool: name, error: "Tool not implemented", durationMs: 0)
         }

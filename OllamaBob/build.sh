@@ -41,9 +41,9 @@ cat > "$CONTENTS/Info.plist" <<'PLIST'
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0.19</string>
+    <string>1.0.20</string>
     <key>CFBundleVersion</key>
-    <string>119</string>
+    <string>120</string>
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
     <key>LSUIElement</key>
@@ -66,6 +66,8 @@ cat > "$CONTENTS/Info.plist" <<'PLIST'
     <string>OllamaBob reads and writes events in Calendar when you ask Bob to check your schedule or add an event.</string>
     <key>NSRemindersUsageDescription</key>
     <string>OllamaBob reads and writes Reminders when you ask Bob to check your to-dos or add a new reminder.</string>
+    <key>NSScreenCaptureUsageDescription</key>
+    <string>OllamaBob captures screen content only when you explicitly ask Bob to look at the active window. The capture is OCR'd locally; the image and text never leave this machine.</string>
 </dict>
 </plist>
 PLIST
