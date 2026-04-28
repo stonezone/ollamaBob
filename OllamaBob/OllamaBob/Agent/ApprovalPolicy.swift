@@ -4,7 +4,50 @@ enum ApprovalPolicy {
     /// Determine the approval level for a tool call.
     static func check(toolName: String, arguments: [String: Any]) -> ApprovalLevel {
         let base = baseCheck(toolName: toolName, arguments: arguments)
-        return applyUserOverride(toolName: toolName, arguments: arguments, base: base)
+        let afterOverride = applyUserOverride(toolName: toolName, arguments: arguments, base: base)
+        return applyDevModeDowngrade(toolName: toolName, arguments: arguments, level: afterOverride)
+    }
+
+    // MARK: - Dev Mode downgrade (Phase 6)
+
+    /// If Code Companion dev mode is active and the tool is `write_file` with
+    /// a path inside the stored repo root, downgrade `.modal` to `.none`.
+    /// `shell` is NEVER downgraded — the repo root provides no safety boundary
+    /// for arbitrary shell commands.
+    ///
+    /// Reads `DevModeStore.shared.currentRepoRoot` via a thread-safe
+    /// `NSLock`-backed accessor. Safe to call from any actor or thread.
+    /// `shell` is NEVER downgraded — it has no per-repo safety boundary.
+    private static func applyDevModeDowngrade(
+        toolName: String,
+        arguments: [String: Any],
+        level: ApprovalLevel
+    ) -> ApprovalLevel {
+        // Only `write_file` qualifies — shell is never auto-approved.
+        guard toolName == "write_file", level == .modal else { return level }
+
+        let repoRoot = DevModeStorage.shared.get()
+
+        guard let repoRoot, !repoRoot.isEmpty else { return level }
+
+        guard let rawPath = arguments["path"] as? String,
+              let resolved = FileToolPaths.resolvedURL(for: rawPath) else {
+            return level
+        }
+
+        let normalizedRoot = (repoRoot as NSString).expandingTildeInPath
+        let standardizedRoot = URL(fileURLWithPath: normalizedRoot)
+            .standardizedFileURL.path
+        let standardizedPath = resolved.standardizedFileURL.path
+
+        // Path must start with root + "/" to prevent the prefix-attack where
+        // repoRoot="/tmp/foo" would incorrectly match path="/tmp/foobar/x.txt".
+        guard standardizedPath == standardizedRoot ||
+              standardizedPath.hasPrefix(standardizedRoot + "/") else {
+            return level
+        }
+
+        return .none
     }
 
     private static func baseCheck(toolName: String, arguments: [String: Any]) -> ApprovalLevel {
@@ -148,6 +191,19 @@ enum ApprovalPolicy {
 
         case "shell":
             return shellApproval(arguments)
+
+        // MARK: Code Companion (Phase 6)
+        case "project_context":
+            // Read-only repo analysis — no side effects.
+            return .none
+
+        case "enable_dev_mode":
+            // Relaxes write_file policy for the session — must be explicit.
+            return .modal
+
+        case "disable_dev_mode":
+            // Restores policy to safe defaults — no user risk.
+            return .none
 
         default:
             return .modal  // unknown tool = always ask

@@ -282,6 +282,18 @@ extension AgentLoop {
             let filename = args["filename"] as? String
             return await YouTubeTool.download(url: url, format: format, outputDir: outputDir, filename: filename)
 
+        // MARK: Code Companion (Phase 6)
+        case "project_context":
+            let path = args["path"] as? String ?? ""
+            return await ProjectContextTool.execute(path: path)
+
+        case "enable_dev_mode":
+            let path = args["path"] as? String ?? ""
+            return EnableDevModeTool.execute(path: path)
+
+        case "disable_dev_mode":
+            return DisableDevModeTool.execute()
+
         // MARK: Mac Context (Phase 3)
         // All four are read-only — NOT in isSideEffectingTool, NOT logged.
         case "active_window":
@@ -332,7 +344,8 @@ extension AgentLoop {
              "clipboard_write", "applescript",
              "youtube_download", "image_convert",
              "phone_call", "phone_hangup",
-             "phone_inject":
+             "phone_inject",
+             "enable_dev_mode":  // Phase 6: changes session approval policy
             return true
         case "present":
             return (args["kind"] as? String) == "file"
@@ -454,6 +467,13 @@ extension AgentLoop {
             return "YouTube search: \(args["query"] as? String ?? "?")"
         case "youtube_download":
             return "YouTube download: \(args["url"] as? String ?? "?")"
+        // MARK: Code Companion (Phase 6)
+        case "project_context":
+            return "Project context: \(args["path"] as? String ?? "?")"
+        case "enable_dev_mode":
+            return "Enable dev mode for repo containing: \(args["path"] as? String ?? "?")"
+        case "disable_dev_mode":
+            return "Disable dev mode (restore modal write_file approval)"
         default:
             return "\(name): \(args)"
         }
