@@ -127,16 +127,31 @@ final class AppSettings: ObservableObject {
         didSet { UserDefaults.standard.set(jarvisPhoneEnabled, forKey: Self.jarvisPhoneEnabledKey) }
     }
 
-    /// Shared secret for the local Jarvis daemon. Stored in UserDefaults to
-    /// match the existing Brave API key pattern.
+    /// Shared secret for the local Jarvis daemon. Phase 0c: persists to
+    /// the macOS Keychain via `KeychainService`. UserDefaults is no longer
+    /// the storage of record but is cleared on write so legacy installs
+    /// stop carrying a plaintext copy.
     @Published var jarvisAPIKey: String {
-        didSet { UserDefaults.standard.set(jarvisAPIKey, forKey: Self.jarvisAPIKeyKey) }
+        didSet { Self.persistSecret(jarvisAPIKey, secret: .jarvisAPIKey, legacyKey: Self.jarvisAPIKeyKey) }
     }
 
     /// Outer operator-auth secret required by the Jarvis daemon before the
-    /// inner call API key is even checked.
+    /// inner call API key is even checked. See `jarvisAPIKey` for storage.
     @Published var jarvisOperatorSecret: String {
-        didSet { UserDefaults.standard.set(jarvisOperatorSecret, forKey: Self.jarvisOperatorSecretKey) }
+        didSet { Self.persistSecret(jarvisOperatorSecret, secret: .jarvisOperatorSecret, legacyKey: Self.jarvisOperatorSecretKey) }
+    }
+
+    private static func persistSecret(_ value: String, secret: KeychainSecretKey, legacyKey: String) {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            try? KeychainService.current.delete(secret)
+            UserDefaults.standard.removeObject(forKey: legacyKey)
+        } else {
+            try? KeychainService.current.write(trimmed, for: secret)
+            // Clear the legacy slot once we've successfully written
+            // to the Keychain. UserDefaults no longer carries the secret.
+            UserDefaults.standard.removeObject(forKey: legacyKey)
+        }
     }
 
     private enum Keys {
@@ -208,12 +223,10 @@ final class AppSettings: ObservableObject {
         if defaults.object(forKey: Self.jarvisPhoneEnabledKey) == nil {
             defaults.set(false, forKey: Self.jarvisPhoneEnabledKey)
         }
-        if defaults.object(forKey: Self.jarvisAPIKeyKey) == nil {
-            defaults.set(LocalEnv.value(for: "JARVIS_API_KEY") ?? "", forKey: Self.jarvisAPIKeyKey)
-        }
-        if defaults.object(forKey: Self.jarvisOperatorSecretKey) == nil {
-            defaults.set(LocalEnv.value(for: "OPERATOR_API_SECRET") ?? "", forKey: Self.jarvisOperatorSecretKey)
-        }
+        // Phase 0c: secrets live in the Keychain. We no longer write the
+        // .env value into UserDefaults on first launch (that path is what
+        // SecretMigration is migrating *out of*). Tests / CI seed the
+        // Keychain directly when needed.
 
         self.showBob               = defaults.bool(forKey: Keys.showBob)
         self.chatWindowOpacity     = defaults.double(forKey: Keys.chatWindowOpacity)
@@ -232,8 +245,14 @@ final class AppSettings: ObservableObject {
         self.uncensoredModeAvailable = defaults.bool(forKey: Keys.uncensoredModeAvailable)
         self.uncensoredModelName = defaults.string(forKey: Keys.uncensoredModelName) ?? Self.defaultUncensoredModelName
         self.jarvisPhoneEnabled = defaults.bool(forKey: Self.jarvisPhoneEnabledKey)
-        self.jarvisAPIKey = defaults.string(forKey: Self.jarvisAPIKeyKey) ?? ""
-        self.jarvisOperatorSecret = defaults.string(forKey: Self.jarvisOperatorSecretKey) ?? ""
+        // Phase 0c: read Keychain first; fall back to legacy UserDefaults so
+        // an un-migrated install still shows the existing key in Preferences.
+        self.jarvisAPIKey = KeychainService.current.read(.jarvisAPIKey)
+            ?? defaults.string(forKey: Self.jarvisAPIKeyKey)
+            ?? ""
+        self.jarvisOperatorSecret = KeychainService.current.read(.jarvisOperatorSecret)
+            ?? defaults.string(forKey: Self.jarvisOperatorSecretKey)
+            ?? ""
 
         let storedCtx = defaults.integer(forKey: Keys.numCtx)
         self.numCtx = AppConfig.numCtxAllowed.contains(storedCtx) ? storedCtx : AppConfig.numCtx

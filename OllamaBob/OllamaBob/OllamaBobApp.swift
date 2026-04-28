@@ -155,7 +155,18 @@ final class AppState: ObservableObject {
     init() {
         initDatabase()
         setupApprovalHandler()
+        runSecretMigrationIfNeeded()
         runPreflight()
+    }
+
+    /// Phase 0c: one-time prompt to move legacy UserDefaults secrets into the
+    /// Keychain. Runs at launch; declines are quiet (re-prompt next launch).
+    private func runSecretMigrationIfNeeded() {
+        // Defer to the next runloop turn so the SwiftUI scene has time to
+        // mount before we surface a modal NSAlert.
+        DispatchQueue.main.async {
+            _ = SecretMigration.runIfNeeded()
+        }
     }
 
     private func initDatabase() {

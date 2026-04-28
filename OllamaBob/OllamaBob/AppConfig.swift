@@ -10,8 +10,8 @@ struct AppConfig {
     }
 
     // MARK: - App Version
-    static let appVersion = "1.0.15"
-    static let appBuild = "115"
+    static let appVersion = "1.0.16"
+    static let appBuild = "116"
 
     // MARK: - HTML Sanitizer
     /// Bumped whenever PresentationService's HTML allowlist or
@@ -91,8 +91,14 @@ struct AppConfig {
     static let batchAudioContinuationNudgeMax = 64
 
     // MARK: - Brave Search
+    /// Read order: Keychain (Phase 0c migration target) -> process env -> UserDefaults legacy.
+    /// UserDefaults stays in the chain so an un-migrated install keeps working
+    /// until SecretMigration runs.
     static var braveAPIKey: String {
-        ProcessInfo.processInfo.environment["BRAVE_API_KEY"]
+        if let keychain = KeychainService.current.read(.braveAPIKey), !keychain.isEmpty {
+            return keychain
+        }
+        return ProcessInfo.processInfo.environment["BRAVE_API_KEY"]
             ?? UserDefaults.standard.string(forKey: "braveAPIKey")
             ?? ""
     }

@@ -492,7 +492,7 @@ struct PreferencesView: View {
                     Text("Jarvis API key")
                         .font(.system(.caption, design: .monospaced).weight(.medium))
                         .foregroundColor(.white)
-                    Text("Inner call API key sent to the local daemon as X-Jarvis-Key. Stored locally in UserDefaults.")
+                    Text("Inner call API key sent to the local daemon as X-Jarvis-Key. Stored in the macOS Keychain.")
                         .font(.system(.caption2, design: .monospaced))
                         .foregroundColor(PreferencesView.textGrey)
                         .fixedSize(horizontal: false, vertical: true)
@@ -509,11 +509,24 @@ struct PreferencesView: View {
                             .fill(PreferencesView.bgBlack)
                     )
 
+                Button("Import from .env") {
+                    if let result = SecretMigration.importFromEnvironment(.jarvisAPIKey),
+                       result.success,
+                       let imported = KeychainService.current.read(.jarvisAPIKey) {
+                        settings.jarvisAPIKey = imported
+                    }
+                }
+                .buttonStyle(.plain)
+                .font(.system(.caption2, design: .monospaced))
+                .foregroundColor(PreferencesView.phosphorGreen)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Operator secret")
                         .font(.system(.caption, design: .monospaced).weight(.medium))
                         .foregroundColor(.white)
-                    Text("Outer operator-auth secret sent as x-operator-secret. Jarvis call routes currently require both this and the Jarvis API key.")
+                    Text("Outer operator-auth secret sent as x-operator-secret. Jarvis call routes currently require both this and the Jarvis API key. Stored in the macOS Keychain.")
                         .font(.system(.caption2, design: .monospaced))
                         .foregroundColor(PreferencesView.textGrey)
                         .fixedSize(horizontal: false, vertical: true)
@@ -537,6 +550,19 @@ struct PreferencesView: View {
                         RoundedRectangle(cornerRadius: 4, style: .continuous)
                             .stroke(PreferencesView.phosphorGreen.opacity(0.35), lineWidth: 1)
                     )
+
+                Button("Import from .env") {
+                    if let result = SecretMigration.importFromEnvironment(.jarvisOperatorSecret),
+                       result.success,
+                       let imported = KeychainService.current.read(.jarvisOperatorSecret) {
+                        settings.jarvisOperatorSecret = imported
+                    }
+                }
+                .buttonStyle(.plain)
+                .font(.system(.caption2, design: .monospaced))
+                .foregroundColor(PreferencesView.phosphorGreen)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
 
                 HStack(spacing: 8) {
                     Button(jarvisHealthState.isChecking ? "Checking…" : "Test connection") {
