@@ -51,7 +51,10 @@ enum BuiltinToolsCatalog {
         // MARK: Phone
         Entry(name: "phone_call", category: "phone", posture: .modal, description: "Place a real phone call through the Jarvis phone service (defaults to Bob as caller; requires both Jarvis secrets)"),
         Entry(name: "phone_hangup", category: "phone", posture: .none, description: "End an active Jarvis phone call"),
-        Entry(name: "phone_status", category: "phone", posture: .none, description: "Check the current status of a Jarvis phone call"),
+        Entry(name: "phone_status",          category: "phone", posture: .none,  description: "Check the current status of a Jarvis phone call"),
+        Entry(name: "phone_list_calls",      category: "phone", posture: .none,  description: "List active Jarvis phone calls being supervised"),
+        Entry(name: "phone_get_transcript",  category: "phone", posture: .none,  description: "Fetch the latest transcript chunk for a supervised call"),
+        Entry(name: "phone_inject",          category: "phone", posture: .modal, description: "Inject text into an active Jarvis call (requires approval per injection)"),
 
         // MARK: Presentation
         Entry(name: "present", category: "presentation", posture: .none, description: "Open rich HTML, URLs, or local files in the user's apps"),

@@ -51,6 +51,19 @@ enum ApprovalPolicy {
         case "phone_status":
             return .none
 
+        // Phase 4a — call supervision tools
+        case "phone_list_calls":
+            // Read-only list of active calls — no approval needed.
+            return .none
+
+        case "phone_get_transcript":
+            // Read-only transcript fetch — no approval needed.
+            return .none
+
+        case "phone_inject":
+            // Side-effecting: injects text into an active call — always ask.
+            return .modal
+
         case "web_search":
             return .none
 
