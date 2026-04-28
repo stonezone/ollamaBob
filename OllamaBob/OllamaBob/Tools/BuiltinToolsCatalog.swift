@@ -84,12 +84,18 @@ enum BuiltinToolsCatalog {
         // MARK: Meta
         Entry(name: "tool_help",        category: "meta", posture: .none, description: "Look up help for an external CLI tool"),
         Entry(name: "read_tool_output", category: "meta", posture: .none, description: "Fetch a previously stored large tool output"),
+
+        // MARK: Context (Phase 3 — Mac Context Lens)
+        Entry(name: "active_window",   category: "context", posture: .none, description: "Return frontmost app name and window title"),
+        Entry(name: "selected_items",  category: "context", posture: .none, description: "Return Finder-selected file paths (max 50)"),
+        Entry(name: "screen_ocr",      category: "context", posture: .none, description: "Capture screen and extract text via Vision OCR"),
+        Entry(name: "current_context", category: "context", posture: .none, description: "Composite: active app + Finder selection + clipboard metadata"),
     ]
 
     /// Rendering order for categories in the Preferences UI.
     static let categoryOrder: [String] = [
         "files", "shell", "git", "web", "mail", "phone", "presentation", "media", "utility",
-        "youtube", "clipboard", "automation", "memory", "meta"
+        "youtube", "clipboard", "automation", "memory", "meta", "context"
     ]
 
     static func entries(for category: String) -> [Entry] {

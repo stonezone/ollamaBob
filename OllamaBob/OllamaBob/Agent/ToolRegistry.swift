@@ -369,6 +369,42 @@ struct ToolRegistry {
         )
         reqs["youtube_download"] = ["url", "format"]
 
+        // MARK: - Mac Context (Phase 3)
+        // All four tools are read-only (approval: .none). They capture data
+        // from the user's current Mac environment on explicit model request only.
+
+        defs["active_window"] = .tool(
+            name: "active_window",
+            description: "Return the frontmost app bundle ID, display name, and window title (when accessible via Accessibility). Use this when the user asks what app they're looking at, what file they have open, or what the current window title is.",
+            properties: [:],
+            required: []
+        )
+        reqs["active_window"] = []
+
+        defs["selected_items"] = .tool(
+            name: "selected_items",
+            description: "Return the list of paths currently selected in Finder (max 50). Use this when the user says 'these files', 'what I have selected', or wants Bob to work on whatever is highlighted in Finder. Returns empty if Finder is not frontmost or nothing is selected.",
+            properties: [:],
+            required: []
+        )
+        reqs["selected_items"] = []
+
+        defs["screen_ocr"] = .tool(
+            name: "screen_ocr",
+            description: "Capture the frontmost screen and extract its text via Apple Vision OCR. Use when the user says 'look at my screen', 'read what's on my screen', 'what does this say', or wants Bob to see what's visible. Returns text prefixed with '(captured at HH:MM:SS)'. Caps at ~10KB. Requires Screen Recording permission.",
+            properties: [:],
+            required: []
+        )
+        reqs["screen_ocr"] = []
+
+        defs["current_context"] = .tool(
+            name: "current_context",
+            description: "Return a composite snapshot: frontmost app + window title, Finder selection (paths), and clipboard metadata (length/preview). Does NOT capture the screen — call screen_ocr explicitly for that. Use this when the user says 'what am I working on', 'what's on my clipboard', or wants Bob to orient to the current Mac environment.",
+            properties: [:],
+            required: []
+        )
+        reqs["current_context"] = []
+
         self.tools = defs
         self.requiredArgs = reqs
     }

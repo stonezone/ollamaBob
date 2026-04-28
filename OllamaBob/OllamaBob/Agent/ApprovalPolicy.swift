@@ -108,6 +108,13 @@ enum ApprovalPolicy {
         case "speak":
             return .none
 
+        // Phase 3 — Mac Context Lens read-only tools. The frontmost-app /
+        // selection / clipboard-meta / OCR helpers are inspection-only;
+        // the tool call itself is the user's explicit intent ("look at
+        // my screen"). No modal needed.
+        case "active_window", "selected_items", "current_context", "screen_ocr":
+            return .none
+
         case "weather":
             return .none
 
