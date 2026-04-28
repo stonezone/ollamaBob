@@ -8,6 +8,55 @@ enum RichHTMLNavigationDecision: Equatable {
     case openExternal
 }
 
+// MARK: - Rich HTML defense-in-depth
+//
+// `present(kind=html)` renders model-produced HTML inside `WKWebView`. The
+// content surface is unsandboxed by macOS standards and the input is
+// untrusted, so the rendering path is intentionally redundant. There are
+// four independent layers; weakening or removing any one of them is a
+// security regression. Phase 0b moved layer 1 from regex stripping to a
+// SwiftSoup allowlist parser; the other three layers were untouched on
+// purpose.
+//
+// Layer 1 — Pre-WebView sanitizer (`PresentationService.sanitizeHTML`).
+//   Parses input with SwiftSoup, drops dangerous element types
+//   (script, iframe, object, embed, form, input, button, base, meta, link,
+//   applet, frame, frameset, noscript, style), strips on* event handlers,
+//   neutralizes javascript:/vbscript:/non-image data: URLs, and removes
+//   CSS expression(), behavior:, @import, and remote url() values.
+//   Defends against: tag-based XSS, event-handler XSS, dangerous URL
+//   schemes, base-tag hijacking, form/credential exfiltration, CSS
+//   expression XSS.
+//
+// Layer 2 — Document Content-Security-Policy (`PresentationService
+//   .injectDocumentDefaults`). Even if the sanitizer misses something,
+//   the CSP on the rendered document blocks default-src, restricts
+//   img-src/style-src/connect-src/frame-src by remote-resources mode,
+//   and disables object-src entirely.
+//   Defends against: post-sanitizer code execution, frame embedding,
+//   exfiltration via fetch/XHR, plugin loading.
+//
+// Layer 3 — JavaScript disabled at the WKWebView level
+//   (`prefs.allowsContentJavaScript = false` in `makeNSView`). Even if a
+//   <script> tag survived layers 1 and 2, the WebView refuses to run it.
+//   Defends against: residual script execution from any source.
+//
+// Layer 4 — Navigation blocking (`navigationDecision`). Only same-document
+//   anchors and explicit user link clicks survive; meta-refresh, form
+//   POSTs, top-level scheme jumps, and other auto-navigation are
+//   cancelled. Link clicks open in the user's default browser instead
+//   of replacing the companion view.
+//   Defends against: meta-refresh redirect, form action navigation,
+//   companion-view replacement, scheme-jump escapes.
+//
+// `loadHTMLString(html, baseURL: nil)` is also used deliberately — there
+// is no implicit base URL the document can use to resolve relative
+// references against an attacker-controlled origin.
+//
+// AppConfig.htmlSanitizerVersion tracks layer 1's rule generation; bump
+// it when material rules change so we can correlate output with a
+// known sanitizer revision.
+
 struct RichHTMLView: NSViewRepresentable {
     @ObservedObject var state: RichHTMLState
 
