@@ -382,15 +382,22 @@ private struct JarvisConfiguration {
     }
 
     static var apiKey: String {
+        // Read order: Keychain (Phase 0c) -> process env -> UserDefaults legacy.
+        if let keychain = KeychainService.current.read(.jarvisAPIKey), !keychain.isEmpty {
+            return keychain
+        }
         let env = ProcessInfo.processInfo.environment["JARVIS_API_KEY"] ?? ""
-        let stored = UserDefaults.standard.string(forKey: AppSettings.jarvisAPIKeyKey) ?? ""
-        return env.isEmpty ? stored : env
+        if !env.isEmpty { return env }
+        return UserDefaults.standard.string(forKey: AppSettings.jarvisAPIKeyKey) ?? ""
     }
 
     static var operatorSecret: String {
+        if let keychain = KeychainService.current.read(.jarvisOperatorSecret), !keychain.isEmpty {
+            return keychain
+        }
         let env = ProcessInfo.processInfo.environment["OPERATOR_API_SECRET"] ?? ""
-        let stored = UserDefaults.standard.string(forKey: AppSettings.jarvisOperatorSecretKey) ?? ""
-        return env.isEmpty ? stored : env
+        if !env.isEmpty { return env }
+        return UserDefaults.standard.string(forKey: AppSettings.jarvisOperatorSecretKey) ?? ""
     }
 }
 

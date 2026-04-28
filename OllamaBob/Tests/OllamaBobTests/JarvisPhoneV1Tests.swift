@@ -570,8 +570,25 @@ final class JarvisPhoneV1Tests: XCTestCase {
 private final class JarvisDefaultsScope {
     private let originalAPIKey = UserDefaults.standard.string(forKey: AppSettings.jarvisAPIKeyKey)
     private let originalOperatorSecret = UserDefaults.standard.string(forKey: AppSettings.jarvisOperatorSecretKey)
+    private let previousSecretOverride: SecretStoring?
+    private let store = InMemorySecretStore()
 
     init(apiKey: String?, operatorSecret: String?) {
+        // Install a per-test in-memory secret store BEFORE we set legacy
+        // UserDefaults values, so production code paths that consult
+        // KeychainService.current see the test values rather than whatever
+        // happens to be in the developer's real macOS Keychain. This is
+        // mandatory after Phase 0c — without it, an existing real Keychain
+        // entry would be returned instead of the test fixture and the
+        // diff/test output would leak the live secret.
+        self.previousSecretOverride = KeychainService.testOverride
+        KeychainService.testOverride = store
+        if let apiKey, !apiKey.isEmpty {
+            try? store.write(apiKey, for: .jarvisAPIKey)
+        }
+        if let operatorSecret, !operatorSecret.isEmpty {
+            try? store.write(operatorSecret, for: .jarvisOperatorSecret)
+        }
         apply(value: apiKey, forKey: AppSettings.jarvisAPIKeyKey)
         apply(value: operatorSecret, forKey: AppSettings.jarvisOperatorSecretKey)
     }
@@ -579,6 +596,7 @@ private final class JarvisDefaultsScope {
     deinit {
         apply(value: originalAPIKey, forKey: AppSettings.jarvisAPIKeyKey)
         apply(value: originalOperatorSecret, forKey: AppSettings.jarvisOperatorSecretKey)
+        KeychainService.testOverride = previousSecretOverride
     }
 
     private func apply(value: String?, forKey key: String) {

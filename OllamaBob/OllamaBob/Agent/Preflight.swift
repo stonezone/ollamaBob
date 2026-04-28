@@ -27,8 +27,8 @@ enum Preflight {
         },
         braveKeyPresent: Bool = !AppConfig.braveAPIKey.isEmpty,
         jarvisPhoneEnabled: Bool = UserDefaults.standard.bool(forKey: "jarvisPhoneEnabled"),
-        jarvisAPIKeyPresent: Bool = !(UserDefaults.standard.string(forKey: "jarvisAPIKey") ?? LocalEnv.value(for: "JARVIS_API_KEY") ?? "").isEmpty,
-        jarvisOperatorSecretPresent: Bool = !(UserDefaults.standard.string(forKey: "jarvisOperatorSecret") ?? LocalEnv.value(for: "OPERATOR_API_SECRET") ?? "").isEmpty,
+        jarvisAPIKeyPresent: Bool = !(KeychainService.current.read(.jarvisAPIKey) ?? UserDefaults.standard.string(forKey: "jarvisAPIKey") ?? LocalEnv.value(for: "JARVIS_API_KEY") ?? "").isEmpty,
+        jarvisOperatorSecretPresent: Bool = !(KeychainService.current.read(.jarvisOperatorSecret) ?? UserDefaults.standard.string(forKey: "jarvisOperatorSecret") ?? LocalEnv.value(for: "OPERATOR_API_SECRET") ?? "").isEmpty,
         databaseWritable: () -> Bool = {
             DatabaseManager.shared.canWrite()
         },
