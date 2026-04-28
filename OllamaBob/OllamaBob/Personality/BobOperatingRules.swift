@@ -35,6 +35,9 @@ enum BobOperatingRules {
             toolLines.insert("- phone_call: Place a real phone call through the Jarvis phone service daemon", at: 5)
             toolLines.insert("- phone_hangup: End an active Jarvis phone call by call id", at: 6)
             toolLines.insert("- phone_status: Check the current status of a Jarvis phone call by call id", at: 7)
+            toolLines.insert("- phone_list_calls: List active Jarvis phone calls currently being supervised", at: 8)
+            toolLines.insert("- phone_get_transcript: Fetch the latest transcript chunk for a supervised call by call_id", at: 9)
+            toolLines.insert("- phone_inject: Inject text into an active call mid-conversation (requires approval per injection)", at: 10)
         }
 
         var richPresentationRules = ""
@@ -70,6 +73,13 @@ enum BobOperatingRules {
         var phoneRules = ""
         if PhoneTool.isConfigured {
             phoneRules = """
+
+                Call supervision:
+                - Use `phone_list_calls` to see which Jarvis calls are currently active.
+                - Use `phone_get_transcript` with a callID to read the latest conversation transcript.
+                - Use `phone_inject` with a callID and text to inject a message mid-call. Every injection requires user approval — do not inject without confirming with the user first.
+                - After calling `phone_inject`, follow up with `phone_get_transcript` to confirm the injection appeared.
+                - Do not repeatedly poll `phone_get_transcript` without a user request. Check once and report back.
 
                 Phone calls:
                 - If the user asks you to make a phone call, use `phone_call`.

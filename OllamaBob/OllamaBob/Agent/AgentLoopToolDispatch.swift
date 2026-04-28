@@ -195,6 +195,19 @@ extension AgentLoop {
             let callID = args["call_id"] as? String ?? ""
             return await PhoneTool.status(callID: callID)
 
+        // MARK: Phase 4a — Call Supervision
+        case "phone_list_calls":
+            return await PhoneListCallsTool.execute()
+
+        case "phone_get_transcript":
+            let callID = args["call_id"] as? String ?? ""
+            return await PhoneTranscriptTool.execute(callID: callID)
+
+        case "phone_inject":
+            let callID = args["call_id"] as? String ?? ""
+            let text = args["text"] as? String ?? ""
+            return await PhoneInjectTool.execute(callID: callID, text: text)
+
         case "present":
             let kind = args["kind"] as? String ?? ""
             let content = args["content"] as? String ?? ""
@@ -318,7 +331,8 @@ extension AgentLoop {
         case "write_file", "move_file", "create_directory",
              "clipboard_write", "applescript",
              "youtube_download", "image_convert",
-             "phone_call", "phone_hangup":
+             "phone_call", "phone_hangup",
+             "phone_inject":
             return true
         case "present":
             return (args["kind"] as? String) == "file"
@@ -392,6 +406,14 @@ extension AgentLoop {
             return "Hang up call: \(args["call_id"] as? String ?? "unknown")"
         case "phone_status":
             return "Check call status: \(args["call_id"] as? String ?? "unknown")"
+        case "phone_list_calls":
+            return "List active Jarvis calls"
+        case "phone_get_transcript":
+            return "Fetch transcript for call: \(args["call_id"] as? String ?? "unknown")"
+        case "phone_inject":
+            let callID = args["call_id"] as? String ?? "unknown"
+            let text = args["text"] as? String ?? ""
+            return "Inject into call \(callID): \"\(text.prefix(80))\(text.count > 80 ? "…" : "")\""
         case "present":
             let kind = args["kind"] as? String ?? "?"
             let title = (args["title"] as? String).flatMap { $0.isEmpty ? nil : $0 }

@@ -23,6 +23,10 @@ struct OllamaBobApp: App {
                 openWindow(id: "tool-activity")
             }
 
+            Button("Live Call…") {
+                openWindow(id: "live-call")
+            }
+
             Button("Preferences…") {
                 openWindow(id: "preferences")
             }
@@ -126,6 +130,12 @@ struct OllamaBobApp: App {
             ToolActivityView(agentLoop: appState.agentLoop)
         }
         .defaultSize(width: 450, height: 400)
+
+        Window("Live Call", id: "live-call") {
+            LiveCallView()
+                .allowsHitTesting(true)
+        }
+        .defaultSize(width: 520, height: 520)
 
         Window("Bob's View", id: "rich-html") {
             RichHTMLView(state: PresentationService.shared.richHTMLState)

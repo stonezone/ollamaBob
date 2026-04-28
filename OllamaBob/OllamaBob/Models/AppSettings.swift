@@ -12,6 +12,7 @@ final class AppSettings: ObservableObject {
     nonisolated static let jarvisAPIKeyKey = "jarvisAPIKey"
     nonisolated static let jarvisOperatorSecretKey = "jarvisOperatorSecret"
     nonisolated static let toolApprovalOverridesKey = "toolApprovalOverrides"
+    nonisolated static let useMockedJarvisClientKey = "useMockedJarvisClient"
 
     @Published var showBob: Bool {
         didSet { UserDefaults.standard.set(showBob, forKey: Keys.showBob) }
@@ -135,6 +136,13 @@ final class AppSettings: ObservableObject {
         didSet { Self.persistSecret(jarvisAPIKey, secret: .jarvisAPIKey, legacyKey: Self.jarvisAPIKeyKey) }
     }
 
+    /// When true, JarvisCallClientFactory returns JarvisCallClientMock instead of
+    /// JarvisCallClientHTTP. Default: TRUE in DEBUG builds, FALSE in release builds.
+    /// Only has an effect in DEBUG builds — the factory ignores this flag in release.
+    @Published var useMockedJarvisClient: Bool {
+        didSet { UserDefaults.standard.set(useMockedJarvisClient, forKey: Self.useMockedJarvisClientKey) }
+    }
+
     /// Outer operator-auth secret required by the Jarvis daemon before the
     /// inner call API key is even checked. See `jarvisAPIKey` for storage.
     @Published var jarvisOperatorSecret: String {
@@ -172,6 +180,13 @@ final class AppSettings: ObservableObject {
         static let uncensoredModeAvailable = "uncensoredModeAvailable"
         static let uncensoredModelName = "uncensoredModelName"
     }
+
+    // Phase 4a default: true in DEBUG, false in release.
+    #if DEBUG
+    private static let defaultMockedJarvisClient = true
+    #else
+    private static let defaultMockedJarvisClient = false
+    #endif
 
     private init() {
         let defaults = UserDefaults.standard
@@ -223,6 +238,9 @@ final class AppSettings: ObservableObject {
         if defaults.object(forKey: Self.jarvisPhoneEnabledKey) == nil {
             defaults.set(false, forKey: Self.jarvisPhoneEnabledKey)
         }
+        if defaults.object(forKey: Self.useMockedJarvisClientKey) == nil {
+            defaults.set(Self.defaultMockedJarvisClient, forKey: Self.useMockedJarvisClientKey)
+        }
         // Phase 0c: secrets live in the Keychain. We no longer write the
         // .env value into UserDefaults on first launch (that path is what
         // SecretMigration is migrating *out of*). Tests / CI seed the
@@ -245,6 +263,7 @@ final class AppSettings: ObservableObject {
         self.uncensoredModeAvailable = defaults.bool(forKey: Keys.uncensoredModeAvailable)
         self.uncensoredModelName = defaults.string(forKey: Keys.uncensoredModelName) ?? Self.defaultUncensoredModelName
         self.jarvisPhoneEnabled = defaults.bool(forKey: Self.jarvisPhoneEnabledKey)
+        self.useMockedJarvisClient = defaults.bool(forKey: Self.useMockedJarvisClientKey)
         // Phase 0c: read Keychain first; fall back to legacy UserDefaults so
         // an un-migrated install still shows the existing key in Preferences.
         self.jarvisAPIKey = KeychainService.current.read(.jarvisAPIKey)

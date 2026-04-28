@@ -109,6 +109,36 @@ struct ToolRegistry {
         )
         reqs["search_files"] = ["pattern"]
 
+        // phone_list_calls / phone_get_transcript / phone_inject — Phase 4a call supervision
+        defs["phone_list_calls"] = .tool(
+            name: "phone_list_calls",
+            description: "List active Jarvis phone calls being supervised. Returns callID, destination, persona, status, and duration for each active call.",
+            properties: [:],
+            required: []
+        )
+        reqs["phone_list_calls"] = []
+
+        defs["phone_get_transcript"] = .tool(
+            name: "phone_get_transcript",
+            description: "Fetch the latest transcript chunk for an active Jarvis phone call. Returns timestamped speaker lines for caller and callee.",
+            properties: [
+                "call_id": ("string", "The callID returned by phone_list_calls.")
+            ],
+            required: ["call_id"]
+        )
+        reqs["phone_get_transcript"] = ["call_id"]
+
+        defs["phone_inject"] = .tool(
+            name: "phone_inject",
+            description: "Inject text into an active Jarvis phone call mid-conversation, for example to add a clarification or instruction. Every injection requires explicit user approval.",
+            properties: [
+                "call_id": ("string", "The callID of the active call to inject into."),
+                "text":    ("string", "The text to inject into the active call.")
+            ],
+            required: ["call_id", "text"]
+        )
+        reqs["phone_inject"] = ["call_id", "text"]
+
         // phone_call / phone_hangup / phone_status
         if PhoneTool.isConfigured {
             defs["phone_call"] = .tool(
