@@ -10,8 +10,15 @@ struct AppConfig {
     }
 
     // MARK: - App Version
-    static let appVersion = "1.0.14"
-    static let appBuild = "114"
+    static let appVersion = "1.0.15"
+    static let appBuild = "115"
+
+    // MARK: - HTML Sanitizer
+    /// Bumped whenever PresentationService's HTML allowlist or
+    /// rule set changes. Used as metadata for tracking which
+    /// rule generation produced sanitized output (defense-in-depth
+    /// hardening, Phase 0b — replaced regex pass with SwiftSoup).
+    static let htmlSanitizerVersion = 1
 
     // MARK: - Models
     static let primaryModel = "gemma4:e4b"

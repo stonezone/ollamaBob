@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import SwiftSoup
 
 @MainActor
 enum PresentationKind: String, CaseIterable, Sendable {
@@ -209,42 +210,148 @@ final class PresentationService: ObservableObject {
         return "Opened file: \(fileURL.path)"
     }
 
+    /// Pre-WebView allowlist sanitizer. Defense-in-depth layer #1.
+    ///
+    /// Parses the input as HTML with SwiftSoup, drops dangerous element types
+    /// outright, walks every remaining element to strip `on*` event handlers,
+    /// neutralize dangerous URL schemes (`javascript:`, `vbscript:`, non-image
+    /// `data:`) on URL-bearing attributes, and clean inline `style` attributes
+    /// of `expression(...)`, `behavior:`, `@import`, and remote `url(...)`
+    /// when `allowRemoteResources == false`.
+    ///
+    /// Bumping `AppConfig.htmlSanitizerVersion` is the contract for material
+    /// rule changes here. Backstops in `RichHTMLView` (CSP, JS disabled,
+    /// navigation blocking) are independent and intentionally redundant.
+    /// On parse failure: returns empty string (fail-closed).
     static func sanitizeHTML(_ html: String, allowRemoteResources: Bool) -> String {
-        var sanitized = html
-        let alwaysStripPatterns = [
-            #"(?is)<script\b[^>]*>.*?</script>"#,
-            #"(?is)<meta\b[^>]*http-equiv\s*=\s*['"]?refresh['"]?[^>]*>"#,
-            #"(?is)\son[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)"#,
-            #"(?is)[/\s](?:on[a-z]+)\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)"#,
-            #"(?is)\s(?:href|src|data|poster)\s*=\s*(['"])\s*(?:javascript|vbscript):.*?\1"#,
-            #"(?is)\s(?:href|src|data|poster)\s*=\s*(?:javascript|vbscript):[^\s>]+"#,
-            #"(?is)\s(?:href|src|data|poster)\s*=\s*(['"])\s*data:(?!image/).*?\1"#,
-            #"(?is)\s(?:href|src|data|poster)\s*=\s*data:(?!image/)[^\s>]+"#
-        ]
-        for pattern in alwaysStripPatterns {
-            sanitized = stripMatches(pattern: pattern, in: sanitized)
-        }
+        do {
+            let document = try SwiftSoup.parse(html)
 
-        guard allowRemoteResources == false else { return sanitized }
+            // Drop dangerous element types entirely. These are removed even
+            // when their attributes look clean — their presence alone is the
+            // attack vector.
+            try document.select(
+                "script, style, iframe, object, embed, form, input, button, base, meta, link, applet, frame, frameset, noscript"
+            ).remove()
 
-        let remotePatterns = [
-            #"(?is)<img\b[^>]*\bsrc\s*=\s*['"]https?://[^'"]+['"][^>]*>"#,
-            #"(?is)<link\b[^>]*\bhref\s*=\s*['"]https?://[^'"]+['"][^>]*>"#,
-            #"(?is)<source\b[^>]*\bsrc\s*=\s*['"]https?://[^'"]+['"][^>]*>"#,
-            #"(?is)<iframe\b[^>]*\bsrc\s*=\s*['"]https?://[^'"]+['"][^>]*>.*?</iframe>"#,
-            #"(?is)<audio\b[^>]*\bsrc\s*=\s*['"]https?://[^'"]+['"][^>]*>.*?</audio>"#,
-            #"(?is)<video\b[^>]*\bsrc\s*=\s*['"]https?://[^'"]+['"][^>]*>.*?</video>"#,
-            #"(?is)<object\b[^>]*\bdata\s*=\s*['"]https?://[^'"]+['"][^>]*>.*?</object>"#,
-            #"(?is)<embed\b[^>]*\bsrc\s*=\s*['"]https?://[^'"]+['"][^>]*>"#,
-            #"(?is)<(?:img|link|source|iframe|audio|video|object|embed)\b[^>]*\b(?:src|href|data)\s*=\s*https?://[^\s>]+[^>]*>"#,
-            #"(?is)\ssrcset\s*=\s*['"][^'"]*https?://[^'"]*['"]"#,
-            #"(?is)\ssrcset\s*=\s*https?://[^\s>]+"#,
-            #"(?is)<style\b[^>]*>.*?(?:@import\s+['"]https?://|url\(\s*['"]?https?://).*?</style>"#
-        ]
-        for pattern in remotePatterns {
-            sanitized = stripMatches(pattern: pattern, in: sanitized)
+            // Walk every element and clean attributes.
+            for element in try document.getAllElements() {
+                guard let attributes = element.getAttributes() else { continue }
+                // Snapshot because we mutate during iteration.
+                let snapshot = attributes.asList()
+                for attribute in snapshot {
+                    let key = attribute.getKey()
+                    let lowerKey = key.lowercased()
+                    let rawValue = attribute.getValue()
+                    let value = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+
+                    // 1. Strip ALL on* event handlers regardless of tag.
+                    if lowerKey.hasPrefix("on") {
+                        try element.removeAttr(key)
+                        continue
+                    }
+
+                    // 2. URL-bearing attributes: drop if dangerous scheme or
+                    //    remote URL when remote resources are disallowed.
+                    if Self.urlBearingAttributeKeys.contains(lowerKey) {
+                        if Self.urlIsDangerous(value, allowRemoteResources: allowRemoteResources) {
+                            try element.removeAttr(key)
+                            continue
+                        }
+                    }
+
+                    // 3. srcset is comma-separated; reject the whole attribute
+                    //    if any candidate URL is dangerous.
+                    if lowerKey == "srcset" {
+                        if Self.srcsetContainsDangerousURL(value, allowRemoteResources: allowRemoteResources) {
+                            try element.removeAttr(key)
+                            continue
+                        }
+                    }
+
+                    // 4. Inline style: drop the attribute wholesale if a
+                    //    known XSS vector is present. Leaves benign styles intact.
+                    if lowerKey == "style" {
+                        if Self.styleIsDangerous(value, allowRemoteResources: allowRemoteResources) {
+                            try element.removeAttr(key)
+                            continue
+                        }
+                    }
+                }
+            }
+
+            // Re-render as a body fragment so we don't re-emit synthesized
+            // <html><head>... wrappers that SwiftSoup adds when parsing
+            // partial input.
+            let outputSettings = OutputSettings()
+            outputSettings.indentAmount(indentAmount: 0)
+            outputSettings.prettyPrint(pretty: false)
+            document.outputSettings(outputSettings)
+
+            if let body = document.body() {
+                return try body.html()
+            }
+            return try document.html()
+        } catch {
+            // Fail closed. The caller still wraps the result with
+            // injectDocumentDefaults (CSP) and renders it in a JS-disabled
+            // WKWebView, so even an empty string is safe.
+            return ""
         }
-        return sanitized
+    }
+
+    private static let urlBearingAttributeKeys: Set<String> = [
+        "href", "src", "poster", "data", "action", "formaction",
+        "background", "cite", "longdesc", "usemap", "ping",
+        "manifest", "archive", "codebase", "classid"
+    ]
+
+    private static func urlIsDangerous(_ value: String, allowRemoteResources: Bool) -> Bool {
+        let lower = value.lowercased()
+        if lower.hasPrefix("javascript:") || lower.hasPrefix("vbscript:") {
+            return true
+        }
+        if lower.hasPrefix("data:") {
+            // Allow data:image/* only. Block data:text/html, data:application/*, etc.
+            if lower.hasPrefix("data:image/") == false {
+                return true
+            }
+        }
+        if !allowRemoteResources {
+            if lower.hasPrefix("http://") || lower.hasPrefix("https://") {
+                return true
+            }
+        }
+        return false
+    }
+
+    private static func srcsetContainsDangerousURL(_ value: String, allowRemoteResources: Bool) -> Bool {
+        let segments = value.split(separator: ",")
+        for raw in segments {
+            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            // First whitespace-separated token is the URL; the rest is descriptor (1x, 200w, etc).
+            let firstToken = trimmed.split(whereSeparator: { $0.isWhitespace }).first.map(String.init) ?? ""
+            if urlIsDangerous(firstToken, allowRemoteResources: allowRemoteResources) {
+                return true
+            }
+        }
+        return false
+    }
+
+    private static func styleIsDangerous(_ style: String, allowRemoteResources: Bool) -> Bool {
+        let lower = style.lowercased()
+        // Legacy IE-era XSS that some renderers still honor.
+        if lower.contains("expression(") { return true }
+        if lower.contains("behavior:") { return true }
+        // CSS @import can fetch remote stylesheets.
+        if lower.contains("@import") { return true }
+        if !allowRemoteResources {
+            // Cover quoted and unquoted url() forms.
+            if lower.contains("url(http://") || lower.contains("url(https://") { return true }
+            if lower.contains("url('http://") || lower.contains("url('https://") { return true }
+            if lower.contains("url(\"http://") || lower.contains("url(\"https://") { return true }
+        }
+        return false
     }
 
     static func injectDocumentDefaults(into html: String, allowRemoteResources: Bool) -> String {
@@ -315,11 +422,4 @@ final class PresentationService: ObservableObject {
         """
     }
 
-    private static func stripMatches(pattern: String, in text: String) -> String {
-        guard let regex = try? NSRegularExpression(pattern: pattern) else {
-            return text
-        }
-        let range = NSRange(text.startIndex..., in: text)
-        return regex.stringByReplacingMatches(in: text, range: range, withTemplate: "")
-    }
 }
