@@ -86,6 +86,20 @@ extension AgentLoop {
         // Execute
         let result = await executeTool(name: name, args: args)
         logTool(name: name, input: "\(args)", output: result.content, approval: approval, approved: true, durationMs: result.durationMs)
+
+        // Privacy Ledger: append a row for approved side-effecting executions.
+        // Logging failure must never block the tool result — wrapped in try?.
+        if Self.isSideEffectingTool(name, args: args) {
+            let summary = String(result.content.prefix(500))
+            try? DatabaseManager.shared.appendExecutionLog(
+                toolName: name,
+                approvalLevel: approval,
+                summary: summary,
+                success: result.success,
+                durationMs: result.durationMs
+            )
+        }
+
         if result.success {
             consecutiveFailures = 0
             bobMood = .typing
@@ -281,6 +295,24 @@ extension AgentLoop {
     /// Meta-tool handler for `tool_help`. Zero-cost lookup from the in-memory
     /// ToolCatalog via ToolRuntime. `name` may be the literal "list" to get
     /// a categorized summary, or any live tool's name for full detail.
+    /// Returns true for tools that mutate state (filesystem, clipboard, phone,
+    /// downloads, or local-file presentations). Read-only tools always return false.
+    /// For "present", only the `kind == "file"` variant counts as a side effect
+    /// (it opens/stages a local file); html and url are read-only renders.
+    nonisolated static func isSideEffectingTool(_ name: String, args: [String: Any]) -> Bool {
+        switch name {
+        case "write_file", "move_file", "create_directory",
+             "clipboard_write", "applescript",
+             "youtube_download", "image_convert",
+             "phone_call", "phone_hangup":
+            return true
+        case "present":
+            return (args["kind"] as? String) == "file"
+        default:
+            return false
+        }
+    }
+
     static func parseInt(_ value: Any?) -> Int? {
         if let i = value as? Int { return i }
         if let d = value as? Double { return Int(d) }

@@ -416,6 +416,82 @@ final class DatabaseManager {
         }
     }
 
+    // MARK: - Execution Log (Phase 1b Privacy Ledger)
+
+    /// Append a row for an approved side-effecting tool execution.
+    /// Never throws to the caller — logging failure must never block a tool result.
+    func appendExecutionLog(
+        toolName: String,
+        approvalLevel: ApprovalLevel,
+        summary: String,
+        success: Bool,
+        durationMs: Int
+    ) throws {
+        let queue = try requireQueue()
+        let now = Date().timeIntervalSince1970
+        let cappedSummary = String(summary.prefix(500))
+        try queue.write { db in
+            try db.execute(
+                sql: """
+                    INSERT INTO execution_log
+                        (timestamp, tool_name, approval_level, summary, success, duration_ms)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                arguments: [now, toolName, approvalLevel.rawValue, cappedSummary, success ? 1 : 0, durationMs]
+            )
+        }
+    }
+
+    /// Fetch execution log rows filtered by date range and capped at `limit`.
+    /// - Parameters:
+    ///   - since: Earliest timestamp (inclusive). Pass `nil` for no lower bound.
+    ///   - until: Latest timestamp (inclusive). Pass `nil` for no upper bound.
+    ///   - limit: Maximum number of rows returned (most-recent first). Defaults to 500.
+    func fetchExecutionLog(
+        since: Date? = nil,
+        until: Date? = nil,
+        limit: Int = 500
+    ) throws -> [ExecutionLogEntry] {
+        let queue = try requireQueue()
+        return try queue.read { db in
+            var conditions: [String] = []
+            var args: [DatabaseValue] = []
+            if let s = since {
+                conditions.append("timestamp >= ?")
+                args.append(s.timeIntervalSince1970.databaseValue)
+            }
+            if let u = until {
+                conditions.append("timestamp <= ?")
+                args.append(u.timeIntervalSince1970.databaseValue)
+            }
+            let where_ = conditions.isEmpty ? "" : "WHERE " + conditions.joined(separator: " AND ")
+            let sql = "SELECT * FROM execution_log \(where_) ORDER BY timestamp DESC LIMIT ?"
+            args.append(limit.databaseValue)
+            let rows = try Row.fetchAll(db, sql: sql, arguments: StatementArguments(args))
+            return rows.compactMap { row -> ExecutionLogEntry? in
+                guard
+                    let id: Int64 = row["id"],
+                    let tsRaw: Double = row["timestamp"],
+                    let toolName: String = row["tool_name"],
+                    let approvalRaw: String = row["approval_level"],
+                    let summary: String = row["summary"],
+                    let successInt: Int = row["success"],
+                    let durationMs: Int = row["duration_ms"],
+                    let approvalLevel = ApprovalLevel(rawValue: approvalRaw)
+                else { return nil }
+                return ExecutionLogEntry(
+                    id: id,
+                    timestamp: Date(timeIntervalSince1970: tsRaw),
+                    toolName: toolName,
+                    approvalLevel: approvalLevel,
+                    summary: summary,
+                    success: successInt != 0,
+                    durationMs: durationMs
+                )
+            }
+        }
+    }
+
     private func requireQueue() throws -> DatabaseQueue {
         guard let dbQueue else {
             throw DatabaseManagerError.notInitialized

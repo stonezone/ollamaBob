@@ -6,7 +6,7 @@ This is the Claude-facing project guide. For task execution, read it with `AGENT
 
 OllamaBob is a native macOS menu-bar assistant that runs locally. It talks directly to Ollama over the native `/api/chat` endpoint, owns its agent loop in Swift, executes first-party tools, persists local state in SQLite through GRDB, and uses native approval dialogs before risky actions.
 
-Current app version: `1.0.18`
+Current app version: `1.0.19`
 
 ## Current Product State
 

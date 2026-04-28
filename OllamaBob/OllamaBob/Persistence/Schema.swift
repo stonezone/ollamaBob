@@ -63,5 +63,19 @@ enum AppDatabase {
             t.column("lastUsedAt", .datetime).defaults(sql: "CURRENT_TIMESTAMP")
         }
         try db.create(index: "idx_facts_category", on: "facts", columns: ["category"], ifNotExists: true)
+
+        // Phase 1b — Privacy Ledger. Logs approved side-effecting tool
+        // executions only (writes, moves, downloads, calls). Read-only
+        // tool calls are never recorded here.
+        try db.create(table: "execution_log", ifNotExists: true) { t in
+            t.autoIncrementedPrimaryKey("id")
+            t.column("timestamp", .double).notNull()         // TimeInterval since Unix epoch
+            t.column("tool_name", .text).notNull()
+            t.column("approval_level", .text).notNull()      // raw value of ApprovalLevel
+            t.column("summary", .text).notNull()             // ≤ 500 chars, no secrets
+            t.column("success", .integer).notNull()          // 0 or 1
+            t.column("duration_ms", .integer).notNull()
+        }
+        try db.create(index: "idx_execution_log_timestamp", on: "execution_log", columns: ["timestamp"], ifNotExists: true)
     }
 }
