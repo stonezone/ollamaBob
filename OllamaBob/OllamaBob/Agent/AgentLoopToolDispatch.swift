@@ -313,7 +313,17 @@ extension AgentLoop {
         case "write_file":
             let path = args["path"] as? String ?? "unknown"
             let content = args["content"] as? String ?? ""
-            return "Write file: \(path) (\(content.count) chars)"
+            let baseDesc = "Write file: \(path) (\(content.count) chars)"
+            // Attempt to compute a diff against the existing file.
+            // If anything goes wrong the diff is omitted and we fall back
+            // to the plain description (fail-closed per approval policy).
+            if path != "unknown" {
+                let url = URL(fileURLWithPath: path)
+                if let diff = WriteDiff.computeForWriteFile(at: url, proposedContent: content) {
+                    return "\(baseDesc)\(ApprovalAlert.diffSeparator)\(diff)"
+                }
+            }
+            return baseDesc
         case "move_file":
             let source = args["source"] as? String ?? "unknown"
             let destination = args["destination"] as? String ?? "unknown"

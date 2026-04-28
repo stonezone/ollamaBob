@@ -8,7 +8,7 @@
 - Active branch should be `main`.
 - No active execution plan is tracked in `docs/`.
 - Active docs are intentionally small; historical plans and old handoffs are in `archive/`.
-- Current visible app version: `1.0.17`.
+- Current visible app version: `1.0.18`.
 
 Local-only note for Zack's workstation:
 
@@ -151,7 +151,7 @@ Last verified during the 2026-04-27 phone call context highlight pass:
 - `swift build` passed
 - `swift test` passed: 132 tests, 0 failures
 - `./build.sh` passed and assembled `build/OllamaBob.app`
-- generated bundle metadata reports `CFBundleShortVersionString = 1.0.17` and `CFBundleVersion = 117`
+- generated bundle metadata reports `CFBundleShortVersionString = 1.0.18` and `CFBundleVersion = 118`
 - `./build.sh --run` passed and launched the rebuilt app from `build/OllamaBob.app`
 
 Known warning note:
