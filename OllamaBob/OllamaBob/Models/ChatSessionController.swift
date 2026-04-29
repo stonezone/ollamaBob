@@ -235,6 +235,7 @@ final class ChatSessionController: ObservableObject {
 
         do {
             try database.saveMessage(userMsg, conversationId: convoId)
+            ActivityIndexer.shared.recordChatMessage(role: userMsg.role.rawValue, conversationID: convoId, summary: userMsg.content)
         } catch {
             errorMessage = "Failed to save message: \(error.localizedDescription)"
         }
@@ -317,6 +318,9 @@ final class ChatSessionController: ObservableObject {
     private func persist(_ msg: ChatMessage, in conversationId: String) {
         do {
             try database.saveMessage(msg, conversationId: conversationId)
+            if msg.role == .assistant {
+                ActivityIndexer.shared.recordChatMessage(role: msg.role.rawValue, conversationID: conversationId, summary: msg.content)
+            }
         } catch {
             errorMessage = "Failed to save message: \(error.localizedDescription)"
         }

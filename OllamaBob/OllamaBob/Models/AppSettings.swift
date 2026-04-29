@@ -14,6 +14,7 @@ final class AppSettings: ObservableObject {
     nonisolated static let jarvisOperatorSecretKey = "jarvisOperatorSecret"
     nonisolated static let toolApprovalOverridesKey = "toolApprovalOverrides"
     nonisolated static let useMockedJarvisClientKey = "useMockedJarvisClient"
+    nonisolated static let activityTimelineEnabledKey = "activityTimelineEnabled"
 
     @Published var showBob: Bool {
         didSet { UserDefaults.standard.set(showBob, forKey: Keys.showBob) }
@@ -68,6 +69,12 @@ final class AppSettings: ObservableObject {
     /// chatting. Defaults OFF because it's the most intrusive auto-behavior.
     @Published var heartbeatEnabled: Bool {
         didSet { UserDefaults.standard.set(heartbeatEnabled, forKey: Keys.heartbeatEnabled) }
+    }
+
+    /// Master switch for the local activity timeline. Default OFF; when
+    /// enabled, Bob records local tool/chat events for later timeline search.
+    @Published var activityTimelineEnabled: Bool {
+        didSet { UserDefaults.standard.set(activityTimelineEnabled, forKey: Self.activityTimelineEnabledKey) }
     }
 
     /// When true, Bob's Desk renders only the avatar + an input bubble +
@@ -306,6 +313,9 @@ final class AppSettings: ObservableObject {
         if defaults.object(forKey: Self.useMockedJarvisClientKey) == nil {
             defaults.set(Self.defaultMockedJarvisClient, forKey: Self.useMockedJarvisClientKey)
         }
+        if defaults.object(forKey: Self.activityTimelineEnabledKey) == nil {
+            defaults.set(false, forKey: Self.activityTimelineEnabledKey)
+        }
         // Walkie-Talkie push-to-talk: default OFF / default chord.
         if defaults.object(forKey: Keys.pushToTalkEnabled) == nil {
             defaults.set(false, forKey: Keys.pushToTalkEnabled)
@@ -344,6 +354,7 @@ final class AppSettings: ObservableObject {
         self.soundsEnabled         = defaults.bool(forKey: Keys.soundsEnabled)
         self.bobVoiceEnabled       = defaults.bool(forKey: Keys.bobVoiceEnabled)
         self.heartbeatEnabled      = defaults.bool(forKey: Keys.heartbeatEnabled)
+        self.activityTimelineEnabled = defaults.bool(forKey: Self.activityTimelineEnabledKey)
         self.avatarOnlyMode        = defaults.bool(forKey: Keys.avatarOnlyMode)
         self.fullModeWindowFrame   = defaults.string(forKey: Keys.fullModeWindowFrame) ?? ""
         self.avatarModeWindowFrame = defaults.string(forKey: Keys.avatarModeWindowFrame) ?? ""

@@ -173,6 +173,12 @@ struct PreferencesView: View {
                 isOn: $settings.heartbeatEnabled,
                 dimmed: !settings.soundsEnabled || !settings.bobVoiceEnabled
             )
+            toggleRow(
+                title: "Activity Timeline (local)",
+                subtitle: "Record local tool calls and chat messages so Bob can answer what you were doing. Stays on your Mac. Default OFF.",
+                isOn: $settings.activityTimelineEnabled,
+                dimmed: false
+            )
             sliderRow(
                 title: "Chat window transparency",
                 subtitle: "Lower values let your desktop show through",
