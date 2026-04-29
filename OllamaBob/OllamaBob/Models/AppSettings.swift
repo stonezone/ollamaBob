@@ -195,6 +195,21 @@ final class AppSettings: ObservableObject {
         didSet { UserDefaults.standard.set(clipboardCortexEnabled, forKey: Keys.clipboardCortexEnabled) }
     }
 
+    // MARK: - Daily Briefing (Phase 7e)
+
+    /// Master switch for the Daily Briefing scheduler. Default OFF (must opt-in).
+    /// When enabled, `SchedulerService` fires a read-only briefing at the
+    /// configured time each day.
+    @Published var briefingScheduleEnabled: Bool {
+        didSet { UserDefaults.standard.set(briefingScheduleEnabled, forKey: Keys.briefingScheduleEnabled) }
+    }
+
+    /// Target time-of-day for the daily briefing expressed as minutes since
+    /// midnight (0–1439). Default 420 = 07:00 local time.
+    @Published var briefingScheduleMinutes: Int {
+        didSet { UserDefaults.standard.set(briefingScheduleMinutes, forKey: Keys.briefingScheduleMinutes) }
+    }
+
     /// User-level overrides for the bundle-ID → persona-ID mapping.
     /// Keys are bundle identifiers; values are persona IDs. An empty value
     /// string removes a built-in default for that bundle ID.
@@ -223,7 +238,9 @@ final class AppSettings: ObservableObject {
         static let pushToTalkKeyChord      = "pushToTalkKeyChord"
         static let focusGuardianEnabled    = "focusGuardianEnabled"
         static let focusGuardianOverrides  = "focusGuardianOverrides"
-        static let clipboardCortexEnabled  = "clipboardCortexEnabled"
+        static let clipboardCortexEnabled    = "clipboardCortexEnabled"
+        static let briefingScheduleEnabled   = "briefingScheduleEnabled"
+        static let briefingScheduleMinutes   = "briefingScheduleMinutes"
     }
 
     // Phase 4a default: true in DEBUG, false in release.
@@ -304,6 +321,13 @@ final class AppSettings: ObservableObject {
         if defaults.object(forKey: Keys.clipboardCortexEnabled) == nil {
             defaults.set(false, forKey: Keys.clipboardCortexEnabled)
         }
+        // Daily Briefing: default OFF + 07:00 (must opt-in per spec).
+        if defaults.object(forKey: Keys.briefingScheduleEnabled) == nil {
+            defaults.set(false, forKey: Keys.briefingScheduleEnabled)
+        }
+        if defaults.object(forKey: Keys.briefingScheduleMinutes) == nil {
+            defaults.set(BriefingSchedule.defaultTimeOfDayMinutes, forKey: Keys.briefingScheduleMinutes)
+        }
         // Phase 0c: secrets live in the Keychain. We no longer write the
         // .env value into UserDefaults on first launch (that path is what
         // SecretMigration is migrating *out of*). Tests / CI seed the
@@ -332,6 +356,15 @@ final class AppSettings: ObservableObject {
         self.focusGuardianEnabled   = defaults.bool(forKey: Keys.focusGuardianEnabled)
         self.focusGuardianOverrides = defaults.dictionary(forKey: Keys.focusGuardianOverrides) as? [String: String] ?? [:]
         self.clipboardCortexEnabled = defaults.bool(forKey: Keys.clipboardCortexEnabled)
+        self.briefingScheduleEnabled = defaults.bool(forKey: Keys.briefingScheduleEnabled)
+        self.briefingScheduleMinutes = {
+            let stored = defaults.integer(forKey: Keys.briefingScheduleMinutes)
+            // If the key was never set, integer(forKey:) returns 0 which maps to
+            // 00:00 — not the 07:00 default. Guard against that here.
+            return stored == 0 && defaults.object(forKey: Keys.briefingScheduleMinutes) == nil
+                ? BriefingSchedule.defaultTimeOfDayMinutes
+                : max(0, min(stored, 1439))
+        }()
         // Phase 0c: read Keychain first; fall back to legacy UserDefaults so
         // an un-migrated install still shows the existing key in Preferences.
         self.jarvisAPIKey = KeychainService.current.read(.jarvisAPIKey)

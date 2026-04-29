@@ -90,5 +90,17 @@ enum AppDatabase {
             t.column("updated_at", .double).notNull()
         }
         try db.create(index: "idx_skill_name", on: "skill", columns: ["name"], ifNotExists: true)
+
+        // Phase 7e — Daily Briefing. Stores the outcome of each scheduled or
+        // manually-triggered briefing run (Bob's synthesis + raw tool outputs).
+        // Schema is additive only; no existing tables are altered.
+        try db.create(table: "briefing", ifNotExists: true) { t in
+            t.autoIncrementedPrimaryKey("id")
+            t.column("run_at", .double).notNull()          // TimeInterval since Unix epoch
+            t.column("summary", .text).notNull()
+            t.column("tool_results_json", .text).notNull() // JSON-encoded [String]
+            t.column("success", .integer).notNull()        // 0 or 1
+        }
+        try db.create(index: "idx_briefing_run_at", on: "briefing", columns: ["run_at"], ifNotExists: true)
     }
 }

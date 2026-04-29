@@ -590,6 +590,27 @@ final class DatabaseManager {
         )
     }
 
+    // MARK: - Briefing (Phase 7e Daily Briefing)
+
+    /// Persist a new briefing result. Returns the result stamped with its row id.
+    @discardableResult
+    func appendBriefing(_ result: BriefingResult) throws -> BriefingResult {
+        let queue = try requireQueue()
+        return try BriefingStorage.append(result, in: queue)
+    }
+
+    /// Return the most recent `limit` briefings, newest first.
+    func fetchRecentBriefings(limit: Int = 50) throws -> [BriefingResult] {
+        let queue = try requireQueue()
+        return try BriefingStorage.fetchRecent(limit: limit, in: queue)
+    }
+
+    /// Return briefings whose run time falls within [since, until].
+    func fetchBriefings(since: Date? = nil, until: Date? = nil, limit: Int = 100) throws -> [BriefingResult] {
+        let queue = try requireQueue()
+        return try BriefingStorage.fetch(since: since, until: until, limit: limit, in: queue)
+    }
+
     // MARK: - Private
 
     private func requireQueue() throws -> DatabaseQueue {

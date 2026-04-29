@@ -30,6 +30,11 @@ struct OllamaBobApp: App {
                 appState.updateClipboardCortex()
             }
 
+            Button(settings.briefingScheduleEnabled ? "Daily Briefing: ON" : "Daily Briefing: OFF") {
+                settings.briefingScheduleEnabled.toggle()
+                appState.updateBriefingScheduler()
+            }
+
             ClipboardChipView()
 
             Button(settings.avatarOnlyMode ? "Show Full Chat" : "Avatar-only Mode") {
@@ -190,6 +195,7 @@ final class AppState: ObservableObject {
         setupWalkieTalkie()
         setupFocusGuardian()
         setupClipboardCortex()
+        setupBriefingScheduler()
     }
 
     /// Start or stop the push-to-talk hotkey depending on current settings.
@@ -240,6 +246,21 @@ final class AppState: ObservableObject {
     private func setupClipboardCortex() {
         if AppSettings.shared.clipboardCortexEnabled {
             ClipboardWatcher.shared.start()
+        }
+    }
+
+    /// Start or stop the Daily Briefing scheduler depending on current settings.
+    func updateBriefingScheduler() {
+        if AppSettings.shared.briefingScheduleEnabled {
+            SchedulerService.shared.start()
+        } else {
+            SchedulerService.shared.stop()
+        }
+    }
+
+    private func setupBriefingScheduler() {
+        if AppSettings.shared.briefingScheduleEnabled {
+            SchedulerService.shared.start()
         }
     }
 
