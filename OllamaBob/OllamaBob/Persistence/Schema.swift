@@ -77,5 +77,18 @@ enum AppDatabase {
             t.column("duration_ms", .integer).notNull()
         }
         try db.create(index: "idx_execution_log_timestamp", on: "execution_log", columns: ["timestamp"], ifNotExists: true)
+
+        // Phase 7a — Skill Capsules. Stores user-defined named recipes that
+        // replay a sequence of first-party tools via the existing approval gate.
+        // Schema is additive only; no existing tables are altered.
+        try db.create(table: "skill", ifNotExists: true) { t in
+            t.autoIncrementedPrimaryKey("id")
+            t.column("name", .text).notNull().unique()
+            t.column("description", .text).notNull()
+            t.column("steps_json", .text).notNull()   // JSON array of {tool: string, args: object}
+            t.column("created_at", .double).notNull()  // TimeInterval since Unix epoch
+            t.column("updated_at", .double).notNull()
+        }
+        try db.create(index: "idx_skill_name", on: "skill", columns: ["name"], ifNotExists: true)
     }
 }

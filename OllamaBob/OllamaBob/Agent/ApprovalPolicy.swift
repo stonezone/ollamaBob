@@ -205,6 +205,24 @@ enum ApprovalPolicy {
             // Restores policy to safe defaults — no user risk.
             return .none
 
+        // MARK: Skill Capsules (Phase 7a)
+        case "create_skill":
+            // Saving a skill is session-policy state (same tier as enable_dev_mode).
+            return .modal
+
+        case "delete_skill":
+            // Destructive: permanently removes a saved skill recipe.
+            return .modal
+
+        case "list_skills", "inspect_skill":
+            // Read-only — no side effects.
+            return .none
+
+        case "run_skill":
+            // The run_skill call itself needs no top-level approval.
+            // Each individual step inside is gated by its own tool's ApprovalPolicy.
+            return .none
+
         default:
             return .modal  // unknown tool = always ask
         }

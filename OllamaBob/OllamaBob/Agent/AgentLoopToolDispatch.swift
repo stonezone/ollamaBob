@@ -308,6 +308,39 @@ extension AgentLoop {
         case "current_context":
             return await CurrentContextTool.execute()
 
+        // MARK: Skill Capsules (Phase 7a)
+        case "create_skill":
+            let skillName = args["name"] as? String ?? ""
+            let skillDesc = args["description"] as? String ?? ""
+            let stepsJson = args["steps_json"] as? String ?? ""
+            let knownNames = Set(registry.toolNames)
+            return CreateSkillTool.execute(
+                name: skillName,
+                description: skillDesc,
+                stepsJson: stepsJson,
+                knownToolNames: knownNames
+            )
+
+        case "list_skills":
+            return ListSkillsTool.execute()
+
+        case "inspect_skill":
+            let skillName = args["name"] as? String ?? ""
+            return InspectSkillTool.execute(name: skillName)
+
+        case "run_skill":
+            let skillName = args["name"] as? String ?? ""
+            let parametersJson = args["parameters_json"] as? String
+            return await RunSkillTool.execute(
+                name: skillName,
+                parametersJson: parametersJson,
+                agentLoop: self
+            )
+
+        case "delete_skill":
+            let skillName = args["name"] as? String ?? ""
+            return DeleteSkillTool.execute(name: skillName)
+
         default:
             return .failure(tool: name, error: "Tool not implemented", durationMs: 0)
         }
@@ -345,7 +378,9 @@ extension AgentLoop {
              "youtube_download", "image_convert",
              "phone_call", "phone_hangup",
              "phone_inject",
-             "enable_dev_mode":  // Phase 6: changes session approval policy
+             "enable_dev_mode",   // Phase 6: changes session approval policy
+             "create_skill",      // Phase 7a: saves a new skill recipe
+             "delete_skill":      // Phase 7a: deletes a saved skill recipe
             return true
         case "present":
             return (args["kind"] as? String) == "file"
@@ -474,6 +509,19 @@ extension AgentLoop {
             return "Enable dev mode for repo containing: \(args["path"] as? String ?? "?")"
         case "disable_dev_mode":
             return "Disable dev mode (restore modal write_file approval)"
+        // MARK: Skill Capsules (Phase 7a)
+        case "create_skill":
+            let skillName = args["name"] as? String ?? "?"
+            let stepsJson = args["steps_json"] as? String ?? ""
+            return "Save skill '\(skillName)' with steps: \(String(stepsJson.prefix(120)))"
+        case "list_skills":
+            return "List all saved skills"
+        case "inspect_skill":
+            return "Inspect skill '\(args["name"] as? String ?? "?")'"
+        case "run_skill":
+            return "Run skill '\(args["name"] as? String ?? "?")'"
+        case "delete_skill":
+            return "Delete skill '\(args["name"] as? String ?? "?")'"
         default:
             return "\(name): \(args)"
         }
