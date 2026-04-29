@@ -95,6 +95,7 @@ extension AgentLoop {
 
         // Execute
         let result = await executeTool(name: name, args: args, approvedPaths: approvedPaths)
+        ActivityIndexer.shared.recordToolCall(name: name, success: result.success, conversationID: currentConversationId)
         if let sessionID = currentConversationId {
             TaintPolicy.shared.markTaintedIfNeeded(afterTool: name, sessionID: sessionID, success: result.success)
         }
