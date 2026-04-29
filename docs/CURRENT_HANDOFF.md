@@ -8,9 +8,9 @@
 - Active clean integration worktree: `/Users/zack/ollamaBob-d1-land`.
 - Local `main` has Phase A, Phase B, Phase C, Phase D.1, and Phase D.2 integrated through local no-ff merges and completion tags; push/review state is still operator-owned.
 - The original `/Users/zack/ollamaBob` worktree has unrelated design/persona changes and should not be treated as the clean execution source until reconciled.
-- `docs/ACTIVE_EXECUTION_PLAN.md` is tracked. Keep using it as the execution authority until the owner retires or archives it; the next default phase after D.2 is D.5 (`timeline_search`).
+- `docs/ACTIVE_EXECUTION_PLAN.md` is tracked. Keep using it as the execution authority until the owner retires or archives it; the next default phase after D.5 is Phase E (Naughty Bob compaction budget banner).
 - Active docs are intentionally small; historical plans, old peer-review notes, and superseded handoffs are in `archive/`.
-- Current visible app version: `1.0.32`.
+- Current visible app version: `1.0.33`.
 
 Local-only notes for Zack's workstation:
 
@@ -44,6 +44,7 @@ OllamaBob is live as a single local macOS menu-bar product with:
 - Daily Briefing synthesis prompts explicitly tell the model to treat `<untrusted>` tool-output blocks as data, not instructions
 - Phase D.1 Activity Timeline persistence: local `activity_event` SQLite table, timestamp and source/kind indexes, `ActivityEvent` value type, and bounded `appendActivityEvent` / `fetchActivityEvents` database APIs
 - Phase D.2 ActivityIndexer: Preferences exposes `Activity Timeline (local)` as an opt-in toggle defaulting OFF; when enabled, tool calls and user/assistant chat messages are appended to the local activity timeline, with file-event indexing intentionally stubbed for D.3
+- Phase D.5 `timeline_search`: read-only, approval-free local Activity Timeline search that stays gated behind the Activity Timeline toggle, caps results at 50 events, accepts ISO8601 date ranges, and wraps returned timeline rows as untrusted data
 - Phase B untrusted-output taint protection tracks sessions after successful file/web/mail/clipboard/YouTube-search/screen-OCR/context source tools and blocks write/action tools before approval until the user sends a fresh message or types `/lift`; blocked actions include shell, file writes/moves, clipboard writes, downloads, AppleScript, phone actions, memory mutation, saved-skill execution, and `present(kind=file|url)`
 - Bob's Desk shows an "Untrusted content in this turn" banner while taint protection is active for the current conversation
 - authorized personal music collection workflow for resolving album tracks or pasted song lists, auto-picking high-confidence YouTube candidates by title/duration, confirming only ambiguous tracks, saving approved MP3 files under underscore-safe generated folders like `~/Music/Bob/<Artist>_<Album>`, and using a whole-album single-file workflow when explicitly requested
@@ -171,17 +172,18 @@ swift test
 ./build.sh --run
 ```
 
-Last verified during the 2026-04-29 Phase D.2 ActivityIndexer pass:
+Last verified during the 2026-04-29 Phase D.5 timeline_search pass:
 
 - `swift build` passed
-- `swift test` passed: 425 tests, 0 failures
+- `swift test` passed: 434 tests, 0 failures
 - `./build.sh` passed and assembled `build/OllamaBob.app`
-- generated bundle metadata reports `CFBundleShortVersionString = 1.0.32` and `CFBundleVersion = 132`
+- generated bundle metadata reports `CFBundleShortVersionString = 1.0.33` and `CFBundleVersion = 133`
 - `git diff --check` passed
 - `BobsDeskView.swift` is 798 LOC, satisfying the Phase C ≤800 LOC gate
 - `AgentLoopToolDispatch.swift` changed by one D.2 line, `BobsDeskView.swift` was not touched, and `PreferencesView.swift` grew by six D.2 toggle-row lines
 - Focused `ActivityIndexerTests` passed: 6 tests, 0 failures, covering toggle-off no-op, tool calls, user messages, assistant messages, detail capping, and settings persistence
 - Focused `ActivityEventDatabaseTests` passed: 6 tests, 0 failures
+- Focused `TimelineSearchToolTests` passed: 9 tests, 0 failures, covering recent events, limit cap, toggle-off denial, untrusted wrapping/sanitization, source filtering through the real DB path, invalid dates, registration/catalog visibility, disabled-toggle registry hiding, approval, prompt gating, and dispatch self-index prevention
 - Focused `DeskViewModelTests` passed: 7 tests, 0 failures, including the live external-send bridge used by `BobsDeskView` and multi-prompt queue preservation
 - Focused `TaintPolicyTests` passed: 18 tests, 0 failures
 - Focused `PolicyRegressionTests` passed: 12 tests, 0 failures
@@ -212,7 +214,7 @@ swift test
 
 `docs/ACTIVE_EXECUTION_PLAN.md` remains active. Candidate next work, in priority order:
 
-- Continue the active plan with Phase D.5 (`timeline_search`) from clean local `main`.
+- Continue the active plan with Phase E (Naughty Bob compaction budget banner) from clean local `main`.
 - Run a fresh Opus deep review/audit of this integrated branch before push if another external check is desired.
 - Push or PR the integrated branch after review.
 - Expose more Jarvis daemon capabilities in OllamaBob: contacts, follow-ups, memory search, and richer live supervision controls.

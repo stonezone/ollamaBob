@@ -95,7 +95,9 @@ extension AgentLoop {
 
         // Execute
         let result = await executeTool(name: name, args: args, approvedPaths: approvedPaths)
-        ActivityIndexer.shared.recordToolCall(name: name, success: result.success, conversationID: currentConversationId)
+        if name != "timeline_search" {
+            ActivityIndexer.shared.recordToolCall(name: name, success: result.success, conversationID: currentConversationId)
+        }
         if let sessionID = currentConversationId {
             TaintPolicy.shared.markTaintedIfNeeded(afterTool: name, sessionID: sessionID, success: result.success)
         }
@@ -178,6 +180,9 @@ extension AgentLoop {
             let pattern = args["pattern"] as? String ?? ""
             let path = args["path"] as? String
             return await FileSearchTool.execute(pattern: pattern, path: path)
+
+        case "timeline_search":
+            return TimelineSearchTool.execute(since: args["since"] as? String ?? "", until: args["until"] as? String, source: args["source"] as? String, kind: args["kind"] as? String, limit: Self.parseInt(args["limit"]))
 
         case "web_search":
             let query = args["query"] as? String ?? ""
