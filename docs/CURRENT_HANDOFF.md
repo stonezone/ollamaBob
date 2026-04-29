@@ -173,7 +173,7 @@ Last verified during the 2026-04-28 final Codex + Kimi integration pass:
 - generated bundle metadata reports `CFBundleShortVersionString = 1.0.29` and `CFBundleVersion = 129`
 - `git diff --check` passed
 - Jarvis daemon probe: `/health` returned `200`. Authenticated route smoke was skipped in the final integration shell because `JARVIS_API_KEY` / `OPERATOR_API_SECRET` were not exported there; the earlier Codex pass had already verified unauthenticated `/calls/active` as `401`, authenticated `/calls/active` as `200`, and nonexistent `/call/status/:id` plus `/call/:id/message` as `404`.
-- Codex OS should be refreshed after any further source/doc edits before final handoff or PR.
+- Codex OS refreshed after final integration: project memory upload succeeded, project profile upload succeeded, active docs (`README.md`, `AGENTS.md`, `CLAUDE.md`, and `docs/`) were uploaded/imported into `ollamaBob-knowledge_docs`, and structural indexing succeeded with 878 symbols across 4447 files. Semantic indexing was started as background job `semantic-ollamaBob-project_index-337b900c`; job/status and project-index lifecycle health calls timed out while the local server was busy. Memories/docs/profile health returned 100% embedding coverage with dedup recommendations.
 
 Kimi Phase A verification before integration:
 
