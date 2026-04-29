@@ -83,8 +83,11 @@ extension AgentLoop {
             }
         }
 
+        // Capture resolved paths at approval time for fail-closed execution.
+        let approvedPaths = ApprovalPolicy.resolvedPaths(toolName: name, arguments: args)
+
         // Execute
-        let result = await executeTool(name: name, args: args)
+        let result = await executeTool(name: name, args: args, approvedPaths: approvedPaths)
         logTool(name: name, input: "\(args)", output: result.content, approval: approval, approved: true, durationMs: result.durationMs)
 
         // Privacy Ledger: append a row for approved side-effecting executions.
@@ -109,7 +112,7 @@ extension AgentLoop {
         return result
     }
 
-    func executeTool(name: String, args: [String: Any]) async -> ToolResult {
+    func executeTool(name: String, args: [String: Any], approvedPaths: [String: String] = [:]) async -> ToolResult {
         switch name {
         case "shell":
             let command = args["command"] as? String ?? ""
@@ -121,7 +124,10 @@ extension AgentLoop {
 
         case "create_directory":
             let path = args["path"] as? String ?? ""
-            return await DirectoryCreateTool.execute(path: path)
+            return await DirectoryCreateTool.execute(
+                path: path,
+                approvedResolvedPath: approvedPaths["path"]
+            )
 
         case "list_directory":
             let path = args["path"] as? String ?? ""
@@ -131,12 +137,21 @@ extension AgentLoop {
         case "write_file":
             let path = args["path"] as? String ?? ""
             let content = args["content"] as? String ?? ""
-            return await FileWriteTool.execute(path: path, content: content)
+            return await FileWriteTool.execute(
+                path: path,
+                content: content,
+                approvedResolvedPath: approvedPaths["path"]
+            )
 
         case "move_file":
             let source = args["source"] as? String ?? ""
             let destination = args["destination"] as? String ?? ""
-            return await FileMoveTool.execute(source: source, destination: destination)
+            return await FileMoveTool.execute(
+                source: source,
+                destination: destination,
+                approvedSourcePath: approvedPaths["source"],
+                approvedDestinationPath: approvedPaths["destination"]
+            )
 
         case "git_status":
             let repoPath = args["repo_path"] as? String ?? ""

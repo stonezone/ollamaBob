@@ -35,6 +35,10 @@ struct OllamaBobApp: App {
                 appState.updateBriefingScheduler()
             }
 
+            Button("Briefing History…") {
+                openWindow(id: "briefing-history")
+            }
+
             ClipboardChipView()
 
             Button(settings.avatarOnlyMode ? "Show Full Chat" : "Avatar-only Mode") {
@@ -156,6 +160,11 @@ struct OllamaBobApp: App {
         Window("Live Call", id: "live-call") {
             LiveCallView()
                 .allowsHitTesting(true)
+        }
+        .defaultSize(width: 520, height: 520)
+
+        Window("Briefing History", id: "briefing-history") {
+            BriefingHistoryView()
         }
         .defaultSize(width: 520, height: 520)
 

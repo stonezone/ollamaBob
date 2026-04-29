@@ -55,8 +55,16 @@ enum PromptComposer {
     /// Pass `includeCheatSheet: false` to skip cheat-sheet rendering
     /// entirely — useful for tests or for the first turn of a brand-new
     /// chat where ToolRuntime may still be probing.
-    static func compose(persona: Persona, includeCheatSheet: Bool = true) -> String {
-        composeWithBreakdown(persona: persona, includeCheatSheet: includeCheatSheet).prompt
+    static func compose(
+        persona: Persona,
+        includeCheatSheet: Bool = true,
+        availableToolNames: Set<String>? = nil
+    ) -> String {
+        composeWithBreakdown(
+            persona: persona,
+            includeCheatSheet: includeCheatSheet,
+            availableToolNames: availableToolNames
+        ).prompt
     }
 
     /// Maximum number of facts injected per turn (V2 plan §4.3).
@@ -69,9 +77,12 @@ enum PromptComposer {
     static func composeWithBreakdown(
         persona: Persona,
         includeCheatSheet: Bool = true,
-        uncensoredMode: Bool = false
+        uncensoredMode: Bool = false,
+        availableToolNames: Set<String>? = nil
     ) -> (prompt: String, breakdown: Breakdown) {
-        let operatingRules = BobOperatingRules.systemPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        let operatingRules = BobOperatingRules
+            .prompt(availableToolNames: availableToolNames)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
         let personaText = persona.systemPromptMarkdown.trimmingCharacters(in: .whitespacesAndNewlines)
         let modeOverride = uncensoredMode ? uncensoredModePromptOverride : ""
         let cheatSheet = includeCheatSheet ? (renderCheatSheet() ?? "") : ""

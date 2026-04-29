@@ -4,15 +4,11 @@ import AppKit
 /// Standalone chip that surfaces in the menu-bar dropdown when
 /// `ClipboardWatcher` detects actionable clipboard content.
 ///
-/// Drop-in usage — NOT integrated into BobsDeskView:
-/// ```swift
-/// ClipboardChipView()
-/// ```
-///
 /// The chip performs the cleanup transform when tapped. For `.stackTrace` it
 /// posts a notification so the chat window can send a Bob prompt instead.
 struct ClipboardChipView: View {
 
+    @Environment(\.openWindow) private var openWindow
     @ObservedObject private var watcher = ClipboardWatcher.shared
 
     var body: some View {
@@ -43,12 +39,19 @@ struct ClipboardChipView: View {
 
     private func handleTap(for suggestion: ClipboardSuggestion) {
         if suggestion.kind == .stackTrace {
-            // Ask Bob to summarize — post a notification the chat window handles.
-            NotificationCenter.default.post(
+            let clipboardText = NSPasteboard.general.string(forType: .string) ?? suggestion.preview
+            let notification = Notification(
                 name: .clipboardCortexSummarizeStackTrace,
                 object: nil,
-                userInfo: ["preview": suggestion.preview]
+                userInfo: [
+                    "preview": suggestion.preview,
+                    "content": clipboardText
+                ]
             )
+            if let prompt = DeskPromptActions.stackTracePrompt(from: notification) {
+                DeskPromptInbox.shared.enqueue(prompt)
+            }
+            openWindow(id: "chat")
         } else if let cleaned = ClipboardWatcher.shared.applyCleanup(for: suggestion) {
             // Write cleaned result back to clipboard — user already opted in by
             // tapping the chip, so this is the user's explicit consent.
@@ -89,7 +92,8 @@ struct ClipboardChipView: View {
 
 extension Notification.Name {
     /// Posted when the user taps "Summarize stack trace" chip.
-    /// `userInfo["preview"]` contains the first 80 chars of the clipboard.
+    /// `userInfo["content"]` contains the clipboard text and
+    /// `userInfo["preview"]` contains the first 80 chars.
     static let clipboardCortexSummarizeStackTrace = Notification.Name(
         "com.ollamabob.clipboardCortex.summarizeStackTrace"
     )

@@ -37,7 +37,7 @@ extension JarvisCallClientError {
     var localizedDescription: String {
         switch self {
         case .notImplemented:
-            return "Jarvis call supervision is not yet implemented (Phase 4b)."
+            return "Jarvis call supervision client is unavailable."
         case .daemonUnreachable:
             return "Jarvis daemon is unreachable."
         case .authFailure(let detail):

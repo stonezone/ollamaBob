@@ -8,6 +8,7 @@ final class AppSettings: ObservableObject {
 
     static let shared = AppSettings()
     nonisolated static let defaultUncensoredModelName = "huihui_ai/qwen3-abliterated:8b"
+    nonisolated static let braveAPIKeyKey = "braveAPIKey"
     nonisolated static let jarvisPhoneEnabledKey = "jarvisPhoneEnabled"
     nonisolated static let jarvisAPIKeyKey = "jarvisAPIKey"
     nonisolated static let jarvisOperatorSecretKey = "jarvisOperatorSecret"
@@ -121,6 +122,12 @@ final class AppSettings: ObservableObject {
         didSet { UserDefaults.standard.set(uncensoredModelName, forKey: Keys.uncensoredModelName) }
     }
 
+    /// Brave Search API key used by the web_search tool. Persisted to the
+    /// macOS Keychain; UserDefaults is legacy-only for first-launch migration.
+    @Published var braveAPIKey: String {
+        didSet { Self.persistSecret(braveAPIKey, secret: .braveAPIKey, legacyKey: Self.braveAPIKeyKey) }
+    }
+
     /// Master switch for the Jarvis phone service integration. When off,
     /// Bob hides the phone settings warning and the future phone tools stay
     /// out of the registry.
@@ -137,7 +144,8 @@ final class AppSettings: ObservableObject {
     }
 
     /// When true, JarvisCallClientFactory returns JarvisCallClientMock instead of
-    /// JarvisCallClientHTTP. Default: TRUE in DEBUG builds, FALSE in release builds.
+    /// JarvisCallClientHTTP. Default: FALSE; DEBUG builds expose a Preferences
+    /// override for deterministic local demos/tests.
     /// Only has an effect in DEBUG builds — the factory ignores this flag in release.
     @Published var useMockedJarvisClient: Bool {
         didSet { UserDefaults.standard.set(useMockedJarvisClient, forKey: Self.useMockedJarvisClientKey) }
@@ -243,12 +251,7 @@ final class AppSettings: ObservableObject {
         static let briefingScheduleMinutes   = "briefingScheduleMinutes"
     }
 
-    // Phase 4a default: true in DEBUG, false in release.
-    #if DEBUG
-    private static let defaultMockedJarvisClient = true
-    #else
     private static let defaultMockedJarvisClient = false
-    #endif
 
     private init() {
         let defaults = UserDefaults.standard
@@ -349,6 +352,9 @@ final class AppSettings: ObservableObject {
         self.richPresentationArtifactChipsEnabled = defaults.bool(forKey: Keys.richPresentationArtifactChipsEnabled)
         self.uncensoredModeAvailable = defaults.bool(forKey: Keys.uncensoredModeAvailable)
         self.uncensoredModelName = defaults.string(forKey: Keys.uncensoredModelName) ?? Self.defaultUncensoredModelName
+        self.braveAPIKey = KeychainService.current.read(.braveAPIKey)
+            ?? defaults.string(forKey: Self.braveAPIKeyKey)
+            ?? ""
         self.jarvisPhoneEnabled = defaults.bool(forKey: Self.jarvisPhoneEnabledKey)
         self.useMockedJarvisClient = defaults.bool(forKey: Self.useMockedJarvisClientKey)
         self.pushToTalkEnabled  = defaults.bool(forKey: Keys.pushToTalkEnabled)

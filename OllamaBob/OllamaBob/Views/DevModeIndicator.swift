@@ -6,8 +6,7 @@ import SwiftUI
 /// It only renders when `DevModeStore.shared.repoRoot != nil`, so it is
 /// invisible in normal operation.
 ///
-/// The view is intentionally NOT integrated into BobsDeskView in Phase 6 —
-/// it is shipped ready-to-use for a future layout integration.
+/// The desk status strip mounts this view when Code Companion mode is active.
 struct DevModeIndicator: View {
     @ObservedObject private var store = DevModeStore.shared
 

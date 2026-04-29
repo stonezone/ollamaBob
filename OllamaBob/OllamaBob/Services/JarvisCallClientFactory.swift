@@ -3,7 +3,7 @@ import Foundation
 // MARK: - JarvisCallClientFactory
 // Returns the correct JarvisCallClient implementation at runtime.
 // In DEBUG builds, honours the AppSettings.useMockedJarvisClient toggle.
-// In release builds, always returns JarvisCallClientHTTP (the production stub).
+// In release builds, always returns JarvisCallClientHTTP.
 
 @MainActor
 enum JarvisCallClientFactory {

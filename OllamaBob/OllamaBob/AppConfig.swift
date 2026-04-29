@@ -10,8 +10,8 @@ struct AppConfig {
     }
 
     // MARK: - App Version
-    static let appVersion = "1.0.27"
-    static let appBuild = "127"
+    static let appVersion = "1.0.29"
+    static let appBuild = "129"
 
     // MARK: - HTML Sanitizer
     /// Bumped whenever PresentationService's HTML allowlist or
@@ -89,6 +89,7 @@ struct AppConfig {
     static let batchAudioAgentLoopMaxIterations = 160
     static let batchAudioAgentLoopTimeoutSeconds: TimeInterval = 3_600
     static let batchAudioContinuationNudgeMax = 64
+    static let processOutputMaxBytes = 1_000_000
 
     // MARK: - Brave Search
     /// Read order: Keychain (Phase 0c migration target) -> process env -> UserDefaults legacy.

@@ -174,7 +174,8 @@ final class AgentLoop: ObservableObject {
         let composed = PromptComposer.composeWithBreakdown(
             persona: PersonaStore.shared.activePersona,
             includeCheatSheet: uncensoredMode == false,
-            uncensoredMode: uncensoredMode
+            uncensoredMode: uncensoredMode,
+            availableToolNames: Set(registry.toolNames)
         )
         messages.insert(.system(composed.prompt), at: 0)
         messages.append(.user(userMessage))

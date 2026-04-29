@@ -10,47 +10,80 @@ import Foundation
 @MainActor
 enum BobOperatingRules {
     static var systemPrompt: String {
-        var toolLines = [
-            "- shell: Run shell commands on macOS",
-            "- read_file: Read file contents into chat (not for opening files in apps)",
-            "- write_file: Write text to a file (requires approval, max 100KB)",
-            "- search_files: Find files by name or size",
-            "- web_search: Search the web",
-            "- mail_check: Check Apple Mail inbox summaries (date/read state/sender/subject only)",
-            "- mail_triage: Read short Apple Mail previews for explicit attention triage requests",
-            "- youtube_search: Search YouTube candidates",
-            "- youtube_download: Download a confirmed YouTube URL as audio or video",
-            "- active_window: Return the frontmost app name and window title",
-            "- selected_items: Return paths currently selected in Finder (max 50)",
-            "- screen_ocr: Capture the screen and extract text via Vision OCR",
-            "- current_context: Composite snapshot — active app + Finder selection + clipboard metadata",
-            "- tool_help: See which built-in and external tools are available this session (pass name='list' for the full inventory, or name='<tool>' for details)",
-            "- read_tool_output: Fetch a previously-stored large tool result by its id",
-            "- remember: Save a fact to long-term memory (category + content)",
-            "- forget: Delete a remembered fact by id (requires user approval)",
-            "- list_facts: List all facts you remember about the user",
-            "- project_context: Walk to the .git root from a path; returns language, manifest head, recent commits, and diff --stat — read-only, no approval needed",
-            "- enable_dev_mode: Enable Code Companion dev mode for a repo; auto-approves write_file inside the repo root (shell stays gated). Requires user approval to activate.",
-            "- disable_dev_mode: Disable dev mode and restore modal approval for all file writes",
-            "- create_skill: Save a named recipe (list of {tool, args} steps) for reuse via run_skill. Requires approval.",
-            "- list_skills: List all saved skills.",
-            "- inspect_skill: Show the full recipe for a saved skill before running it.",
-            "- run_skill: Execute a saved skill; each step is gated by its own approval policy.",
-            "- delete_skill: Permanently delete a saved skill. Requires approval."
-        ]
+        prompt(availableToolNames: nil)
+    }
 
-        if PhoneTool.isConfigured {
-            toolLines.insert("- phone_call: Place a real phone call through the Jarvis phone service daemon", at: 5)
-            toolLines.insert("- phone_hangup: End an active Jarvis phone call by call id", at: 6)
-            toolLines.insert("- phone_status: Check the current status of a Jarvis phone call by call id", at: 7)
-            toolLines.insert("- phone_list_calls: List active Jarvis phone calls currently being supervised", at: 8)
-            toolLines.insert("- phone_get_transcript: Fetch the latest transcript chunk for a supervised call by call_id", at: 9)
-            toolLines.insert("- phone_inject: Inject text into an active call mid-conversation (requires approval per injection)", at: 10)
+    static func prompt(availableToolNames: Set<String>?) -> String {
+        func toolAvailable(_ name: String) -> Bool {
+            if let availableToolNames {
+                return availableToolNames.contains(name)
+            }
+            switch name {
+            case "present":
+                return AppSettings.shared.richPresentationEnabled
+            case "web_search":
+                return AppConfig.braveAPIKey.isEmpty == false
+            case "phone_call", "phone_hangup", "phone_status",
+                 "phone_list_calls", "phone_get_transcript", "phone_inject":
+                return PhoneTool.isConfigured
+            default:
+                return true
+            }
         }
 
+        let availableToolLines: [(name: String, line: String)] = [
+            ("shell", "- shell: Run shell commands on macOS"),
+            ("read_file", "- read_file: Read file contents into chat (not for opening files in apps)"),
+            ("list_directory", "- list_directory: List local directory contents"),
+            ("create_directory", "- create_directory: Create a local directory path"),
+            ("write_file", "- write_file: Write text to a file (requires approval, max 100KB)"),
+            ("move_file", "- move_file: Move or rename a local file or directory"),
+            ("search_files", "- search_files: Find files by name or size"),
+            ("git_status", "- git_status: Show git status for a local repo"),
+            ("git_diff", "- git_diff: Show working-tree or staged git diff for a local repo"),
+            ("web_search", "- web_search: Search the web"),
+            ("present", "- present: Show rich HTML, open a URL in the browser, or open a local file in its default app"),
+            ("mail_check", "- mail_check: Check Apple Mail inbox summaries (date/read state/sender/subject only)"),
+            ("mail_triage", "- mail_triage: Read short Apple Mail previews for explicit attention triage requests"),
+            ("phone_call", "- phone_call: Place a real phone call through the Jarvis phone service daemon"),
+            ("phone_hangup", "- phone_hangup: End an active Jarvis phone call by call id"),
+            ("phone_status", "- phone_status: Check the current status of a Jarvis phone call by call id"),
+            ("phone_list_calls", "- phone_list_calls: List active Jarvis phone calls currently being supervised"),
+            ("phone_get_transcript", "- phone_get_transcript: Fetch the latest transcript chunk for a supervised call by call_id"),
+            ("phone_inject", "- phone_inject: Inject text into an active call mid-conversation (requires approval per injection)"),
+            ("youtube_search", "- youtube_search: Search YouTube candidates"),
+            ("youtube_download", "- youtube_download: Download a confirmed YouTube URL as audio or video"),
+            ("clipboard_read", "- clipboard_read: Read the current clipboard as text"),
+            ("clipboard_write", "- clipboard_write: Replace the clipboard contents (requires approval)"),
+            ("ocr", "- ocr: Extract text from an image or clipboard screenshot"),
+            ("speak", "- speak: Speak text aloud via macOS text-to-speech"),
+            ("image_convert", "- image_convert: Convert or resize images"),
+            ("weather", "- weather: Fetch current weather"),
+            ("unit_convert", "- unit_convert: Convert between units"),
+            ("applescript", "- applescript: Run AppleScript automation (requires approval)"),
+            ("active_window", "- active_window: Return the frontmost app name and window title"),
+            ("selected_items", "- selected_items: Return paths currently selected in Finder (max 50)"),
+            ("screen_ocr", "- screen_ocr: Capture the screen and extract text via Vision OCR"),
+            ("current_context", "- current_context: Composite snapshot — active app + Finder selection + clipboard metadata"),
+            ("tool_help", "- tool_help: See which built-in and external tools are available this session (pass name='list' for the full inventory, or name='<tool>' for details)"),
+            ("read_tool_output", "- read_tool_output: Fetch a previously-stored large tool result by its id"),
+            ("remember", "- remember: Save a fact to long-term memory (category + content)"),
+            ("forget", "- forget: Delete a remembered fact by id (requires user approval)"),
+            ("list_facts", "- list_facts: List all facts you remember about the user"),
+            ("project_context", "- project_context: Walk to the .git root from a path; returns language, manifest head, recent commits, and diff --stat — read-only, no approval needed"),
+            ("enable_dev_mode", "- enable_dev_mode: Enable Code Companion dev mode for a repo; auto-approves write_file inside the repo root (shell stays gated). Requires user approval to activate."),
+            ("disable_dev_mode", "- disable_dev_mode: Disable dev mode and restore modal approval for all file writes"),
+            ("create_skill", "- create_skill: Save a named recipe (list of {tool, args} steps) for reuse via run_skill. Requires approval."),
+            ("list_skills", "- list_skills: List all saved skills."),
+            ("inspect_skill", "- inspect_skill: Show the full recipe for a saved skill before running it."),
+            ("run_skill", "- run_skill: Execute a saved skill; each step is gated by its own approval policy."),
+            ("delete_skill", "- delete_skill: Permanently delete a saved skill. Requires approval.")
+        ]
+
+        let toolLines = availableToolLines.compactMap { toolAvailable($0.name) ? $0.line : nil }
+
         var richPresentationRules = ""
-        if AppSettings.shared.richPresentationEnabled {
-            toolLines.insert("- present: Show rich HTML, open a URL in the browser, or open a local file in its default app", at: 5)
+        if toolAvailable("present") {
             richPresentationRules = """
 
                 Rich presentation:
@@ -104,7 +137,7 @@ enum BobOperatingRules {
             """
 
         var phoneRules = ""
-        if PhoneTool.isConfigured {
+        if toolAvailable("phone_call") || toolAvailable("phone_list_calls") {
             phoneRules = """
 
                 Call supervision:

@@ -169,11 +169,14 @@ final class WalkieTalkieController {
         cancellable = SpeechService.shared.transcriptPublisher
             .receive(on: RunLoop.main)
             .sink { transcript in
-                NotificationCenter.default.post(
+                let notification = Notification(
                     name: .bobWalkieTalkieTranscript,
                     object: nil,
                     userInfo: ["transcript": transcript]
                 )
+                if let prompt = DeskPromptActions.walkieTalkiePrompt(from: notification) {
+                    DeskPromptInbox.shared.enqueue(prompt)
+                }
             }
     }
 }

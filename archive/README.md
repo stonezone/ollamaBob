@@ -28,6 +28,10 @@ For current work, start with:
 | `CODEX-JARVIS-CALL-HANDOFF.md` | Session handoff for Jarvis phone work. | Superseded by current handoff. |
 | `CHAT_REVIEW_REMEDIATION_PLAN.md` | Post-review chat/rendering remediation plan. | Completed/superseded. |
 | `FINDINGS_TO_REVIEW_2026-04-20.md` | Blind peer-review memo for chat/rendering cleanup. | Historical review record. |
+| `PEER_REVIEW_2026-04-27.md` | Multi-peer blind review memo that generated the Phase 0-8 backlog. | Historical review record; current status lives in `docs/CURRENT_HANDOFF.md`. |
+| `PEER_REVIEW_TODO_2026-04-28.md` | Claude-authored phased implementation plan from the peer-review backlog. | Superseded by shipped phases and current handoff. |
+| `HANDOFF_TO_CODEX_2026-04-28.md` | Claude-to-Codex handoff for Phase 4b/5/8 work. | Superseded by current handoff; retained for history. |
+| `PHASE_5_PLAN_2026-04-28.md` | Draft Local Knowledge Layer split plan. | Deferred future work; not an active execution plan. |
 | `PHASE0_RESULTS.md` | Narrative phase-0 investigation write-up. | Historical investigation record. |
 | `phase0/` | Raw phase-0 scripts and results. | Historical investigation data. |
 | `future_features/` | Parked future feature notes. | Ideas only. |

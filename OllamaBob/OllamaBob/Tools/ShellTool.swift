@@ -13,7 +13,9 @@ enum ShellTool {
             executable: executable,
             arguments: ["-c", command],
             currentDirectoryURL: URL(fileURLWithPath: NSHomeDirectory()),
-            timeout: timeout
+            timeout: timeout,
+            stdoutMaxBytes: AppConfig.processOutputMaxBytes,
+            stderrMaxBytes: AppConfig.processOutputMaxBytes
         )
 
         let durationMs = Int(Date().timeIntervalSince(start) * 1000)
@@ -40,6 +42,15 @@ enum ShellTool {
         var output = truncatedStdout
         if !truncatedStderr.isEmpty {
             output += "\n\nSTDERR:\n\(truncatedStderr)"
+        }
+
+        if result.outputLimitExceeded {
+            output += "\n\n[output limit exceeded]"
+            return .failure(
+                tool: "shell",
+                error: output.isEmpty ? "Command output exceeded limit." : output,
+                durationMs: durationMs
+            )
         }
 
         if result.exitCode != 0 {

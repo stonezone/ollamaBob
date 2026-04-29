@@ -3,8 +3,7 @@ import SwiftUI
 /// Standalone indicator showing Focus Guardian status.
 ///
 /// Displays the last frontmost bundle ID, the last persona swap reason, and
-/// a lock toggle button. Drop this view wherever the UI needs it — it is NOT
-/// wired into BobsDeskView; that integration is the supervisor's call.
+/// a lock toggle button. Mounted by the desk status strip and reusable elsewhere.
 struct FocusGuardianIndicator: View {
 
     @ObservedObject private var focusService = FocusService.shared
