@@ -1,3 +1,4 @@
+import Darwin
 import XCTest
 @testable import OllamaBob
 
@@ -282,14 +283,21 @@ final class PhoneSupervisionToolsTests: XCTestCase {
 }
 
 private final class PhoneSupervisionSecretsScope {
+    private static let jarvisAPIKeyEnvironmentName = "JARVIS_API_KEY"
+    private static let operatorSecretEnvironmentName = "OPERATOR_API_SECRET"
+
     private let originalAPIKey = UserDefaults.standard.string(forKey: AppSettings.jarvisAPIKeyKey)
     private let originalOperatorSecret = UserDefaults.standard.string(forKey: AppSettings.jarvisOperatorSecretKey)
+    private let originalAPIKeyEnvironment = ProcessInfo.processInfo.environment[jarvisAPIKeyEnvironmentName]
+    private let originalOperatorSecretEnvironment = ProcessInfo.processInfo.environment[operatorSecretEnvironmentName]
     private let previousSecretOverride: SecretStoring?
     private let store = InMemorySecretStore()
 
     init(apiKey: String?, operatorSecret: String?) {
         previousSecretOverride = KeychainService.testOverride
         KeychainService.testOverride = store
+        unsetenv(Self.jarvisAPIKeyEnvironmentName)
+        unsetenv(Self.operatorSecretEnvironmentName)
         if let apiKey, !apiKey.isEmpty {
             try? store.write(apiKey, for: .jarvisAPIKey)
         }
@@ -303,6 +311,8 @@ private final class PhoneSupervisionSecretsScope {
     deinit {
         apply(value: originalAPIKey, forKey: AppSettings.jarvisAPIKeyKey)
         apply(value: originalOperatorSecret, forKey: AppSettings.jarvisOperatorSecretKey)
+        restoreEnvironment(value: originalAPIKeyEnvironment, name: Self.jarvisAPIKeyEnvironmentName)
+        restoreEnvironment(value: originalOperatorSecretEnvironment, name: Self.operatorSecretEnvironmentName)
         KeychainService.testOverride = previousSecretOverride
     }
 
@@ -311,6 +321,14 @@ private final class PhoneSupervisionSecretsScope {
             UserDefaults.standard.set(value, forKey: key)
         } else {
             UserDefaults.standard.removeObject(forKey: key)
+        }
+    }
+
+    private func restoreEnvironment(value: String?, name: String) {
+        if let value {
+            setenv(name, value, 1)
+        } else {
+            unsetenv(name)
         }
     }
 }

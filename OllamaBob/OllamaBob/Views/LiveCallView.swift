@@ -259,6 +259,7 @@ struct LiveCallView: View {
                 } catch {
                     break
                 }
+                guard selectedCallID != nil else { continue }
                 await loadTranscript()
             }
         }

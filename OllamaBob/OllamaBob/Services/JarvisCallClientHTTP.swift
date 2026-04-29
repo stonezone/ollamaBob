@@ -9,7 +9,7 @@ final class JarvisCallClientHTTP: JarvisCallClient {
     private let session: URLSession
 
     init(
-        baseURL: URL = URL(string: JarvisCallClientHTTP.baseURLString) ?? URL(string: AppConfig.jarvisBaseURL)!,
+        baseURL: URL = JarvisCallClientHTTP.defaultBaseURL,
         session: URLSession = .shared
     ) {
         self.baseURL = baseURL
@@ -123,6 +123,21 @@ final class JarvisCallClientHTTP: JarvisCallClient {
             ?? ProcessInfo.processInfo.environment["JARVIS_PHONE_BASE_URL"]
             ?? AppConfig.jarvisBaseURL
         return value.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static var defaultBaseURL: URL {
+        if let configured = URL(string: baseURLString) {
+            return configured
+        }
+        if let appDefault = URL(string: AppConfig.jarvisBaseURL) {
+            return appDefault
+        }
+
+        var components = URLComponents()
+        components.scheme = "http"
+        components.host = "127.0.0.1"
+        components.port = 3100
+        return components.url ?? URL(fileURLWithPath: "/")
     }
 
     private static var jarvisAPIKey: String {
