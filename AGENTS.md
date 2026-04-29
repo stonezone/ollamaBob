@@ -52,7 +52,7 @@ Key constraints:
 
 ## Current State
 
-Current visible app version: `1.0.28`
+Current visible app version: `1.0.29`
 
 Current model defaults:
 

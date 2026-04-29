@@ -5,17 +5,17 @@
 
 ## Repository State
 
-- Active working branch at handoff time: `codex/phase-bcd-ui-jarvis-docs`.
-- The branch has uncommitted Phase B/C/D usability-hardening and active-doc cleanup changes. Do not assume `main` contains this work until it is explicitly committed and merged.
+- Active working branch at handoff time: `codex/phase-bcd-kimi-integration`.
+- The branch contains the committed Codex Phase B/C/D usability hardening, Jarvis polish, and merged Kimi Phase A security/correctness cleanup. Do not assume `main` contains this work until it is explicitly pushed, reviewed, and merged.
 - No active execution plan is tracked in `docs/`.
 - Active docs are intentionally small; historical plans, old peer-review notes, and superseded handoffs are in `archive/`.
-- Current visible app version: `1.0.28`.
+- Current visible app version: `1.0.29`.
 
 Local-only notes for Zack's workstation:
 
 - Kimi implemented Phase A security/correctness cleanup in a separate worktree: `/Users/zack/ollamaBob-kimi-phase-a` on branch `codex/kimi-phase-a-security`.
 - Kimi's export is `/Users/zack/ollamaBob-kimi-phase-a/kimi-export-b7049281-20260428-221733.md`.
-- Kimi's work is not integrated into this branch. It touches approval/path/shell/process files and must be reviewed/merged separately.
+- Kimi's work is integrated into this branch through commit `c4fe548` and merge commit `2e8373e`. The export file remains local context only and is not part of the app.
 
 ## Current Product State
 
@@ -30,6 +30,7 @@ OllamaBob is live as a single local macOS menu-bar product with:
 - `mail_check` is a modal-gated read-only Apple Mail inbox summary tool; it returns date/read state/sender/subject only and should be preferred over generic AppleScript for unread/search requests
 - `mail_triage` is a modal-gated Apple Mail preview tool for explicit "read my mail and tell me what needs attention" requests; it returns date/read state/sender/subject plus short truncated previews only and does not mutate mail
 - Preferences tool badges with persisted per-tool `Auto` / `Ask` / `Deny` overrides that still preserve path policy and forbidden shell-command safety floors
+- Phase A security hardening for approval/path/shell execution: structured file tools compare execution-time resolved paths with approval-time resolved paths, forbidden paths beat generic write-modal classification, shell forbidden-command parsing handles quoted and escaped command names, and `ProcessRunner` enforces large stream-side caps without killing normal shell commands at display-truncation limits
 - local Jarvis phone address-book aliases from env vars, JSON maps, and VCF exports, including Zack's `~/Downloads/bobs_contacts.vcf`
 - live Jarvis call supervision tools: list active calls, fetch active-call transcripts, and inject a modal-approved mid-call message
 - Jarvis supervision tools are hidden until Jarvis phone is enabled and both Jarvis secrets are configured
@@ -164,22 +165,23 @@ swift test
 ./build.sh --run
 ```
 
-Last verified during the 2026-04-28 Phase B/C/D usability-hardening pass:
+Last verified during the 2026-04-28 final Codex + Kimi integration pass:
 
 - `swift build` passed
-- `swift test` passed: 382 tests, 0 failures
+- `swift test` passed: 388 tests, 0 failures
 - `./build.sh` passed and assembled `build/OllamaBob.app`
-- generated bundle metadata reports `CFBundleShortVersionString = 1.0.28` and `CFBundleVersion = 128`
+- generated bundle metadata reports `CFBundleShortVersionString = 1.0.29` and `CFBundleVersion = 129`
 - `git diff --check` passed
-- Jarvis daemon probes: `/health` returned `200`; unauthenticated `/calls/active` returned `401`; authenticated `/calls/active` returned `200`; authenticated deliberately nonexistent `/call/status/codex-nonexistent` and `/call/codex-nonexistent/message` returned `404`, confirming route shape and auth gates
-- Codex OS refreshed: project memory, knowledge docs, project profile, and structural project index. Lifecycle health for memories/docs/profile still recommends dedup maintenance. Semantic project-index refresh was started as `semantic-ollamaBob-project_index-600a3621`; it was still running during handoff, last observed at 115/468 files before the local API became slow to respond.
+- Jarvis daemon probe: `/health` returned `200`. Authenticated route smoke was skipped in the final integration shell because `JARVIS_API_KEY` / `OPERATOR_API_SECRET` were not exported there; the earlier Codex pass had already verified unauthenticated `/calls/active` as `401`, authenticated `/calls/active` as `200`, and nonexistent `/call/status/:id` plus `/call/:id/message` as `404`.
+- Codex OS should be refreshed after any further source/doc edits before final handoff or PR.
 
-Kimi Phase A verification in the separate worktree:
+Kimi Phase A verification before integration:
 
 - Branch/worktree: `/Users/zack/ollamaBob-kimi-phase-a`, `codex/kimi-phase-a-security`
 - Files touched there: `AgentLoopToolDispatch.swift`, `ApprovalPolicy.swift`, `AppConfig.swift`, `DirectoryCreateTool.swift`, `FileMoveTool.swift`, `FileWriteTool.swift`, `ProcessRunner.swift`, `ShellTool.swift`, `PolicyRegressionTests.swift`, `StructuredFileToolTests.swift`
-- Reported verification: `swift build` passed, `swift test` passed with 378 tests / 0 failures, and `./build.sh` passed
-- Integration warning: both this branch and Kimi's branch touch `AppConfig.swift` and `AgentLoopToolDispatch.swift`; merge deliberately and rerun full verification afterward.
+- Kimi K1 regression fix was applied before merge: `ShellTool` now uses `AppConfig.processOutputMaxBytes` for process kill limits while keeping display truncation at `shellStdoutMax` / `shellStderrMax`.
+- Red/green regression evidence: `PolicyRegressionTests/testShellToolAllowsLongStdoutAndReturnsDisplayTruncation` failed before the fix with `[output limit exceeded]`, then passed after the fix.
+- Verification in the Kimi worktree: focused long-output regression passed, `swift test` passed with 379 tests / 0 failures, `swift build` passed, `./build.sh` passed, and `git diff --check` passed.
 
 Known warning note:
 
@@ -196,8 +198,8 @@ swift test
 
 No active task is binding after this handoff unless the user explicitly asks to continue. Candidate next work, in priority order:
 
-- Run a fresh Opus deep review/audit of this branch's final diff and Kimi's separate Phase A diff before committing or merging.
-- Integrate and review Kimi's separate Phase A security/correctness branch before landing anything that touches approval/path/shell safety.
+- Run a fresh Opus deep review/audit of this integrated branch before push/merge if another external check is desired.
+- Push or PR the integrated branch after review.
 - Expose more Jarvis daemon capabilities in OllamaBob: contacts, follow-ups, memory search, and richer live supervision controls.
 - Add a Preferences contact manager: import VCF files into app storage, list/search aliases, and add/edit/delete local phone aliases without hand-editing JSON.
 - Broaden rich HTML sanitization beyond the current regex/CSP/JS-disabled defense.

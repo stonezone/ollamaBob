@@ -2,7 +2,7 @@
 
 OllamaBob is a native macOS menu-bar assistant for local Ollama models. It is a SwiftUI/AppKit app that talks directly to `http://localhost:11434/api/chat`, owns its agent loop in Swift, runs first-party tools, and stores local data in SQLite through GRDB.
 
-Current app version: `1.0.28`
+Current app version: `1.0.29`
 
 ## Quick Start
 
