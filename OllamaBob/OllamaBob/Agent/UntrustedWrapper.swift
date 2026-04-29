@@ -18,9 +18,18 @@ enum UntrustedWrapper {
     static let closeTag = "</untrusted>"
 
     static func wrap(_ content: String) -> String {
+        wrap(content, source: .unknown)
+    }
+
+    static func wrap(_ content: String, source: TaintSource) -> String {
+        _ = source
         let sanitized = content
             .replacingOccurrences(of: closeTag, with: "< /untrusted >", options: .caseInsensitive)
             .replacingOccurrences(of: openTag,  with: "< untrusted >",  options: .caseInsensitive)
         return "\(openTag)\n\(sanitized)\n\(closeTag)"
+    }
+
+    static func containsWrappedContent(_ content: String) -> Bool {
+        content.range(of: openTag, options: .caseInsensitive) != nil
     }
 }

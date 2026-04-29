@@ -375,6 +375,7 @@ struct BobsDeskView: View {
     @ObservedObject private var devModeStore = DevModeStore.shared
     @ObservedObject private var speechService = SpeechService.shared
     @ObservedObject private var focusService = FocusService.shared
+    @ObservedObject private var taintPolicy = TaintPolicy.shared
     @StateObject private var session: ChatSessionController
     @State private var breathPhase     = false
     @State private var bubbleVisible   = false
@@ -476,6 +477,8 @@ struct BobsDeskView: View {
     private var uncensoredModeToggleDisabled: Bool {
         agentLoop.isProcessing
     }
+
+    private var isTaintActive: Bool { session.conversationId.map { taintPolicy.tainted(forSession: $0) } ?? false }
 
     private var uncensoredModeHelpText: String {
         if session.conversationId == nil {
@@ -762,6 +765,7 @@ struct BobsDeskView: View {
                             .padding(.top, 8)
                             .layoutPriority(1)
                     }
+                    if isTaintActive { taintBanner.padding(.horizontal, 20).layoutPriority(1) }
 
                     Spacer().frame(height: gapBobToInput)
 
@@ -818,6 +822,8 @@ struct BobsDeskView: View {
             Divider()
                 .background(Self.phosphorGreen.opacity(0.15 * surfaceOpacity))
 
+            if isTaintActive { taintBanner.padding(.horizontal, 16).padding(.vertical, 6) }
+
             inputRow
                 .frame(height: 48)
         }
@@ -826,6 +832,14 @@ struct BobsDeskView: View {
                 .fill(Self.bgBlack.opacity(surfaceOpacity))
                 .shadow(color: .black.opacity(0.4 * surfaceOpacity), radius: 12, x: 0, y: 4)
         )
+    }
+
+    private var taintBanner: some View {
+        Label("Untrusted content in this turn — write actions disabled. Type `/lift` to clear.", systemImage: "exclamationmark.triangle.fill")
+            .font(.caption.weight(.semibold)).foregroundStyle(.orange)
+            .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 10).padding(.vertical, 6)
+            .background(.regularMaterial, in: Capsule())
+            .overlay(Capsule().stroke(.orange.opacity(0.35), lineWidth: 1))
     }
 
     private var shouldShowDeskStatusStrip: Bool {

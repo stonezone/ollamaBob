@@ -1,15 +1,15 @@
 # OllamaBob - Current Handoff
 
-**Date:** 2026-04-28
+**Date:** 2026-04-29
 **Audience:** the next coding agent or operator picking the project up cold.
 
 ## Repository State
 
-- Active working branch at handoff time: `codex/phase-bcd-kimi-integration`.
-- The branch contains the committed Codex Phase B/C/D usability hardening, Jarvis polish, and merged Kimi Phase A security/correctness cleanup. Do not assume `main` contains this work until it is explicitly pushed, reviewed, and merged.
-- No active execution plan is tracked in `docs/`.
+- Active working branch at handoff time: `feature/phase-b-untrusted-taint-20260429`.
+- Local `main` has Phase A integrated from `codex/phase-bcd-kimi-integration` through a local no-ff merge and tag `phase-a-hygiene-complete-20260429`; push/review state is still operator-owned.
+- `docs/ACTIVE_EXECUTION_PLAN.md` is tracked and Phase B is implemented on this branch; keep using it as the execution authority until the owner retires or archives it.
 - Active docs are intentionally small; historical plans, old peer-review notes, and superseded handoffs are in `archive/`.
-- Current visible app version: `1.0.29`.
+- Current visible app version: `1.0.30`.
 
 Local-only notes for Zack's workstation:
 
@@ -40,6 +40,8 @@ OllamaBob is live as a single local macOS menu-bar product with:
 - Clipboard Cortex stack-trace summaries open Bob's Desk and submit the full stack trace wrapped as untrusted data
 - Daily Briefing has Preferences controls for enable/time/run-now plus a history window from the menu bar
 - Daily Briefing synthesis prompts explicitly tell the model to treat `<untrusted>` tool-output blocks as data, not instructions
+- Phase B untrusted-output taint protection tracks sessions after successful file/web/mail/clipboard/YouTube-search/screen-OCR/context source tools and blocks write/action tools before approval until the user sends a fresh message or types `/lift`; blocked actions include shell, file writes/moves, clipboard writes, downloads, AppleScript, phone actions, memory mutation, saved-skill execution, and `present(kind=file|url)`
+- Bob's Desk shows an "Untrusted content in this turn" banner while taint protection is active for the current conversation
 - authorized personal music collection workflow for resolving album tracks or pasted song lists, auto-picking high-confidence YouTube candidates by title/duration, confirming only ambiguous tracks, saving approved MP3 files under underscore-safe generated folders like `~/Music/Bob/<Artist>_<Album>`, and using a whole-album single-file workflow when explicitly requested
 - local FLAC-to-MP3 batch conversion through `ffmpeg` via shell, with a larger batch-audio loop budget and no per-file continuation prompts
 - agent-loop batch-continuation guard that rejects status-only final replies like "Next up..." during batch audio turns and internally nudges Bob to call the next tool
@@ -165,13 +167,16 @@ swift test
 ./build.sh --run
 ```
 
-Last verified during the 2026-04-28 final Codex + Kimi integration pass:
+Last verified during the 2026-04-29 Phase B taint-policy pass:
 
 - `swift build` passed
-- `swift test` passed: 388 tests, 0 failures
+- `swift test` passed: 404 tests, 0 failures
 - `./build.sh` passed and assembled `build/OllamaBob.app`
-- generated bundle metadata reports `CFBundleShortVersionString = 1.0.29` and `CFBundleVersion = 129`
+- generated bundle metadata reports `CFBundleShortVersionString = 1.0.30` and `CFBundleVersion = 130`
 - `git diff --check` passed
+- Focused `TaintPolicyTests` passed: 16 tests, 0 failures
+- Focused `PolicyRegressionTests` passed: 12 tests, 0 failures
+- Codex OS refresh for Phase B was attempted through `http://localhost:8051/openapi.json` and `/health`; both timed out locally with no response bytes while the server was busy.
 - Jarvis daemon probe: `/health` returned `200`. Authenticated route smoke was skipped in the final integration shell because `JARVIS_API_KEY` / `OPERATOR_API_SECRET` were not exported there; the earlier Codex pass had already verified unauthenticated `/calls/active` as `401`, authenticated `/calls/active` as `200`, and nonexistent `/call/status/:id` plus `/call/:id/message` as `404`.
 - Codex OS refreshed after final integration: project memory upload succeeded, project profile upload succeeded, active docs (`README.md`, `AGENTS.md`, `CLAUDE.md`, and `docs/`) were uploaded/imported into `ollamaBob-knowledge_docs`, and structural indexing succeeded with 878 symbols across 4447 files. Semantic indexing was started as background job `semantic-ollamaBob-project_index-337b900c`; job/status and project-index lifecycle health calls timed out while the local server was busy. Memories/docs/profile health returned 100% embedding coverage with dedup recommendations.
 

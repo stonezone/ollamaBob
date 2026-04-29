@@ -203,6 +203,14 @@ final class ChatSessionController: ObservableObject {
             startFreshConversation()
             return
         }
+        if allowsLocalCommands && text == "/lift" {
+            if let conversationId {
+                TaintPolicy.shared.lift(forSession: conversationId)
+            }
+            inputText = ""
+            errorMessage = nil
+            return
+        }
 
         let convoId: String
         do {
@@ -217,6 +225,7 @@ final class ChatSessionController: ObservableObject {
             errorMessage = "Failed to start conversation: \(error.localizedDescription)"
             return
         }
+        TaintPolicy.shared.noteUserMessage(text, sessionID: convoId)
 
         let userMsg = ChatMessage(role: .user, content: text)
         messages.append(userMsg)
