@@ -177,6 +177,22 @@ final class AppSettings: ObservableObject {
         didSet { UserDefaults.standard.set(pushToTalkKeyChord, forKey: Keys.pushToTalkKeyChord) }
     }
 
+    // MARK: - Focus Guardian (Phase 7c)
+
+    /// Master switch for Focus Guardian. Default OFF (must opt-in).
+    /// When enabled, FocusService observes the frontmost app and swaps the
+    /// active persona when the bundle ID matches a known mapping.
+    @Published var focusGuardianEnabled: Bool {
+        didSet { UserDefaults.standard.set(focusGuardianEnabled, forKey: Keys.focusGuardianEnabled) }
+    }
+
+    /// User-level overrides for the bundle-ID → persona-ID mapping.
+    /// Keys are bundle identifiers; values are persona IDs. An empty value
+    /// string removes a built-in default for that bundle ID.
+    @Published var focusGuardianOverrides: [String: String] {
+        didSet { UserDefaults.standard.set(focusGuardianOverrides, forKey: Keys.focusGuardianOverrides) }
+    }
+
     private enum Keys {
         static let showBob               = "showBob"
         static let chatWindowOpacity     = "chatWindowOpacity"
@@ -194,8 +210,10 @@ final class AppSettings: ObservableObject {
         static let richPresentationArtifactChipsEnabled = "richPresentationArtifactChipsEnabled"
         static let uncensoredModeAvailable = "uncensoredModeAvailable"
         static let uncensoredModelName = "uncensoredModelName"
-        static let pushToTalkEnabled     = "pushToTalkEnabled"
-        static let pushToTalkKeyChord    = "pushToTalkKeyChord"
+        static let pushToTalkEnabled       = "pushToTalkEnabled"
+        static let pushToTalkKeyChord      = "pushToTalkKeyChord"
+        static let focusGuardianEnabled    = "focusGuardianEnabled"
+        static let focusGuardianOverrides  = "focusGuardianOverrides"
     }
 
     // Phase 4a default: true in DEBUG, false in release.
@@ -265,6 +283,13 @@ final class AppSettings: ObservableObject {
         if defaults.object(forKey: Keys.pushToTalkKeyChord) == nil {
             defaults.set(Self.defaultPushToTalkKeyChord, forKey: Keys.pushToTalkKeyChord)
         }
+        // Focus Guardian: default OFF (must opt-in), empty overrides dict.
+        if defaults.object(forKey: Keys.focusGuardianEnabled) == nil {
+            defaults.set(false, forKey: Keys.focusGuardianEnabled)
+        }
+        if defaults.object(forKey: Keys.focusGuardianOverrides) == nil {
+            defaults.set([String: String](), forKey: Keys.focusGuardianOverrides)
+        }
         // Phase 0c: secrets live in the Keychain. We no longer write the
         // .env value into UserDefaults on first launch (that path is what
         // SecretMigration is migrating *out of*). Tests / CI seed the
@@ -290,6 +315,8 @@ final class AppSettings: ObservableObject {
         self.useMockedJarvisClient = defaults.bool(forKey: Self.useMockedJarvisClientKey)
         self.pushToTalkEnabled  = defaults.bool(forKey: Keys.pushToTalkEnabled)
         self.pushToTalkKeyChord = defaults.string(forKey: Keys.pushToTalkKeyChord) ?? Self.defaultPushToTalkKeyChord
+        self.focusGuardianEnabled   = defaults.bool(forKey: Keys.focusGuardianEnabled)
+        self.focusGuardianOverrides = defaults.dictionary(forKey: Keys.focusGuardianOverrides) as? [String: String] ?? [:]
         // Phase 0c: read Keychain first; fall back to legacy UserDefaults so
         // an un-migrated install still shows the existing key in Preferences.
         self.jarvisAPIKey = KeychainService.current.read(.jarvisAPIKey)

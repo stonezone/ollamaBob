@@ -20,6 +20,11 @@ struct OllamaBobApp: App {
                 appState.updateWalkieTalkie()
             }
 
+            Button(settings.focusGuardianEnabled ? "Focus Guardian: ON" : "Focus Guardian: OFF") {
+                settings.focusGuardianEnabled.toggle()
+                appState.updateFocusGuardian()
+            }
+
             Button(settings.avatarOnlyMode ? "Show Full Chat" : "Avatar-only Mode") {
                 settings.avatarOnlyMode.toggle()
             }
@@ -176,6 +181,7 @@ final class AppState: ObservableObject {
         runSecretMigrationIfNeeded()
         runPreflight()
         setupWalkieTalkie()
+        setupFocusGuardian()
     }
 
     /// Start or stop the push-to-talk hotkey depending on current settings.
@@ -196,6 +202,21 @@ final class AppState: ObservableObject {
     private func setupWalkieTalkie() {
         if AppSettings.shared.pushToTalkEnabled {
             updateWalkieTalkie()
+        }
+    }
+
+    /// Start or stop Focus Guardian depending on current settings.
+    func updateFocusGuardian() {
+        if AppSettings.shared.focusGuardianEnabled {
+            FocusService.shared.start()
+        } else {
+            FocusService.shared.stop()
+        }
+    }
+
+    private func setupFocusGuardian() {
+        if AppSettings.shared.focusGuardianEnabled {
+            FocusService.shared.start()
         }
     }
 
