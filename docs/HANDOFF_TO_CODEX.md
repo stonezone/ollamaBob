@@ -1,12 +1,12 @@
 # Hand-off to next agent (Codex / Claude / whoever)
 
-**Source session:** Claude Opus, 2026-04-28.
-**State of `main`:** version `1.0.22` / build `122`. **253 tests, 0 failures.** Clean working tree.
+**Source session:** Claude Opus, 2026-04-28 (extended).
+**State of `main`:** version `1.0.27` / build `127`. **373 tests, 0 failures.** Clean working tree. Pushed to `origin/main`.
 **Plan source of truth:** `docs/PEER_REVIEW_TODO.md`. **Findings:** `docs/PEER_REVIEW.md`. **Phase 5 sub-plan:** `docs/PHASE_5_PLAN.md` (BLOCKED — see §Owner answers below).
 
 ---
 
-## What landed in this session (8 phases on `main`, all `--no-ff` merged)
+## What landed in this session (13 phases on `main`, all `--no-ff` merged, all pushed)
 
 | Phase | Tag | Test count | Version | What |
 |---|---|---|---|---|
@@ -18,6 +18,11 @@
 | 3 | `phase-3-complete-20260428` | 189 → 210 | 1.0.20 | Mac Context Lens: `active_window`, `selected_items`, `screen_ocr`, `current_context` tools. ScreenCaptureKit + Vision. NSScreenCaptureUsageDescription added. `ContextChipView` standalone, ready to drop in. **Unanimous 4/4 peer #1 pick.** |
 | 4a | `phase-4a-complete-20260428` | 210 → 224 | 1.0.21 | Jarvis Call Cockpit (mock + UI): `phone_list_calls`, `phone_get_transcript`, `phone_inject` tools + `LiveCallView` window. `JarvisCallClientMock` is `#if DEBUG`-gated; release builds always use `JarvisCallClientHTTP` stub that throws `.notImplemented`. **Phase 4b** swaps in real HTTP (blocked on Jarvis daemon endpoints — see below). |
 | 6 | `phase-6-complete-20260428` | 224 → 253 | 1.0.22 | Code Companion: `project_context`, `enable_dev_mode`, `disable_dev_mode` tools + `DevModeStore`. write_file inside detected `.git` root auto-approves; shell NEVER auto-approves; path-prefix attack defended. |
+| 7a | `phase-7a-complete-20260428` | 253 → 274 | 1.0.23 | Skill Capsules: declarative recipes over existing tools. `create_skill`, `list_skills`, `inspect_skill`, `run_skill`, `delete_skill`. Replay goes through ApprovalPolicy + path checks; NO scripting layer; `{{key}}` parameter substitution only. |
+| 7b | `phase-7b-complete-20260428` | 274 → 299 | 1.0.24 | Walkie-Talkie push-to-talk: SFSpeechRecognizer + AVSpeechSynthesizer + global hotkey via NSEvent.addGlobalMonitor. Default ⌃⌥Space chord. NSSpeechRecognitionUsageDescription + NSMicrophoneUsageDescription. Push-to-talk only — no always-listening. |
+| 7c | `phase-7c-complete-20260428` | 299 → 321 | 1.0.25 | Focus Guardian: NSWorkspace observer auto-swaps persona by frontmost app bundle id. Built-in mapping (Xcode/VSCode/Terminal → terseEngineer; Mail/Safari → mumbaiBob; Slack → grumpyLinus). Manual lock + 5s debounce. Default OFF. |
+| 7d | `phase-7d-complete-20260428` | 321 → 362 | 1.0.26 | Clipboard Cortex: passive NSPasteboard watcher with regex-only classifier (messy URL / messy JSON / base64 / stack trace). Pure-Swift cleaners (cleanURL strips utm_*, prettyJSON, decodeBase64). Default OFF. Click-gated cleanup — no auto-mutation. |
+| 7e | `phase-7e-complete-20260428` | 362 → 373 | 1.0.27 | Daily Briefing: SchedulerService + BriefingRunner with HARD-CODED safe-list of read-only tools (mail_check, weather, list_facts, current_context). Additive `briefing` GRDB table. NSWorkspace.didWakeNotification recovery on missed schedules. Default OFF. ApprovalPolicy NOT modified — safe-list enforced inside the runner. |
 | 0a | n/a (extraction-only) | n/a | n/a | Stash `peer-review security correctness pass` extracted to `.local-docs/STASH_REFERENCE_BACKLOG.md` (gitignored, 17 REF items). Stash retained until after Phase 2a per owner directive. |
 
 **Recovery anchors retained:** `pre-phase-{0b,0c,1a,1b,2a,3,4a,6}-20260428` for one-command revert.
@@ -26,19 +31,11 @@
 
 ## What's next on the plan
 
-### Phase 7 — Polish layer (sequential within phase, owner-stated order in `PEER_REVIEW_TODO.md` §4)
+### Phase 7 — Polish layer ✅ COMPLETE
 
-**7a. V4 Skill Capsules.** GRDB `skill` table + declarative recipes over existing tools only. `create_skill`, `list_skills`, `inspect_skill`, `run_skill` tools. **Hard rule:** a skill is a recipe, NOT an executable scripting layer; ApprovalPolicy applies per-step.
+All five sub-phases (7a Skill Capsules, 7b Walkie-Talkie, 7c Focus Guardian, 7d Clipboard Cortex, 7e Daily Briefing) shipped. See the table above.
 
-**7b. V5 Walkie-Talkie.** `Services/SpeechService.swift` using `SFSpeechRecognizer` + `AVSpeechSynthesizer` + global hotkey via `NSEvent.addGlobalMonitor`. Push-to-talk only.
-
-**7c. N2 Focus Guardian.** `Services/FocusService.swift` observing `NSWorkspace.shared.runningApplications`; map bundle-id → context profile → optional persona swap (with manual override always visible). Subtle indicator in desk view (defer integration to Phase 8 like ContextChipView/DevModeIndicator).
-
-**7d. V8 Clipboard Cortex.** Passive `NSPasteboard` watcher with cheap regex-gated trigger before model invocation; results as a chip in the menu-bar dropdown, not auto-pasted.
-
-**7e. V7 Proactive / Daily Briefing.** `BackgroundTasks` + `SchedulerService` persisting cron-like expressions in `AppSettings`. Read-only auto-approval in headless mode only.
-
-Each sub-phase: own feature branch + tag pair (`pre-phase-7X-{YYYYMMDD}` / `phase-7X-complete-{YYYYMMDD}`). One Sonnet sub-agent dispatch each. ~200–400 LOC each. The pattern from this session works well — see "Sub-agent dispatch recipe" below.
+What's left in the plan:
 
 ### Phase 4b — Real Jarvis daemon integration
 
