@@ -19,7 +19,7 @@ final class StructuredFileToolTests: XCTestCase {
     }
 
     func testCreateWriteMoveAndListDirectory() async throws {
-        let baseURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let baseURL = URL(fileURLWithPath: "/tmp").appendingPathComponent(UUID().uuidString, isDirectory: true)
         defer { try? FileManager.default.removeItem(at: baseURL) }
         try FileManager.default.createDirectory(at: baseURL, withIntermediateDirectories: true)
 
@@ -47,5 +47,32 @@ final class StructuredFileToolTests: XCTestCase {
 
         let listDepth2 = await DirectoryListTool.execute(path: baseURL.path, depth: 2)
         XCTAssertTrue(listDepth2.content.contains("[FILE] \(movedURL.path)"))
+    }
+
+    func testFileWriteRejectsResolvedPathChangeAfterApproval() async throws {
+        let baseURL = URL(fileURLWithPath: "/tmp").appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: baseURL) }
+        try FileManager.default.createDirectory(at: baseURL, withIntermediateDirectories: true)
+
+        let originalTarget = baseURL.appendingPathComponent("original.txt")
+        let swappedTarget = baseURL.appendingPathComponent("swapped.txt")
+        let link = baseURL.appendingPathComponent("approved-link.txt")
+        try "original".write(to: originalTarget, atomically: true, encoding: .utf8)
+        try "swapped".write(to: swappedTarget, atomically: true, encoding: .utf8)
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: originalTarget)
+
+        let approvedPath = try XCTUnwrap(FileToolPaths.resolvedURL(for: link.path)?.path)
+        try FileManager.default.removeItem(at: link)
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: swappedTarget)
+
+        let result = await FileWriteTool.execute(
+            path: link.path,
+            content: "new content",
+            approvedResolvedPath: approvedPath
+        )
+
+        XCTAssertFalse(result.success)
+        XCTAssertTrue(result.content.contains("resolved path changed"), result.content)
+        XCTAssertEqual(try String(contentsOf: swappedTarget, encoding: .utf8), "swapped")
     }
 }

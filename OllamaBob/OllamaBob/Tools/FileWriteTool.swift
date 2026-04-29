@@ -1,10 +1,18 @@
 import Foundation
 
 enum FileWriteTool {
-    static func execute(path: String, content: String) async -> ToolResult {
+    static func execute(path: String, content: String, approvedResolvedPath: String? = nil) async -> ToolResult {
         let start = Date()
         guard let fileURL = FileToolPaths.resolvedURL(for: path) else {
             return .failure(tool: "write_file", error: "Missing file path.", durationMs: 0)
+        }
+
+        if let approvedResolvedPath, fileURL.path != approvedResolvedPath {
+            return .failure(
+                tool: "write_file",
+                error: "Approved resolved path changed before execution: \(approvedResolvedPath) -> \(fileURL.path)",
+                durationMs: 0
+            )
         }
 
         // Reject paths outside allowed zones
@@ -12,7 +20,9 @@ enum FileWriteTool {
         case .denied:
             return .failure(tool: "write_file", error: "Path is in a forbidden zone: \(fileURL.path)", durationMs: 0)
         case .requiresApproval:
-            // ApprovalPolicy already gates this at .modal; reaching here means the user approved.
+            guard approvedResolvedPath != nil else {
+                return .failure(tool: "write_file", error: "Path requires approval: \(fileURL.path)", durationMs: 0)
+            }
             break
         case .allowed:
             break

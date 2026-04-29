@@ -89,6 +89,7 @@ struct AppConfig {
     static let batchAudioAgentLoopMaxIterations = 160
     static let batchAudioAgentLoopTimeoutSeconds: TimeInterval = 3_600
     static let batchAudioContinuationNudgeMax = 64
+    static let processOutputMaxBytes = 1_000_000
 
     // MARK: - Brave Search
     /// Read order: Keychain (Phase 0c migration target) -> process env -> UserDefaults legacy.
