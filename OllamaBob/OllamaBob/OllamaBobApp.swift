@@ -25,6 +25,13 @@ struct OllamaBobApp: App {
                 appState.updateFocusGuardian()
             }
 
+            Button(settings.clipboardCortexEnabled ? "Clipboard Cortex: ON" : "Clipboard Cortex: OFF") {
+                settings.clipboardCortexEnabled.toggle()
+                appState.updateClipboardCortex()
+            }
+
+            ClipboardChipView()
+
             Button(settings.avatarOnlyMode ? "Show Full Chat" : "Avatar-only Mode") {
                 settings.avatarOnlyMode.toggle()
             }
@@ -182,6 +189,7 @@ final class AppState: ObservableObject {
         runPreflight()
         setupWalkieTalkie()
         setupFocusGuardian()
+        setupClipboardCortex()
     }
 
     /// Start or stop the push-to-talk hotkey depending on current settings.
@@ -217,6 +225,21 @@ final class AppState: ObservableObject {
     private func setupFocusGuardian() {
         if AppSettings.shared.focusGuardianEnabled {
             FocusService.shared.start()
+        }
+    }
+
+    /// Start or stop Clipboard Cortex watcher depending on current settings.
+    func updateClipboardCortex() {
+        if AppSettings.shared.clipboardCortexEnabled {
+            ClipboardWatcher.shared.start()
+        } else {
+            ClipboardWatcher.shared.stop()
+        }
+    }
+
+    private func setupClipboardCortex() {
+        if AppSettings.shared.clipboardCortexEnabled {
+            ClipboardWatcher.shared.start()
         }
     }
 
