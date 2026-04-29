@@ -156,6 +156,14 @@ struct BobsDeskView: View {
         }
     }
 
+    private var uncensoredBudgetSnapshot: ContextBudget.Snapshot {
+        ContextBudget.snapshot(messages: session.messages, numCtx: settings.numCtx)
+    }
+
+    private var shouldShowUncensoredBudgetBanner: Bool {
+        uncensoredModeEnabled && uncensoredBudgetSnapshot.shouldWarn
+    }
+
     // MARK: Body
 
     var body: some View {
@@ -358,6 +366,13 @@ struct BobsDeskView: View {
 
                     Spacer().frame(height: gapBobToInput)
 
+                    if shouldShowUncensoredBudgetBanner {
+                        UncensoredBudgetBanner(snapshot: uncensoredBudgetSnapshot)
+                            .padding(.horizontal, 20)
+                            .padding(.bottom, 8)
+                            .layoutPriority(1)
+                    }
+
                     compactInputBubble
                         .opacity(agentLoop.isProcessing ? 0.0 : 1.0)
                         .animation(.easeInOut(duration: 0.3), value: agentLoop.isProcessing)
@@ -407,6 +422,12 @@ struct BobsDeskView: View {
                 .background(Self.phosphorGreen.opacity(0.15 * surfaceOpacity))
 
             if isTaintActive { taintBanner.padding(.horizontal, 16).padding(.vertical, 6) }
+
+            if shouldShowUncensoredBudgetBanner {
+                UncensoredBudgetBanner(snapshot: uncensoredBudgetSnapshot)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 6)
+            }
 
             inputRow
                 .frame(height: 48)

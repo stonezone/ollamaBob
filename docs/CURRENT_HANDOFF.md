@@ -6,11 +6,11 @@
 ## Repository State
 
 - Active clean integration worktree: `/Users/zack/ollamaBob-d1-land`.
-- Local `main` has Phase A, Phase B, Phase C, Phase D.1, and Phase D.2 integrated through local no-ff merges and completion tags; push/review state is still operator-owned.
+- Local `main` has Phase A, Phase B, Phase C, Phase D.1, Phase D.2, Phase D.5, and Phase E integrated through local no-ff merges and completion tags; push/review state is still operator-owned.
 - The original `/Users/zack/ollamaBob` worktree has unrelated design/persona changes and should not be treated as the clean execution source until reconciled.
-- `docs/ACTIVE_EXECUTION_PLAN.md` is tracked. Keep using it as the execution authority until the owner retires or archives it; the next default phase after D.5 is Phase E (Naughty Bob compaction budget banner).
+- `docs/ACTIVE_EXECUTION_PLAN.md` is tracked. Keep using it as the execution authority until the owner retires or archives it; the next default phase after Phase E is F.1 (ArtifactStore + kinds).
 - Active docs are intentionally small; historical plans, old peer-review notes, and superseded handoffs are in `archive/`.
-- Current visible app version: `1.0.33`.
+- Current visible app version: `1.0.34`.
 
 Local-only notes for Zack's workstation:
 
@@ -37,7 +37,7 @@ OllamaBob is live as a single local macOS menu-bar product with:
 - Jarvis supervision tools are hidden until Jarvis phone is enabled and both Jarvis secrets are configured
 - DEBUG builds default to the real Jarvis HTTP supervision client; a Preferences-only DEBUG toggle can opt into the canned mock client
 - Bob's Desk status strip for Mac context snapshots, Code Companion mode, walkie-talkie recording/speaking state, and Focus Guardian state
-- Phase C Bob's Desk decomposition: the live desk surface now uses `DeskViewModel`, `DeskTranscriptView`, `DeskInputView`, and `DeskStatusStrip`, with `BobsDeskView.swift` reduced to 795 lines while preserving the existing scene, window chrome behavior, prompt injection path, transcript rendering, history overlay, and send sounds
+- Phase C Bob's Desk decomposition: the live desk surface now uses `DeskViewModel`, `DeskTranscriptView`, `DeskInputView`, and `DeskStatusStrip` while preserving the existing scene, window chrome behavior, prompt injection path, transcript rendering, history overlay, and send sounds
 - Clipboard Cortex and walkie-talkie prompts route through `DeskPromptInbox` so app-originated prompts are not lost if Bob's Desk is still mounting
 - Clipboard Cortex stack-trace summaries open Bob's Desk and submit the full stack trace wrapped as untrusted data
 - Daily Briefing has Preferences controls for enable/time/run-now plus a history window from the menu bar
@@ -45,6 +45,7 @@ OllamaBob is live as a single local macOS menu-bar product with:
 - Phase D.1 Activity Timeline persistence: local `activity_event` SQLite table, timestamp and source/kind indexes, `ActivityEvent` value type, and bounded `appendActivityEvent` / `fetchActivityEvents` database APIs
 - Phase D.2 ActivityIndexer: Preferences exposes `Activity Timeline (local)` as an opt-in toggle defaulting OFF; when enabled, tool calls and user/assistant chat messages are appended to the local activity timeline, with file-event indexing intentionally stubbed for D.3
 - Phase D.5 `timeline_search`: read-only, approval-free local Activity Timeline search that stays gated behind the Activity Timeline toggle, caps results at 50 events, accepts ISO8601 date ranges, and wraps returned timeline rows as untrusted data
+- Phase E Naughty Bob context budget banner: uncensored conversations show a visible warning above the input once the visible message stack reaches 85% of `num_ctx`; no automatic compaction or fallback is added
 - Phase B untrusted-output taint protection tracks sessions after successful file/web/mail/clipboard/YouTube-search/screen-OCR/context source tools and blocks write/action tools before approval until the user sends a fresh message or types `/lift`; blocked actions include shell, file writes/moves, clipboard writes, downloads, AppleScript, phone actions, memory mutation, saved-skill execution, and `present(kind=file|url)`
 - Bob's Desk shows an "Untrusted content in this turn" banner while taint protection is active for the current conversation
 - authorized personal music collection workflow for resolving album tracks or pasted song lists, auto-picking high-confidence YouTube candidates by title/duration, confirming only ambiguous tracks, saving approved MP3 files under underscore-safe generated folders like `~/Music/Bob/<Artist>_<Album>`, and using a whole-album single-file workflow when explicitly requested
@@ -172,18 +173,19 @@ swift test
 ./build.sh --run
 ```
 
-Last verified during the 2026-04-29 Phase D.5 timeline_search pass:
+Last verified during the 2026-04-29 Phase E Naughty Bob budget pass:
 
 - `swift build` passed
-- `swift test` passed: 434 tests, 0 failures
+- `swift test` passed: 441 tests, 0 failures
 - `./build.sh` passed and assembled `build/OllamaBob.app`
-- generated bundle metadata reports `CFBundleShortVersionString = 1.0.33` and `CFBundleVersion = 133`
+- generated bundle metadata reports `CFBundleShortVersionString = 1.0.34` and `CFBundleVersion = 134`
 - `git diff --check` passed
-- `BobsDeskView.swift` is 798 LOC, satisfying the Phase C ≤800 LOC gate
-- `AgentLoopToolDispatch.swift` changed by one D.2 line, `BobsDeskView.swift` was not touched, and `PreferencesView.swift` grew by six D.2 toggle-row lines
+- `BobsDeskView.swift` is 819 LOC after Phase E; Phase E added 21 lines, within the authorized +30 line cap
+- `AgentLoopToolDispatch.swift` changed by one D.2 line and five D.5 lines; `PreferencesView.swift` grew by six D.2 toggle-row lines
 - Focused `ActivityIndexerTests` passed: 6 tests, 0 failures, covering toggle-off no-op, tool calls, user messages, assistant messages, detail capping, and settings persistence
 - Focused `ActivityEventDatabaseTests` passed: 6 tests, 0 failures
 - Focused `TimelineSearchToolTests` passed: 9 tests, 0 failures, covering recent events, limit cap, toggle-off denial, untrusted wrapping/sanitization, source filtering through the real DB path, invalid dates, registration/catalog visibility, disabled-toggle registry hiding, approval, prompt gating, and dispatch self-index prevention
+- Focused `ContextBudgetTests` passed: 7 tests, 0 failures, covering empty stack, all-role counting, visible chat messages, known percentage math, default qwen-abliterated context, 85% warning threshold, and ignored decoded thinking
 - Focused `DeskViewModelTests` passed: 7 tests, 0 failures, including the live external-send bridge used by `BobsDeskView` and multi-prompt queue preservation
 - Focused `TaintPolicyTests` passed: 18 tests, 0 failures
 - Focused `PolicyRegressionTests` passed: 12 tests, 0 failures
@@ -214,7 +216,7 @@ swift test
 
 `docs/ACTIVE_EXECUTION_PLAN.md` remains active. Candidate next work, in priority order:
 
-- Continue the active plan with Phase E (Naughty Bob compaction budget banner) from clean local `main`.
+- Continue the active plan with Phase F.1 (ArtifactStore + kinds) from clean local `main`.
 - Run a fresh Opus deep review/audit of this integrated branch before push if another external check is desired.
 - Push or PR the integrated branch after review.
 - Expose more Jarvis daemon capabilities in OllamaBob: contacts, follow-ups, memory search, and richer live supervision controls.
