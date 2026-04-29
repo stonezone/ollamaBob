@@ -3,11 +3,14 @@ import GRDB
 
 enum DatabaseManagerError: LocalizedError {
     case notInitialized
+    case activityEventMetadataTooLarge(maxBytes: Int)
 
     var errorDescription: String? {
         switch self {
         case .notInitialized:
             return "Database is not initialized."
+        case .activityEventMetadataTooLarge(let maxBytes):
+            return "Activity event metadata exceeds \(maxBytes) bytes."
         }
     }
 }
@@ -492,6 +495,72 @@ final class DatabaseManager {
         }
     }
 
+    // MARK: - Activity Timeline (Phase D.1)
+
+    @discardableResult
+    func appendActivityEvent(_ event: ActivityEvent) throws -> Int64 {
+        let queue = try requireQueue()
+        if let metadataJSON = event.metadataJSON, metadataJSON.utf8.count > 1_024 {
+            throw DatabaseManagerError.activityEventMetadataTooLarge(maxBytes: 1_024)
+        }
+        let cappedDetail = String(event.detail.prefix(500))
+        return try queue.write { db in
+            try db.execute(
+                sql: """
+                    INSERT INTO activity_event
+                        (timestamp, source, kind, detail, conversation_id, metadata_json)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                arguments: [
+                    event.timestamp.timeIntervalSince1970,
+                    event.source,
+                    event.kind,
+                    cappedDetail,
+                    event.conversationID,
+                    event.metadataJSON
+                ]
+            )
+            return db.lastInsertedRowID
+        }
+    }
+
+    func fetchActivityEvents(
+        since: Date,
+        until: Date,
+        source: String? = nil,
+        kind: String? = nil,
+        limit: Int = 100
+    ) throws -> [ActivityEvent] {
+        let queue = try requireQueue()
+        let safeLimit = max(1, limit)
+        return try queue.read { db in
+            var conditions = ["timestamp >= ?", "timestamp <= ?"]
+            var args: [DatabaseValue] = [
+                since.timeIntervalSince1970.databaseValue,
+                until.timeIntervalSince1970.databaseValue
+            ]
+            if let source {
+                conditions.append("source = ?")
+                args.append(source.databaseValue)
+            }
+            if let kind {
+                conditions.append("kind = ?")
+                args.append(kind.databaseValue)
+            }
+
+            let sql = """
+                SELECT *
+                FROM activity_event
+                WHERE \(conditions.joined(separator: " AND "))
+                ORDER BY timestamp DESC
+                LIMIT ?
+                """
+            args.append(safeLimit.databaseValue)
+            let rows = try Row.fetchAll(db, sql: sql, arguments: StatementArguments(args))
+            return rows.map(activityEvent(from:))
+        }
+    }
+
     // MARK: - Skill Capsules (Phase 7a)
 
     /// Persist a new skill. Throws if a skill with the same `name` already exists.
@@ -587,6 +656,19 @@ final class DatabaseManager {
             steps: steps,
             createdAt: Date(timeIntervalSince1970: createdAt),
             updatedAt: Date(timeIntervalSince1970: updatedAt)
+        )
+    }
+
+    private func activityEvent(from row: Row) -> ActivityEvent {
+        let timestamp: Double = row["timestamp"]
+        return ActivityEvent(
+            id: row["id"],
+            timestamp: Date(timeIntervalSince1970: timestamp),
+            source: row["source"],
+            kind: row["kind"],
+            detail: row["detail"],
+            conversationID: row["conversation_id"],
+            metadataJSON: row["metadata_json"]
         )
     }
 

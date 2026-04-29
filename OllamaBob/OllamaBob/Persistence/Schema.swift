@@ -102,5 +102,19 @@ enum AppDatabase {
             t.column("success", .integer).notNull()        // 0 or 1
         }
         try db.create(index: "idx_briefing_run_at", on: "briefing", columns: ["run_at"], ifNotExists: true)
+
+        // Phase D.1 — Local activity timeline. Additive only; consumers are
+        // introduced in later phases behind an opt-in Preferences toggle.
+        try db.create(table: "activity_event", ifNotExists: true) { t in
+            t.autoIncrementedPrimaryKey("id")
+            t.column("timestamp", .double).notNull()
+            t.column("source", .text).notNull()
+            t.column("kind", .text).notNull()
+            t.column("detail", .text).notNull()
+            t.column("conversation_id", .text)
+            t.column("metadata_json", .text)
+        }
+        try db.create(index: "idx_activity_event_timestamp", on: "activity_event", columns: ["timestamp"], ifNotExists: true)
+        try db.create(index: "idx_activity_event_source_kind", on: "activity_event", columns: ["source", "kind"], ifNotExists: true)
     }
 }
