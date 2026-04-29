@@ -15,6 +15,11 @@ struct OllamaBobApp: App {
             }
             .keyboardShortcut("o")
 
+            Button(settings.pushToTalkEnabled ? "Walkie-Talkie: ON" : "Walkie-Talkie…") {
+                settings.pushToTalkEnabled.toggle()
+                appState.updateWalkieTalkie()
+            }
+
             Button(settings.avatarOnlyMode ? "Show Full Chat" : "Avatar-only Mode") {
                 settings.avatarOnlyMode.toggle()
             }
@@ -162,11 +167,36 @@ final class AppState: ObservableObject {
     @Published var preflightStatus: PreflightStatus?
     @Published var preflightPassed = false
 
+    // Walkie-talkie push-to-talk hotkey listener (nil when disabled).
+    private var pushToTalkHotkey: PushToTalkHotkey?
+
     init() {
         initDatabase()
         setupApprovalHandler()
         runSecretMigrationIfNeeded()
         runPreflight()
+        setupWalkieTalkie()
+    }
+
+    /// Start or stop the push-to-talk hotkey depending on current settings.
+    func updateWalkieTalkie() {
+        let settings = AppSettings.shared
+        if settings.pushToTalkEnabled {
+            let hotkey = PushToTalkHotkey(chordString: settings.pushToTalkKeyChord)
+            hotkey.start()
+            pushToTalkHotkey = hotkey
+            // Ensure the transcript bridge is alive.
+            _ = WalkieTalkieController.shared
+        } else {
+            pushToTalkHotkey?.stop()
+            pushToTalkHotkey = nil
+        }
+    }
+
+    private func setupWalkieTalkie() {
+        if AppSettings.shared.pushToTalkEnabled {
+            updateWalkieTalkie()
+        }
     }
 
     /// Phase 0c: one-time prompt to move legacy UserDefaults secrets into the

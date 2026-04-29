@@ -162,6 +162,21 @@ final class AppSettings: ObservableObject {
         }
     }
 
+    // MARK: - Walkie-Talkie push-to-talk settings
+
+    /// Default chord string for the push-to-talk hotkey.
+    nonisolated static let defaultPushToTalkKeyChord = "ctrl+opt+space"
+
+    /// Master switch for the push-to-talk walkie-talkie mode. Default OFF.
+    @Published var pushToTalkEnabled: Bool {
+        didSet { UserDefaults.standard.set(pushToTalkEnabled, forKey: Keys.pushToTalkEnabled) }
+    }
+
+    /// Human-readable key chord for the push-to-talk hotkey, e.g. "ctrl+opt+space".
+    @Published var pushToTalkKeyChord: String {
+        didSet { UserDefaults.standard.set(pushToTalkKeyChord, forKey: Keys.pushToTalkKeyChord) }
+    }
+
     private enum Keys {
         static let showBob               = "showBob"
         static let chatWindowOpacity     = "chatWindowOpacity"
@@ -179,6 +194,8 @@ final class AppSettings: ObservableObject {
         static let richPresentationArtifactChipsEnabled = "richPresentationArtifactChipsEnabled"
         static let uncensoredModeAvailable = "uncensoredModeAvailable"
         static let uncensoredModelName = "uncensoredModelName"
+        static let pushToTalkEnabled     = "pushToTalkEnabled"
+        static let pushToTalkKeyChord    = "pushToTalkKeyChord"
     }
 
     // Phase 4a default: true in DEBUG, false in release.
@@ -241,6 +258,13 @@ final class AppSettings: ObservableObject {
         if defaults.object(forKey: Self.useMockedJarvisClientKey) == nil {
             defaults.set(Self.defaultMockedJarvisClient, forKey: Self.useMockedJarvisClientKey)
         }
+        // Walkie-Talkie push-to-talk: default OFF / default chord.
+        if defaults.object(forKey: Keys.pushToTalkEnabled) == nil {
+            defaults.set(false, forKey: Keys.pushToTalkEnabled)
+        }
+        if defaults.object(forKey: Keys.pushToTalkKeyChord) == nil {
+            defaults.set(Self.defaultPushToTalkKeyChord, forKey: Keys.pushToTalkKeyChord)
+        }
         // Phase 0c: secrets live in the Keychain. We no longer write the
         // .env value into UserDefaults on first launch (that path is what
         // SecretMigration is migrating *out of*). Tests / CI seed the
@@ -264,6 +288,8 @@ final class AppSettings: ObservableObject {
         self.uncensoredModelName = defaults.string(forKey: Keys.uncensoredModelName) ?? Self.defaultUncensoredModelName
         self.jarvisPhoneEnabled = defaults.bool(forKey: Self.jarvisPhoneEnabledKey)
         self.useMockedJarvisClient = defaults.bool(forKey: Self.useMockedJarvisClientKey)
+        self.pushToTalkEnabled  = defaults.bool(forKey: Keys.pushToTalkEnabled)
+        self.pushToTalkKeyChord = defaults.string(forKey: Keys.pushToTalkKeyChord) ?? Self.defaultPushToTalkKeyChord
         // Phase 0c: read Keychain first; fall back to legacy UserDefaults so
         // an un-migrated install still shows the existing key in Preferences.
         self.jarvisAPIKey = KeychainService.current.read(.jarvisAPIKey)

@@ -41,9 +41,9 @@ cat > "$CONTENTS/Info.plist" <<'PLIST'
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0.23</string>
+    <string>1.0.24</string>
     <key>CFBundleVersion</key>
-    <string>123</string>
+    <string>124</string>
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
     <key>LSUIElement</key>
@@ -68,6 +68,10 @@ cat > "$CONTENTS/Info.plist" <<'PLIST'
     <string>OllamaBob reads and writes Reminders when you ask Bob to check your to-dos or add a new reminder.</string>
     <key>NSScreenCaptureUsageDescription</key>
     <string>OllamaBob captures screen content only when you explicitly ask Bob to look at the active window. The capture is OCR'd locally; the image and text never leave this machine.</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>OllamaBob recognizes speech locally so you can talk to Bob via the push-to-talk hotkey. Recognition runs on-device by default; nothing leaves this Mac.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>OllamaBob records microphone input only while you hold the push-to-talk hotkey. Audio is processed on-device and discarded after recognition.</string>
 </dict>
 </plist>
 PLIST
