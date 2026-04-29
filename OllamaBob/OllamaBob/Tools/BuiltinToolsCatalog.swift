@@ -98,12 +98,19 @@ enum BuiltinToolsCatalog {
         Entry(name: "project_context",  category: "code", posture: .none,  description: "Walk to .git root, identify language, return manifest head + recent log + diff --stat"),
         Entry(name: "enable_dev_mode",  category: "code", posture: .modal, description: "Enable dev mode: auto-approve write_file inside the repo root (shell stays gated)"),
         Entry(name: "disable_dev_mode", category: "code", posture: .none,  description: "Disable dev mode and restore modal approval for all file writes"),
+
+        // MARK: Skills (Phase 7a — Skill Capsules)
+        Entry(name: "create_skill",  category: "skills", posture: .modal, description: "Save a named recipe that replays a sequence of first-party tools (approval required)"),
+        Entry(name: "list_skills",   category: "skills", posture: .none,  description: "List all saved skills with name, step count, and description"),
+        Entry(name: "inspect_skill", category: "skills", posture: .none,  description: "Show the full step-by-step recipe for a saved skill"),
+        Entry(name: "run_skill",     category: "skills", posture: .none,  description: "Run a saved skill; each step is gated by its own tool approval policy"),
+        Entry(name: "delete_skill",  category: "skills", posture: .modal, description: "Permanently delete a saved skill (approval required)"),
     ]
 
     /// Rendering order for categories in the Preferences UI.
     static let categoryOrder: [String] = [
         "files", "shell", "git", "web", "mail", "phone", "presentation", "media", "utility",
-        "youtube", "clipboard", "automation", "memory", "meta", "context", "code"
+        "youtube", "clipboard", "automation", "memory", "meta", "context", "code", "skills"
     ]
 
     static func entries(for category: String) -> [Entry] {

@@ -470,6 +470,73 @@ struct ToolRegistry {
         )
         reqs["disable_dev_mode"] = []
 
+        // MARK: - Skill Capsules (Phase 7a)
+
+        // create_skill — save a new named skill recipe (modal: policy state).
+        defs["create_skill"] = .tool(
+            name: "create_skill",
+            description: "Save a named, reusable skill that replays a sequence of first-party tools. "
+                       + "`steps_json` is a JSON array of {\"tool\": \"<name>\", \"args\": {...}} objects. "
+                       + "Use `{{key}}` placeholders in string arg values for runtime substitution via run_skill. "
+                       + "All step tool names are validated at create time. Requires approval.",
+            properties: [
+                "name":        ("string", "Unique skill name used to run or inspect it later."),
+                "description": ("string", "Human-readable description of what the skill does."),
+                "steps_json":  ("string", "JSON array of {tool, args} objects.")
+            ],
+            required: ["name", "description", "steps_json"]
+        )
+        reqs["create_skill"] = ["name", "description", "steps_json"]
+
+        // list_skills — read-only list.
+        defs["list_skills"] = .tool(
+            name: "list_skills",
+            description: "List all saved skills with their name, step count, and description.",
+            properties: [:],
+            required: []
+        )
+        reqs["list_skills"] = []
+
+        // inspect_skill — read-only recipe view.
+        defs["inspect_skill"] = .tool(
+            name: "inspect_skill",
+            description: "Show the full recipe for a named skill: each step's tool name and arguments. "
+                       + "Use this before run_skill to confirm what will execute.",
+            properties: [
+                "name": ("string", "The skill name to inspect.")
+            ],
+            required: ["name"]
+        )
+        reqs["inspect_skill"] = ["name"]
+
+        // run_skill — runs per-step approval; the run_skill call itself is .none.
+        defs["run_skill"] = .tool(
+            name: "run_skill",
+            description: "Run a saved skill by name. Each step is approval-gated by its own tool policy "
+                       + "(same as if the model called that tool directly). "
+                       + "Optional `parameters_json` is a JSON object whose keys replace `{{key}}` placeholders "
+                       + "in step arg strings. Example: {\"path\": \"~/Desktop/notes.txt\"}. "
+                       + "If a placeholder key is missing the skill fails before any step runs. "
+                       + "If any step fails the skill stops and does not run subsequent steps.",
+            properties: [
+                "name":            ("string", "The skill name to run."),
+                "parameters_json": ("string", "Optional JSON object of {key: value} substitutions for {{key}} placeholders.")
+            ],
+            required: ["name"]
+        )
+        reqs["run_skill"] = ["name"]
+
+        // delete_skill — destructive (modal-gated).
+        defs["delete_skill"] = .tool(
+            name: "delete_skill",
+            description: "Permanently delete a saved skill by name. Requires approval.",
+            properties: [
+                "name": ("string", "The skill name to delete.")
+            ],
+            required: ["name"]
+        )
+        reqs["delete_skill"] = ["name"]
+
         self.tools = defs
         self.requiredArgs = reqs
     }

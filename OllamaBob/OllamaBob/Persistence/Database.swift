@@ -492,6 +492,106 @@ final class DatabaseManager {
         }
     }
 
+    // MARK: - Skill Capsules (Phase 7a)
+
+    /// Persist a new skill. Throws if a skill with the same `name` already exists.
+    @discardableResult
+    func createSkill(name: String, description: String, steps: [SkillStep]) throws -> Skill {
+        let queue = try requireQueue()
+        let now = Date().timeIntervalSince1970
+        let stepsJson = try encodeSkillSteps(steps)
+        var record = SkillRecord(
+            id: nil,
+            name: name,
+            description: description,
+            stepsJson: stepsJson,
+            createdAt: now,
+            updatedAt: now
+        )
+        try queue.write { db in
+            try record.insert(db)
+        }
+        guard let rowID = record.id else {
+            throw SkillStorageError.insertFailed
+        }
+        return Skill(
+            id: rowID,
+            name: name,
+            description: description,
+            steps: steps,
+            createdAt: Date(timeIntervalSince1970: now),
+            updatedAt: Date(timeIntervalSince1970: now)
+        )
+    }
+
+    /// Fetch a skill by its unique name. Returns nil if not found.
+    func fetchSkill(named name: String) throws -> Skill? {
+        let queue = try requireQueue()
+        return try queue.read { db in
+            let row = try Row.fetchOne(
+                db,
+                sql: "SELECT * FROM skill WHERE name = ?",
+                arguments: [name]
+            )
+            return try row.map { try skillFromRow($0) }
+        }
+    }
+
+    /// List all skills ordered by name ascending.
+    func listSkills() throws -> [Skill] {
+        let queue = try requireQueue()
+        return try queue.read { db in
+            let rows = try Row.fetchAll(db, sql: "SELECT * FROM skill ORDER BY name ASC")
+            return try rows.map { try skillFromRow($0) }
+        }
+    }
+
+    /// Delete the skill with the given name. Returns true if a row was removed.
+    @discardableResult
+    func deleteSkill(named name: String) throws -> Bool {
+        let queue = try requireQueue()
+        let deleted = try queue.write { db -> Int in
+            try db.execute(sql: "DELETE FROM skill WHERE name = ?", arguments: [name])
+            return db.changesCount
+        }
+        return deleted > 0
+    }
+
+    private func encodeSkillSteps(_ steps: [SkillStep]) throws -> String {
+        let data = try JSONEncoder().encode(steps)
+        guard let str = String(data: data, encoding: .utf8) else {
+            throw SkillStorageError.encodingFailed
+        }
+        return str
+    }
+
+    private func decodeSkillSteps(from json: String) throws -> [SkillStep] {
+        guard let data = json.data(using: .utf8) else {
+            throw SkillStorageError.decodingFailed
+        }
+        return try JSONDecoder().decode([SkillStep].self, from: data)
+    }
+
+    private func skillFromRow(_ row: Row) throws -> Skill {
+        let id: Int64 = row["id"]
+        let name: String = row["name"]
+        let description: String = row["description"]
+        let stepsJson: String = row["steps_json"]
+        let createdAt: Double = row["created_at"]
+        let updatedAt: Double = row["updated_at"]
+        let steps = try decodeSkillSteps(from: stepsJson)
+        return Skill(
+            id: id,
+            name: name,
+            description: description,
+            steps: steps,
+            createdAt: Date(timeIntervalSince1970: createdAt),
+            updatedAt: Date(timeIntervalSince1970: updatedAt)
+        )
+    }
+
+    // MARK: - Private
+
     private func requireQueue() throws -> DatabaseQueue {
         guard let dbQueue else {
             throw DatabaseManagerError.notInitialized

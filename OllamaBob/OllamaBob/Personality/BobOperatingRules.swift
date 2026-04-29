@@ -31,7 +31,12 @@ enum BobOperatingRules {
             "- list_facts: List all facts you remember about the user",
             "- project_context: Walk to the .git root from a path; returns language, manifest head, recent commits, and diff --stat — read-only, no approval needed",
             "- enable_dev_mode: Enable Code Companion dev mode for a repo; auto-approves write_file inside the repo root (shell stays gated). Requires user approval to activate.",
-            "- disable_dev_mode: Disable dev mode and restore modal approval for all file writes"
+            "- disable_dev_mode: Disable dev mode and restore modal approval for all file writes",
+            "- create_skill: Save a named recipe (list of {tool, args} steps) for reuse via run_skill. Requires approval.",
+            "- list_skills: List all saved skills.",
+            "- inspect_skill: Show the full recipe for a saved skill before running it.",
+            "- run_skill: Execute a saved skill; each step is gated by its own approval policy.",
+            "- delete_skill: Permanently delete a saved skill. Requires approval."
         ]
 
         if PhoneTool.isConfigured {
@@ -61,6 +66,19 @@ enum BobOperatingRules {
                 - Don't use `present` for short conversational replies. When in doubt, answer in chat and skip the tool.
                 """
         }
+
+        let skillCapsulesRules = """
+
+            Skill capsules:
+            - A skill is a saved, named recipe of first-party tool steps that you can replay with run_skill.
+            - Use create_skill when the user wants to save a workflow for reuse. steps_json must be a JSON array of {"tool": "<name>", "args": {...}} objects.
+            - Use {{key}} placeholders in string arg values when the user wants to parameterize a step at run time. The caller supplies values via parameters_json when invoking run_skill.
+            - Use inspect_skill before run_skill when you are unsure what the skill does.
+            - run_skill is NOT a scripting layer — there are no conditionals, loops, or expressions. Each step runs the exact tool it names with the exact args provided (after {{key}} substitution).
+            - Each step inside a running skill is approval-gated by its own tool policy. A step with a .modal tool will ask the user for approval just as if you called that tool directly.
+            - If step N of a skill fails, the skill stops immediately. Subsequent steps do NOT run.
+            - create_skill and delete_skill require user approval and are logged in the execution ledger.
+            """
 
         let codeCompanionRules = """
 
@@ -123,6 +141,7 @@ enum BobOperatingRules {
             \(phoneRules)
             \(macContextRules)
             \(codeCompanionRules)
+            \(skillCapsulesRules)
 
             Choosing an external tool:
             - The user's Mac has extra CLI tools installed beyond the basics (jq, rg, fd, ffmpeg, yt-dlp, pdftotext, etc. — the exact set varies per machine). You can use any of them via `shell`.
