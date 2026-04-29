@@ -9,6 +9,8 @@
 
 **Supervisor note (2026-04-29, Phase B execution):** Because Phase A already shipped as `1.0.29`/`129`, Phase B ships as `1.0.30`/`130`. Final review also tightened the taint block list to include memory mutation tools (`remember`, `forget`) and `present(kind=file|url)` while keeping `present(kind=html)` allowed as read-only in-app display.
 
+**Supervisor note (2026-04-29, Phase C execution):** Because Phase B already shipped as `1.0.30`/`130`, Phase C ships as `1.0.31`/`131`. The Phase C LOC gate was satisfied by moving transcript, input, status-line, prompt-injection state, and window-chrome support into the allowed Desk files while preserving the live `BobsDeskView` scene.
+
 **Version note for remaining phases:** Any hard-coded future version numbers below were authored before Phase B shipped as `1.0.30`; supervisors should apply the repository version policy from the current visible version instead of treating old examples as fixed targets.
 
 > **Read this entire file before any phase dispatch.** §0–§3 are non-negotiable. §4 contains the per-phase scope boxes, dispatch prompts, and success gates. §5–§7 govern resumption.
