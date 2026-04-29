@@ -5,11 +5,11 @@
 
 ## Repository State
 
-- Active working branch at handoff time: `feature/phase-b-untrusted-taint-20260429`.
-- Local `main` has Phase A integrated from `codex/phase-bcd-kimi-integration` through a local no-ff merge and tag `phase-a-hygiene-complete-20260429`; push/review state is still operator-owned.
-- `docs/ACTIVE_EXECUTION_PLAN.md` is tracked and Phase B is implemented on this branch; keep using it as the execution authority until the owner retires or archives it.
+- Active working branch at handoff time: `feature/phase-c-deskview-decomp-20260429`.
+- Local `main` has Phase A and Phase B integrated through local no-ff merges and tags `phase-a-hygiene-complete-20260429` and `phase-b-untrusted-taint-complete-20260429`; push/review state is still operator-owned.
+- `docs/ACTIVE_EXECUTION_PLAN.md` is tracked and Phase C is implemented on this branch; keep using it as the execution authority until the owner retires or archives it.
 - Active docs are intentionally small; historical plans, old peer-review notes, and superseded handoffs are in `archive/`.
-- Current visible app version: `1.0.30`.
+- Current visible app version: `1.0.31`.
 
 Local-only notes for Zack's workstation:
 
@@ -36,6 +36,7 @@ OllamaBob is live as a single local macOS menu-bar product with:
 - Jarvis supervision tools are hidden until Jarvis phone is enabled and both Jarvis secrets are configured
 - DEBUG builds default to the real Jarvis HTTP supervision client; a Preferences-only DEBUG toggle can opt into the canned mock client
 - Bob's Desk status strip for Mac context snapshots, Code Companion mode, walkie-talkie recording/speaking state, and Focus Guardian state
+- Phase C Bob's Desk decomposition: the live desk surface now uses `DeskViewModel`, `DeskTranscriptView`, `DeskInputView`, and `DeskStatusStrip`, with `BobsDeskView.swift` reduced to 795 lines while preserving the existing scene, window chrome behavior, prompt injection path, transcript rendering, history overlay, and send sounds
 - Clipboard Cortex and walkie-talkie prompts route through `DeskPromptInbox` so app-originated prompts are not lost if Bob's Desk is still mounting
 - Clipboard Cortex stack-trace summaries open Bob's Desk and submit the full stack trace wrapped as untrusted data
 - Daily Briefing has Preferences controls for enable/time/run-now plus a history window from the menu bar
@@ -52,7 +53,7 @@ OllamaBob is live as a single local macOS menu-bar product with:
 Runtime UI note:
 
 - The shipped chat surface is `BobsDeskView`.
-- `BobsDeskView` owns app-originated prompt dispatch through `DeskPromptInbox` and `DeskPromptActions`; keep clipboard/walkie-talkie prompt injection additive and wrapped as untrusted when sourced from clipboard content.
+- `DeskViewModel` owns app-originated prompt notification sinks and drains `DeskPromptInbox`; `BobsDeskView` still bridges injected sends through `sendWithSound()` so sounds, heartbeat activity, autoscroll, and local-command behavior stay unchanged.
 - `ChatPanel.swift` remains in the repo but is not the live app scene graph entrypoint.
 
 Claude OS / Codex OS local RAG note:
@@ -167,16 +168,18 @@ swift test
 ./build.sh --run
 ```
 
-Last verified during the 2026-04-29 Phase B taint-policy pass:
+Last verified during the 2026-04-29 Phase C desk decomposition pass:
 
 - `swift build` passed
-- `swift test` passed: 404 tests, 0 failures
+- `swift test` passed: 413 tests, 0 failures
 - `./build.sh` passed and assembled `build/OllamaBob.app`
-- generated bundle metadata reports `CFBundleShortVersionString = 1.0.30` and `CFBundleVersion = 130`
+- generated bundle metadata reports `CFBundleShortVersionString = 1.0.31` and `CFBundleVersion = 131`
 - `git diff --check` passed
-- Focused `TaintPolicyTests` passed: 16 tests, 0 failures
+- `BobsDeskView.swift` is 798 LOC, satisfying the Phase C ≤800 LOC gate
+- Focused `DeskViewModelTests` passed: 7 tests, 0 failures, including the live external-send bridge used by `BobsDeskView` and multi-prompt queue preservation
+- Focused `TaintPolicyTests` passed: 18 tests, 0 failures
 - Focused `PolicyRegressionTests` passed: 12 tests, 0 failures
-- Codex OS refresh for Phase B was attempted through `http://localhost:8051/openapi.json` and `/health`; both timed out locally with no response bytes while the server was busy.
+- Codex OS refresh for Phase C was attempted through `http://localhost:8051/openapi.json` and `/health`; both timed out locally with no response bytes while the server was busy.
 - Jarvis daemon probe: `/health` returned `200`. Authenticated route smoke was skipped in the final integration shell because `JARVIS_API_KEY` / `OPERATOR_API_SECRET` were not exported there; the earlier Codex pass had already verified unauthenticated `/calls/active` as `401`, authenticated `/calls/active` as `200`, and nonexistent `/call/status/:id` plus `/call/:id/message` as `404`.
 - Codex OS refreshed after final integration: project memory upload succeeded, project profile upload succeeded, active docs (`README.md`, `AGENTS.md`, `CLAUDE.md`, and `docs/`) were uploaded/imported into `ollamaBob-knowledge_docs`, and structural indexing succeeded with 878 symbols across 4447 files. Semantic indexing was started as background job `semantic-ollamaBob-project_index-337b900c`; job/status and project-index lifecycle health calls timed out while the local server was busy. Memories/docs/profile health returned 100% embedding coverage with dedup recommendations.
 
