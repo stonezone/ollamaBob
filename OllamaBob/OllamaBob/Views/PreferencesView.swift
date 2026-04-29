@@ -14,7 +14,7 @@ struct PreferencesView: View {
     @ObservedObject var settings = AppSettings.shared
     @ObservedObject var toolRuntime = ToolRuntime.shared
     @ObservedObject var personaStore = PersonaStore.shared
-    @ObservedObject var avatarStore = AvatarStore.shared
+    @ObservedObject var personaRegistry = BobPersonaRegistry.shared
     @ObservedObject var automationProbe = AutomationProbe.shared
     @ObservedObject var scheduler = SchedulerService.shared
     @State private var selectedTab = 0
@@ -179,15 +179,60 @@ struct PreferencesView: View {
                 isOn: $settings.activityTimelineEnabled,
                 dimmed: false
             )
-            sliderRow(
-                title: "Chat window transparency",
-                subtitle: "Lower values let your desktop show through",
-                value: $settings.chatWindowOpacity,
-                range: 0.4...1.0
-            )
+            hudSummonHotkeyRow
             numCtxRow
         }
         .padding(.top, 8)
+    }
+
+    private var hudSummonHotkeyRow: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("HUD summon hotkey")
+                    .font(.system(.body, design: .monospaced))
+                    .foregroundColor(.white)
+                Text("Global key chord that brings up Bob's floating HUD anywhere in macOS. Default ⌘⇧Space; collides with Spotlight Finder Search on stock macOS.")
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundColor(PreferencesView.textGrey)
+            }
+            HStack(spacing: 12) {
+                Toggle(isOn: $settings.hudSummonHotkeyEnabled) {
+                    EmptyView()
+                }
+                .toggleStyle(.switch)
+                .labelsHidden()
+                .tint(PreferencesView.phosphorGreen)
+
+                TextField(
+                    "cmd+shift+space",
+                    text: $settings.hudSummonHotkeyChord
+                )
+                .textFieldStyle(.plain)
+                .font(.system(.caption, design: .monospaced))
+                .foregroundColor(PreferencesView.phosphorGreen)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Color.black.opacity(0.35))
+                .cornerRadius(4)
+                .disabled(!settings.hudSummonHotkeyEnabled)
+
+                Spacer()
+            }
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 14)
+        .background(PreferencesView.bgPanel)
+        .onChange(of: settings.hudSummonHotkeyEnabled) { restartHotkey() }
+        .onChange(of: settings.hudSummonHotkeyChord) { restartHotkey() }
+    }
+
+    private func restartHotkey() {
+        // Looking up AppState through the SwiftUI environment would mean
+        // threading a reference all the way down PreferencesView. Reaching
+        // through NSApplication.delegate isn't an option since the app uses
+        // pure SwiftUI scenes; the existing toggle pattern (Walkie-Talkie)
+        // posts a Notification that AppState observes. We do the same.
+        NotificationCenter.default.post(name: .bobHUDSummonHotkeyChanged, object: nil)
     }
 
     private var numCtxRow: some View {
@@ -1611,11 +1656,9 @@ struct PreferencesView: View {
     // MARK: - Appearance Tab
 
     private var appearanceTab: some View {
-        let followOn = avatarStore.followPersona
-        let personaPack = AvatarPacks.defaultForPersona(personaStore.activePersonaID)
-        return ScrollView {
+        ScrollView {
             VStack(alignment: .leading, spacing: 2) {
-                Text("Pick Bob's look. Turn on \"Follow persona\" and the sprite auto-matches whichever voice you're using.")
+                Text("Pick Bob's look. Each persona is rendered live in SwiftUI — the thumbnails below are the same renderer Bob's Desk uses.")
                     .font(.system(.caption2, design: .monospaced))
                     .foregroundColor(PreferencesView.textGrey)
                     .padding(.horizontal, 24)
@@ -1624,17 +1667,15 @@ struct PreferencesView: View {
 
                 avatarOnlyToggle
 
-                followPersonaToggle(currentPack: personaPack)
-
-                Text("AVATAR PACKS")
+                Text("VISUAL PERSONA")
                     .font(.system(.caption2, design: .monospaced).weight(.bold))
                     .foregroundColor(PreferencesView.phosphorGreen.opacity(0.6))
                     .padding(.horizontal, 24)
                     .padding(.top, 12)
                     .padding(.bottom, 4)
 
-                ForEach(AvatarPacks.all) { pack in
-                    avatarPackRow(pack, disabled: followOn)
+                ForEach(personaRegistry.personas, id: \.id) { persona in
+                    bobPersonaRow(persona)
                 }
             }
             .padding(.bottom, 12)
@@ -1662,54 +1703,21 @@ struct PreferencesView: View {
         .background(PreferencesView.bgPanel)
     }
 
-    private func followPersonaToggle(currentPack: AvatarPack) -> some View {
-        HStack(alignment: .center, spacing: 16) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text("Follow active persona")
-                    .font(.system(.body, design: .monospaced))
-                    .foregroundColor(.white)
-                Text(avatarStore.followPersona
-                     ? "Auto: \(currentPack.name)"
-                     : "Manual pick below")
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundColor(PreferencesView.textGrey)
-            }
-            Spacer()
-            Toggle("", isOn: $avatarStore.followPersona)
-                .toggleStyle(.switch)
-                .tint(PreferencesView.phosphorGreen)
-                .labelsHidden()
-        }
-        .padding(.horizontal, 24)
-        .padding(.vertical, 14)
-        .background(PreferencesView.bgPanel)
-    }
-
-    private func avatarPackRow(_ pack: AvatarPack, disabled: Bool) -> some View {
-        let isActive = !disabled && pack.id == avatarStore.activePackID
+    private func bobPersonaRow(_ persona: any BobPersona) -> some View {
+        let isActive = persona.id == personaRegistry.activeID
         return Button(action: {
-            if !disabled { avatarStore.activePackID = pack.id }
+            personaRegistry.setActive(persona.id)
         }) {
             HStack(alignment: .center, spacing: 12) {
-                // Thumbnail preview
                 ZStack {
                     RoundedRectangle(cornerRadius: 6)
                         .fill(PreferencesView.bgBlack)
-                        .frame(width: 56, height: 56)
-                    if let nsImage = pack.image(for: .idle) {
-                        let tint: Color = pack.id == AvatarPacks.classicRobot.id
-                            ? PreferencesView.phosphorGreen
-                            : Color.white
-                        Image(nsImage: nsImage)
-                            .resizable()
-                            .aspectRatio(contentMode: .fit)
-                            .frame(width: 50, height: 50)
-                            .colorMultiply(tint)
-                    } else {
-                        Text("?")
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundColor(PreferencesView.textGrey)
-                    }
+                        .frame(width: 64, height: 64)
+                    persona.character(
+                        expression: BobPersonaExpression(.idle),
+                        gaze: nil,
+                        size: 50
+                    )
                 }
                 .overlay(
                     RoundedRectangle(cornerRadius: 6)
@@ -1719,7 +1727,7 @@ struct PreferencesView: View {
 
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 6) {
-                        Text(pack.name)
+                        Text(persona.displayName)
                             .font(.system(.caption, design: .monospaced).weight(.medium))
                             .foregroundColor(isActive ? .white : PreferencesView.textGrey)
                         if isActive {
@@ -1732,7 +1740,7 @@ struct PreferencesView: View {
                                 .cornerRadius(2)
                         }
                     }
-                    Text(pack.summary)
+                    Text(persona.summary)
                         .font(.system(.caption2, design: .monospaced))
                         .foregroundColor(PreferencesView.textGrey.opacity(0.8))
                         .lineLimit(2)
@@ -1745,8 +1753,6 @@ struct PreferencesView: View {
             .background(isActive ? PreferencesView.phosphorGreen.opacity(0.06) : PreferencesView.bgPanel)
         }
         .buttonStyle(.plain)
-        .disabled(disabled)
-        .opacity(disabled ? 0.45 : 1.0)
     }
 
     // MARK: - Help Tab

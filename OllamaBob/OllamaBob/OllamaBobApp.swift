@@ -9,80 +9,17 @@ struct OllamaBobApp: App {
     @Environment(\.openWindow) private var openWindow
 
     var body: some Scene {
-        MenuBarExtra("OllamaBob", systemImage: "bubble.left.fill") {
-            Button("Open Chat") {
-                openWindow(id: "chat")
-            }
-            .keyboardShortcut("o")
-
-            Button(settings.pushToTalkEnabled ? "Walkie-Talkie: ON" : "Walkie-Talkie…") {
-                settings.pushToTalkEnabled.toggle()
-                appState.updateWalkieTalkie()
-            }
-
-            Button(settings.focusGuardianEnabled ? "Focus Guardian: ON" : "Focus Guardian: OFF") {
-                settings.focusGuardianEnabled.toggle()
-                appState.updateFocusGuardian()
-            }
-
-            Button(settings.clipboardCortexEnabled ? "Clipboard Cortex: ON" : "Clipboard Cortex: OFF") {
-                settings.clipboardCortexEnabled.toggle()
-                appState.updateClipboardCortex()
-            }
-
-            Button(settings.briefingScheduleEnabled ? "Daily Briefing: ON" : "Daily Briefing: OFF") {
-                settings.briefingScheduleEnabled.toggle()
-                appState.updateBriefingScheduler()
-            }
-
-            Button("Briefing History…") {
-                openWindow(id: "briefing-history")
-            }
-
-            ClipboardChipView()
-
-            Button(settings.avatarOnlyMode ? "Show Full Chat" : "Avatar-only Mode") {
-                settings.avatarOnlyMode.toggle()
-            }
-
-            Button("Tool Activity") {
-                openWindow(id: "tool-activity")
-            }
-
-            Button("Live Call…") {
-                openWindow(id: "live-call")
-            }
-
-            Button("Preferences…") {
-                openWindow(id: "preferences")
-            }
-            .keyboardShortcut(",")
-
-            Button("Welcome / Tour…") {
-                openWindow(id: "onboarding")
-            }
-
-            Divider()
-
-            HStack {
-                Circle()
-                    .fill(appState.agentLoop.isProcessing ? Color.orange : Color.green)
-                    .frame(width: 8, height: 8)
-                Text(appState.agentLoop.currentModel)
-                    .font(.caption)
-            }
-
-            Text("Version \(AppConfig.appVersion)")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-
-            Divider()
-
-            Button("Quit OllamaBob") {
-                NSApplication.shared.terminate(nil)
-            }
-            .keyboardShortcut("q")
+        MenuBarExtra {
+            BobMenuBarPopover(appState: appState, settings: settings)
+        } label: {
+            BobMenuBarMark(
+                status: BobMenuBarMark.Status.resolve(
+                    isProcessing: appState.agentLoop.isProcessing,
+                    hasError: false
+                )
+            )
         }
+        .menuBarExtraStyle(.window)
 
         Window("Bob's Desk", id: "chat") {
             ZStack {
@@ -97,7 +34,7 @@ struct OllamaBobApp: App {
                     }
                 }
 
-                PresentationWindowBinder()
+                PresentationWindowBinder(appState: appState)
                     .frame(width: 0, height: 0)
                     .allowsHitTesting(false)
             }
@@ -179,6 +116,13 @@ struct OllamaBobApp: App {
         .defaultSize(width: 520, height: 640)
         .windowResizability(.contentMinSize)
 
+        Window("Bob HUD", id: "hud") {
+            BobHUDScene(agentLoop: appState.agentLoop)
+        }
+        .defaultSize(width: 240, height: 320)
+        .windowStyle(.hiddenTitleBar)
+        .windowResizability(.contentMinSize)
+
         Window("Welcome to OllamaBob", id: "onboarding") {
             OnboardingView()
         }
@@ -196,8 +140,17 @@ final class AppState: ObservableObject {
     // Walkie-talkie push-to-talk hotkey listener (nil when disabled).
     private var pushToTalkHotkey: PushToTalkHotkey?
 
+    // Global HUD summon hotkey listener (nil when disabled).
+    private var hudSummonHotkey: MenuBarSummonHotkey?
+
+    /// Closure registered by the SwiftUI scene that knows how to open the
+    /// HUD window. `nil` until the scene mounts. Driven via the same pattern
+    /// as `PresentationService.registerOpenRichHTMLWindow`.
+    var openHUDWindow: (() -> Void)?
+
     init() {
         initDatabase()
+        registerBuiltinPersonas()
         setupApprovalHandler()
         runSecretMigrationIfNeeded()
         runPreflight()
@@ -205,6 +158,15 @@ final class AppState: ObservableObject {
         setupFocusGuardian()
         setupClipboardCortex()
         setupBriefingScheduler()
+        setupHUDSummonHotkey()
+    }
+
+    /// Register the visual personas the app ships with. Future personas slot
+    /// into this list; nothing else needs to change to add or remove one.
+    private func registerBuiltinPersonas() {
+        let registry = BobPersonaRegistry.shared
+        registry.register(MumbaiBobPersona())
+        registry.register(ClassicRobotPersona())
     }
 
     /// Start or stop the push-to-talk hotkey depending on current settings.
@@ -225,6 +187,43 @@ final class AppState: ObservableObject {
     private func setupWalkieTalkie() {
         if AppSettings.shared.pushToTalkEnabled {
             updateWalkieTalkie()
+        }
+    }
+
+    /// Start or stop the global HUD summon hotkey based on current settings.
+    func updateHUDSummonHotkey() {
+        let settings = AppSettings.shared
+        if settings.hudSummonHotkeyEnabled {
+            let hotkey = MenuBarSummonHotkey(chordString: settings.hudSummonHotkeyChord)
+            hotkey.onSummon = { [weak self] in
+                guard let self else { return }
+                self.openHUDWindow?()
+                NSApp.activate(ignoringOtherApps: true)
+            }
+            hotkey.start()
+            hudSummonHotkey = hotkey
+        } else {
+            hudSummonHotkey?.stop()
+            hudSummonHotkey = nil
+        }
+    }
+
+    private func setupHUDSummonHotkey() {
+        // Preferences edits the toggle / chord directly on AppSettings;
+        // observe a notification so we can restart the listener when those
+        // changes land.
+        NotificationCenter.default.addObserver(
+            forName: .bobHUDSummonHotkeyChanged,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.updateHUDSummonHotkey()
+            }
+        }
+
+        if AppSettings.shared.hudSummonHotkeyEnabled {
+            updateHUDSummonHotkey()
         }
     }
 
@@ -315,12 +314,16 @@ final class AppState: ObservableObject {
 
 private struct PresentationWindowBinder: View {
     @Environment(\.openWindow) private var openWindow
+    let appState: AppState
 
     var body: some View {
         Color.clear
             .onAppear {
                 PresentationService.shared.registerOpenRichHTMLWindow {
                     openWindow(id: "rich-html")
+                }
+                appState.openHUDWindow = {
+                    openWindow(id: "hud")
                 }
             }
     }

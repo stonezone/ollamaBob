@@ -98,6 +98,37 @@ final class AppSettings: ObservableObject {
         didSet { UserDefaults.standard.set(avatarModeWindowFrame, forKey: Keys.avatarModeWindowFrame) }
     }
 
+    /// Last-seen frame for the floating HUD scene. HUD persists separately
+    /// from the chat window so users can park it on a different display
+    /// or screen edge without disturbing Bob's Desk.
+    @Published var hudWindowFrame: String {
+        didSet { UserDefaults.standard.set(hudWindowFrame, forKey: Keys.hudWindowFrame) }
+    }
+
+    /// HUD always-on-top toggle. When true, the HUD sits above all
+    /// non-fullscreen windows even after losing focus.
+    @Published var hudAlwaysOnTop: Bool {
+        didSet { UserDefaults.standard.set(hudAlwaysOnTop, forKey: Keys.hudAlwaysOnTop) }
+    }
+
+    /// Global hotkey for summoning the floating HUD anywhere in macOS.
+    /// Default ON so ⌘⇧Space summons Bob out of the box; users where this
+    /// collides with Spotlight Finder Search can flip it off in Preferences.
+    @Published var hudSummonHotkeyEnabled: Bool {
+        didSet { UserDefaults.standard.set(hudSummonHotkeyEnabled, forKey: Keys.hudSummonHotkeyEnabled) }
+    }
+
+    /// Human-readable chord (`cmd+shift+space` style) for the HUD summon
+    /// hotkey.
+    @Published var hudSummonHotkeyChord: String {
+        didSet { UserDefaults.standard.set(hudSummonHotkeyChord, forKey: Keys.hudSummonHotkeyChord) }
+    }
+
+    /// Default summon chord. ⌘⇧Space matches the original UI plan; users on
+    /// stock macOS where this collides with Spotlight Finder Search can
+    /// rebind in Preferences.
+    static let defaultHUDSummonHotkeyChord = "cmd+shift+space"
+
     /// Master switch for rich presentation. When disabled, Bob should not
     /// see the `present` tool and chat should hide artifact chips.
     @Published var richPresentationEnabled: Bool {
@@ -244,6 +275,10 @@ final class AppSettings: ObservableObject {
         static let avatarOnlyMode        = "avatarOnlyMode"
         static let fullModeWindowFrame   = "fullModeWindowFrame"
         static let avatarModeWindowFrame = "avatarModeWindowFrame"
+        static let hudWindowFrame        = "hudWindowFrame"
+        static let hudAlwaysOnTop        = "hudAlwaysOnTop"
+        static let hudSummonHotkeyEnabled = "hudSummonHotkeyEnabled"
+        static let hudSummonHotkeyChord   = "hudSummonHotkeyChord"
         static let richPresentationEnabled = "richPresentationEnabled"
         static let richPresentationRemoteResourcesEnabled = "richPresentationRemoteResourcesEnabled"
         static let richPresentationArtifactChipsEnabled = "richPresentationArtifactChipsEnabled"
@@ -358,6 +393,20 @@ final class AppSettings: ObservableObject {
         self.avatarOnlyMode        = defaults.bool(forKey: Keys.avatarOnlyMode)
         self.fullModeWindowFrame   = defaults.string(forKey: Keys.fullModeWindowFrame) ?? ""
         self.avatarModeWindowFrame = defaults.string(forKey: Keys.avatarModeWindowFrame) ?? ""
+        self.hudWindowFrame        = defaults.string(forKey: Keys.hudWindowFrame) ?? ""
+        if defaults.object(forKey: Keys.hudAlwaysOnTop) == nil {
+            defaults.set(true, forKey: Keys.hudAlwaysOnTop)
+        }
+        self.hudAlwaysOnTop        = defaults.bool(forKey: Keys.hudAlwaysOnTop)
+        if defaults.object(forKey: Keys.hudSummonHotkeyEnabled) == nil {
+            // Default ON so ⌘⇧Space summons Bob's HUD out of the box.
+            defaults.set(true, forKey: Keys.hudSummonHotkeyEnabled)
+        }
+        self.hudSummonHotkeyEnabled = defaults.bool(forKey: Keys.hudSummonHotkeyEnabled)
+        if defaults.object(forKey: Keys.hudSummonHotkeyChord) == nil {
+            defaults.set(Self.defaultHUDSummonHotkeyChord, forKey: Keys.hudSummonHotkeyChord)
+        }
+        self.hudSummonHotkeyChord  = defaults.string(forKey: Keys.hudSummonHotkeyChord) ?? Self.defaultHUDSummonHotkeyChord
         self.richPresentationEnabled = defaults.bool(forKey: Keys.richPresentationEnabled)
         self.richPresentationRemoteResourcesEnabled = defaults.bool(forKey: Keys.richPresentationRemoteResourcesEnabled)
         self.richPresentationArtifactChipsEnabled = defaults.bool(forKey: Keys.richPresentationArtifactChipsEnabled)

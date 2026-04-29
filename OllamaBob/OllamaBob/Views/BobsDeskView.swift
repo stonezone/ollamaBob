@@ -17,7 +17,7 @@ struct BobsDeskView: View {
     @ObservedObject var agentLoop: AgentLoop
     @ObservedObject private var settings = AppSettings.shared
     @ObservedObject private var personaStore = PersonaStore.shared
-    @ObservedObject private var avatarStore = AvatarStore.shared
+    @ObservedObject private var personaRegistry = BobPersonaRegistry.shared
     @ObservedObject private var taintPolicy = TaintPolicy.shared
     @StateObject private var session: ChatSessionController
     @StateObject private var viewModel: DeskViewModel
@@ -114,9 +114,12 @@ struct BobsDeskView: View {
         return "\(action) uncensored mode for this conversation. Configured tag: \(settings.effectiveUncensoredModelName)"
     }
 
-    private var spriteAccent: Color {
-        let rgb = GreetingLines.accentColor(for: personaStore.activePersonaID)
-        return Color(red: rgb.red, green: rgb.green, blue: rgb.blue)
+    private var uncensoredBudgetSnapshot: ContextBudget.Snapshot {
+        ContextBudget.snapshot(messages: session.messages, numCtx: settings.numCtx)
+    }
+
+    private var shouldShowUncensoredBudgetBanner: Bool {
+        uncensoredModeEnabled && uncensoredBudgetSnapshot.shouldWarn
     }
 
     // MARK: - Context Budget
@@ -156,14 +159,6 @@ struct BobsDeskView: View {
         }
     }
 
-    private var uncensoredBudgetSnapshot: ContextBudget.Snapshot {
-        ContextBudget.snapshot(messages: session.messages, numCtx: settings.numCtx)
-    }
-
-    private var shouldShowUncensoredBudgetBanner: Bool {
-        uncensoredModeEnabled && uncensoredBudgetSnapshot.shouldWarn
-    }
-
     // MARK: Body
 
     var body: some View {
@@ -177,12 +172,13 @@ struct BobsDeskView: View {
             }
         }
         .background(Color.clear)
-        .background(WindowTransparencyConfigurator(avatarOnly: settings.avatarOnlyMode))
+        .background(DeskWindowChrome(avatarOnly: settings.avatarOnlyMode))
         .task {
             session.loadExistingConversationIfNeeded()
             enforceMasterUncensoredSetting()
             rebuildInterleavedItems()
             refreshContextTokensUsed()
+            HUDState.shared.publishAssistantSnippet(latestAssistantMessage?.content)
         }
         .onChange(of: session.conversationId) {
             resetConversationScopedNoticeState()
@@ -211,6 +207,7 @@ struct BobsDeskView: View {
             withAnimation(.easeInOut(duration: 0.3)) {
                 viewModel.bubbleVisible = shouldShowBubble
             }
+            HUDState.shared.publishAssistantSnippet(latestAssistantMessage?.content)
         }
         .onChange(of: session.errorMessage) {
             guard agentLoop.isProcessing == false else { return }
@@ -407,36 +404,33 @@ struct BobsDeskView: View {
     // MARK: - Chat Container
 
     private var chatContainer: some View {
-        VStack(spacing: 0) {
-            statusLine
-                .padding(.horizontal, 16)
-                .padding(.top, 14)
-                .padding(.bottom, 8)
+        GlassSurface(role: .deskWindow, cornerRadius: BobRadii.lg) {
+            VStack(spacing: 0) {
+                statusLine
+                    .padding(.horizontal, BobSpacing.lg)
+                    .padding(.top, BobSpacing.md + 2)
+                    .padding(.bottom, BobSpacing.sm)
 
-            DeskStatusStrip(accent: Self.phosphorGreen)
+                DeskStatusStrip(accent: Self.phosphorGreen)
 
-            transcriptSection
-                .frame(maxHeight: .infinity)
+                transcriptSection
+                    .frame(maxHeight: .infinity)
 
-            Divider()
-                .background(Self.phosphorGreen.opacity(0.15 * surfaceOpacity))
+                Divider()
+                    .background(Self.phosphorGreen.opacity(0.15))
 
-            if isTaintActive { taintBanner.padding(.horizontal, 16).padding(.vertical, 6) }
+                if isTaintActive { taintBanner.padding(.horizontal, BobSpacing.lg).padding(.vertical, BobSpacing.xs + 2) }
 
-            if shouldShowUncensoredBudgetBanner {
-                UncensoredBudgetBanner(snapshot: uncensoredBudgetSnapshot)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 6)
+                if shouldShowUncensoredBudgetBanner {
+                    UncensoredBudgetBanner(snapshot: uncensoredBudgetSnapshot)
+                        .padding(.horizontal, BobSpacing.lg)
+                        .padding(.vertical, BobSpacing.xs + 2)
+                }
+
+                inputRow
+                    .frame(height: 48)
             }
-
-            inputRow
-                .frame(height: 48)
         }
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Self.bgBlack.opacity(surfaceOpacity))
-                .shadow(color: .black.opacity(0.4 * surfaceOpacity), radius: 12, x: 0, y: 4)
-        )
     }
 
     private var taintBanner: some View {
@@ -478,43 +472,15 @@ struct BobsDeskView: View {
 
     private var bobPortrait: some View {
         let mood = agentLoop.bobMood
-        let pack = avatarStore.effectivePack(activePersonaID: personaStore.activePersonaID)
-        let tint = pack.id == AvatarPacks.classicRobot.id ? spriteAccent : Color.white
+        let persona = personaRegistry.active
+        let expression = BobPersonaExpression(BobPersonaMood(mood))
 
-        return ZStack {
-            if let nsImage = pack.image(for: mood) {
-                Image(nsImage: nsImage)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(maxHeight: 140)
-                    .colorMultiply(tint)
-                    .opacity(surfaceOpacity)
-            } else {
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(Self.bgPanel.opacity(surfaceOpacity))
-                    .frame(width: 140, height: 200)
-                    .overlay(
-                        Text("\(pack.filePrefix)\(mood.rawValue)")
-                            .font(.caption2)
-                            .foregroundColor(Self.phosphorGreen.opacity(0.6 * textOpacity))
-                    )
-            }
-        }
-        .id(mood)
-        .transition(.opacity)
-        .animation(.easeInOut(duration: 0.25), value: mood)
-        .scaleEffect(idleBreathScale(mood: mood))
-        .animation(
-            mood == .idle
-                ? .easeInOut(duration: 3.5).repeatForever(autoreverses: true)
-                : .easeInOut(duration: 0.25),
-            value: viewModel.breathPhase
-        )
-    }
-
-    private func idleBreathScale(mood: BobMood) -> CGFloat {
-        guard mood == .idle else { return 1.0 }
-        return viewModel.breathPhase ? 1.015 : 1.0
+        return persona
+            .character(expression: expression, gaze: nil, size: 140)
+            .id(persona.id)
+            .opacity(surfaceOpacity)
+            .transition(.opacity)
+            .animation(.easeInOut(duration: 0.25), value: mood)
     }
 
     // MARK: - Thoughts Overlay

@@ -453,19 +453,17 @@ struct ChatBubble: View {
     }
 
     private var textBubble: some View {
-        Group {
-            if message.role == .assistant {
-                assistantTextContent
-            } else {
-                Text(message.content)
-                    .fixedSize(horizontal: false, vertical: true)
+        BobBubble(role: message.role == .user ? .user : .assistant, tailAnchorX: nil, cornerRadius: 14) {
+            Group {
+                if message.role == .assistant {
+                    assistantTextContent
+                } else {
+                    Text(message.content)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
+            .textSelection(.enabled)
         }
-        .padding(10)
-        .background(bubbleColor)
-        .foregroundColor(message.role == .user ? .white.opacity(textOpacity) : .primary.opacity(textOpacity))
-        .cornerRadius(12)
-        .textSelection(.enabled)
     }
 
     private var assistantTextContent: some View {

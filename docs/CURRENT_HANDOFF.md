@@ -5,12 +5,12 @@
 
 ## Repository State
 
-- Active clean integration worktree: `/Users/zack/ollamaBob-d1-land`.
-- Local `main` has Phase A, Phase B, Phase C, Phase D.1, Phase D.2, Phase D.5, and Phase E integrated through local no-ff merges and completion tags; push/review state is still operator-owned.
-- The original `/Users/zack/ollamaBob` worktree has unrelated design/persona changes and should not be treated as the clean execution source until reconciled.
-- `docs/ACTIVE_EXECUTION_PLAN.md` is tracked. Keep using it as the execution authority until the owner retires or archives it; the next default phase after Phase E is F.1 (ArtifactStore + kinds).
+- Active branch: `feature/ui-modernization-on-main-20260429` (UI modernization stack rebased on top of codex's clean main).
+- Codex's `main` has Phase A, Phase B, Phase C, Phase D.1, Phase D.2, Phase D.5, and Phase E integrated through local no-ff merges and completion tags; push/review state is still operator-owned.
+- This branch adds the 2026 UI modernization (Phases 1–5 + 4.5 + 5.5 + visibility/UX fixes) as a single bundled commit on top of codex's main. Pre-rebase backup tagged at `backup/ui-phases-pre-rebase-20260429`.
+- `docs/ACTIVE_EXECUTION_PLAN.md` is tracked. Next default phase after Phase E is F.1 (ArtifactStore + kinds); UI modernization runs in parallel and does not block F.1.
 - Active docs are intentionally small; historical plans, old peer-review notes, and superseded handoffs are in `archive/`.
-- Current visible app version: `1.0.34`.
+- Current visible app version: `1.0.40`.
 
 Local-only notes for Zack's workstation:
 
@@ -173,12 +173,18 @@ swift test
 ./build.sh --run
 ```
 
-Last verified during the 2026-04-29 Phase E Naughty Bob budget pass:
+Last verified during the 2026-04-29 UI modernization rebase pass (v1.0.40):
 
 - `swift build` passed
-- `swift test` passed: 441 tests, 0 failures
+- `swift test` passed: 496 tests, 0 failures (441 inherited from codex's main + 55 new UI tests across `DesignSystemTests`, `BobPersonaTests`, `BubbleShapeTests`, `MenuBarMarkTests`, `HUDSettingsTests`, `MenuBarSummonHotkeyTests`, `HUDStateTests`)
 - `./build.sh` passed and assembled `build/OllamaBob.app`
-- generated bundle metadata reports `CFBundleShortVersionString = 1.0.34` and `CFBundleVersion = 134`
+- generated bundle metadata reports `CFBundleShortVersionString = 1.0.40` and `CFBundleVersion = 140`
+- new `OllamaBob/OllamaBob/DesignSystem/` (6 token files + 5 primitives + persona protocol/registry), `OllamaBob/OllamaBob/Personas/` (Mumbai Bob + Classic Robot live SwiftUI characters), `Views/Desk/DeskWindowChrome.swift`, `Views/MenuBar/{BobMenuBarMark,BobMenuBarPopover}.swift`, `Views/HUD/{BobHUDScene,HUDWindowChrome}.swift`, `Models/HUDState.swift`, `Services/MenuBarSummonHotkey.swift`. Avatar PNG sprites (12) and `AvatarPack`/`AvatarStore` retired in favor of live persona renderers. `WindowTransparencyConfigurator` (formerly inside `DeskInputView.swift`) extracted to `DeskWindowChrome`. `BobsDeskView.chatContainer` rebuilt on `GlassSurface(role: .deskWindow)`. `ChatBubble.textBubble` renders inside `BobBubble`. `MenuBarExtra` switched to `.menuBarExtraStyle(.window)` with custom mark + glass popover (quick input + modes + windows + footer). Floating HUD scene with persona-tinted `GlassGlyph`, live transcript snippet, and ⌘⇧Space global summon hotkey (default ON; rebindable in Preferences). Codex's Phase D.1/D.2/D.5/E work preserved unchanged: Activity Timeline persistence + indexer + `timeline_search` tool, plus the Naughty Bob `UncensoredBudgetBanner` integrated into both the rebuilt full-mode `chatContainer` and the avatar-only layout.
+
+Earlier verification on the Phase E pass:
+
+- `swift test` passed: 441 tests, 0 failures
+- bundle reported `CFBundleShortVersionString = 1.0.34` and `CFBundleVersion = 134`
 - `git diff --check` passed
 - `BobsDeskView.swift` is 819 LOC after Phase E; Phase E added 21 lines, within the authorized +30 line cap
 - `AgentLoopToolDispatch.swift` changed by one D.2 line and five D.5 lines; `PreferencesView.swift` grew by six D.2 toggle-row lines
