@@ -44,6 +44,9 @@ enum BuiltinToolsCatalog {
         // MARK: Web
         Entry(name: "web_search", category: "web", posture: .none, description: "Brave web search, top 5 results"),
 
+        // MARK: Timeline
+        Entry(name: "timeline_search", category: "timeline", posture: .none, description: "Search Bob's local Activity Timeline"),
+
         // MARK: Mail
         Entry(name: "mail_check", category: "mail", posture: .modal, description: "Check Apple Mail inbox summaries"),
         Entry(name: "mail_triage", category: "mail", posture: .modal, description: "Read short Apple Mail previews for attention triage"),
@@ -110,7 +113,7 @@ enum BuiltinToolsCatalog {
     /// Rendering order for categories in the Preferences UI.
     static let categoryOrder: [String] = [
         "files", "shell", "git", "web", "mail", "phone", "presentation", "media", "utility",
-        "youtube", "clipboard", "automation", "memory", "meta", "context", "code", "skills"
+        "timeline", "youtube", "clipboard", "automation", "memory", "meta", "context", "code", "skills"
     ]
 
     static func entries(for category: String) -> [Entry] {

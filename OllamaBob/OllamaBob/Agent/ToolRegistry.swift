@@ -109,6 +109,20 @@ struct ToolRegistry {
         )
         reqs["search_files"] = ["pattern"]
 
+        defs["timeline_search"] = .tool(
+            name: "timeline_search",
+            description: "Search Bob's local Activity Timeline for recent tool calls and chat messages. Read-only; requires the Activity Timeline (local) toggle to be enabled.",
+            properties: [
+                "since": ("string", "Required ISO8601 start time, e.g. 2026-04-29T09:00:00Z."),
+                "until": ("string", "Optional ISO8601 end time. Defaults to now."),
+                "source": ("string", "Optional source filter: tool, chat, or fsevents."),
+                "kind": ("string", "Optional event kind filter, e.g. tool_call or user_message."),
+                "limit": ("integer", "Optional result limit from 1 to 50. Defaults to 50.")
+            ],
+            required: ["since"]
+        )
+        reqs["timeline_search"] = ["since"]
+
         // phone_list_calls / phone_get_transcript / phone_inject — call supervision
         defs["phone_list_calls"] = .tool(
             name: "phone_list_calls",
@@ -576,6 +590,8 @@ struct ToolRegistry {
         switch name {
         case "present":
             return AppSettings.shared.richPresentationEnabled
+        case "timeline_search":
+            return AppSettings.shared.activityTimelineEnabled
         case "phone_call", "phone_hangup", "phone_status",
              "phone_list_calls", "phone_get_transcript", "phone_inject":
             return PhoneTool.isConfigured

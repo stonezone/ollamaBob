@@ -42,6 +42,7 @@ enum BobOperatingRules {
             ("git_status", "- git_status: Show git status for a local repo"),
             ("git_diff", "- git_diff: Show working-tree or staged git diff for a local repo"),
             ("web_search", "- web_search: Search the web"),
+            ("timeline_search", "- timeline_search: Search Bob's local Activity Timeline for recent tool calls and chat messages"),
             ("present", "- present: Show rich HTML, open a URL in the browser, or open a local file in its default app"),
             ("mail_check", "- mail_check: Check Apple Mail inbox summaries (date/read state/sender/subject only)"),
             ("mail_triage", "- mail_triage: Read short Apple Mail previews for explicit attention triage requests"),

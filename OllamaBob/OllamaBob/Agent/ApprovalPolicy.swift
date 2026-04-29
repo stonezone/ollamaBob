@@ -152,6 +152,9 @@ enum ApprovalPolicy {
         case "web_search":
             return .none
 
+        case "timeline_search":
+            return .none
+
         case "mail_check":
             // Mail metadata is private even when read-only. Always ask.
             return .modal
