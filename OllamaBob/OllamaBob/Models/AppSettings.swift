@@ -186,6 +186,15 @@ final class AppSettings: ObservableObject {
         didSet { UserDefaults.standard.set(focusGuardianEnabled, forKey: Keys.focusGuardianEnabled) }
     }
 
+    // MARK: - Clipboard Cortex (Phase 7d)
+
+    /// Master switch for Clipboard Cortex. Default OFF (must opt-in).
+    /// When enabled, ClipboardWatcher polls the clipboard and surfaces a chip
+    /// in the menu-bar dropdown when actionable content is detected.
+    @Published var clipboardCortexEnabled: Bool {
+        didSet { UserDefaults.standard.set(clipboardCortexEnabled, forKey: Keys.clipboardCortexEnabled) }
+    }
+
     /// User-level overrides for the bundle-ID → persona-ID mapping.
     /// Keys are bundle identifiers; values are persona IDs. An empty value
     /// string removes a built-in default for that bundle ID.
@@ -214,6 +223,7 @@ final class AppSettings: ObservableObject {
         static let pushToTalkKeyChord      = "pushToTalkKeyChord"
         static let focusGuardianEnabled    = "focusGuardianEnabled"
         static let focusGuardianOverrides  = "focusGuardianOverrides"
+        static let clipboardCortexEnabled  = "clipboardCortexEnabled"
     }
 
     // Phase 4a default: true in DEBUG, false in release.
@@ -290,6 +300,10 @@ final class AppSettings: ObservableObject {
         if defaults.object(forKey: Keys.focusGuardianOverrides) == nil {
             defaults.set([String: String](), forKey: Keys.focusGuardianOverrides)
         }
+        // Clipboard Cortex: default OFF (must opt-in).
+        if defaults.object(forKey: Keys.clipboardCortexEnabled) == nil {
+            defaults.set(false, forKey: Keys.clipboardCortexEnabled)
+        }
         // Phase 0c: secrets live in the Keychain. We no longer write the
         // .env value into UserDefaults on first launch (that path is what
         // SecretMigration is migrating *out of*). Tests / CI seed the
@@ -317,6 +331,7 @@ final class AppSettings: ObservableObject {
         self.pushToTalkKeyChord = defaults.string(forKey: Keys.pushToTalkKeyChord) ?? Self.defaultPushToTalkKeyChord
         self.focusGuardianEnabled   = defaults.bool(forKey: Keys.focusGuardianEnabled)
         self.focusGuardianOverrides = defaults.dictionary(forKey: Keys.focusGuardianOverrides) as? [String: String] ?? [:]
+        self.clipboardCortexEnabled = defaults.bool(forKey: Keys.clipboardCortexEnabled)
         // Phase 0c: read Keychain first; fall back to legacy UserDefaults so
         // an un-migrated install still shows the existing key in Preferences.
         self.jarvisAPIKey = KeychainService.current.read(.jarvisAPIKey)
