@@ -2,7 +2,7 @@
 
 OllamaBob is a native macOS menu-bar assistant for local Ollama models. It is a SwiftUI/AppKit app that talks directly to `http://localhost:11434/api/chat`, owns its agent loop in Swift, runs first-party tools, and stores local data in SQLite through GRDB.
 
-Current app version: `1.0.29`
+Current app version: `1.0.30`
 
 ## Quick Start
 
@@ -54,6 +54,7 @@ swift run OllamaBob
 - Desk status chips now surface captured Mac context, Code Companion mode, walkie-talkie state, and Focus Guardian state in the live chat surface.
 - Clipboard Cortex stack-trace chips open Bob's Desk and submit a wrapped, untrusted stack-trace summary prompt.
 - Daily Briefing history is available from the menu bar.
+- Untrusted-output taint protection disables write/action tools after file, web, mail, clipboard, YouTube-search, or screen-OCR data enters a turn until the user sends a fresh message or types `/lift`.
 
 ## Safety Model
 
@@ -65,6 +66,7 @@ The app sandbox is off because Bob can run local tools. Safety depends on first-
 - Forbidden shell shapes such as `sudo`, destructive root deletes, and download-execute chains are blocked.
 - Sensitive paths route through path policy before execution.
 - Tool output is wrapped as untrusted text before it is sent back to the model.
+- Tainted turns block write/action tools before approval, including shell, file writes/moves, clipboard writes, downloads, AppleScript, phone calls/injection, memory mutation, mail triage, saved-skill execution, and URL/file presentation.
 
 ## Optional Services
 

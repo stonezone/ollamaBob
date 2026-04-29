@@ -62,6 +62,13 @@ extension AgentLoop {
             return result
         }
 
+        if let sessionID = currentConversationId,
+           let result = TaintPolicy.shared.deniedResult(toolName: name, arguments: args, sessionID: sessionID) {
+            logTool(name: name, input: "\(args)", output: result.content, approval: .forbidden, approved: false, durationMs: 0)
+            bobMood = .sheepish
+            return result
+        }
+
         // Check approval
         let approval = ApprovalPolicy.check(toolName: name, arguments: args)
 
@@ -88,6 +95,9 @@ extension AgentLoop {
 
         // Execute
         let result = await executeTool(name: name, args: args, approvedPaths: approvedPaths)
+        if let sessionID = currentConversationId {
+            TaintPolicy.shared.markTaintedIfNeeded(afterTool: name, sessionID: sessionID, success: result.success)
+        }
         logTool(name: name, input: "\(args)", output: result.content, approval: approval, approved: true, durationMs: result.durationMs)
 
         // Privacy Ledger: append a row for approved side-effecting executions.

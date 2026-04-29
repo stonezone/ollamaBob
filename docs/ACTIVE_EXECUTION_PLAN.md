@@ -7,6 +7,10 @@
 
 **Supervisor note (2026-04-29):** Phase A was completed before this plan was committed into the repo. The completed integration branch is `codex/phase-bcd-kimi-integration` with Phase A commits `d145cc0`, `8e8d785`, `c4fe548`, merge commit `2e8373e`, version bump `462210c`, and final handoff commit `eb4e62a`. Continue execution from Phase B after normalizing that integration branch into local `main`.
 
+**Supervisor note (2026-04-29, Phase B execution):** Because Phase A already shipped as `1.0.29`/`129`, Phase B ships as `1.0.30`/`130`. Final review also tightened the taint block list to include memory mutation tools (`remember`, `forget`) and `present(kind=file|url)` while keeping `present(kind=html)` allowed as read-only in-app display.
+
+**Version note for remaining phases:** Any hard-coded future version numbers below were authored before Phase B shipped as `1.0.30`; supervisors should apply the repository version policy from the current visible version instead of treating old examples as fixed targets.
+
 > **Read this entire file before any phase dispatch.** §0–§3 are non-negotiable. §4 contains the per-phase scope boxes, dispatch prompts, and success gates. §5–§7 govern resumption.
 
 ---
@@ -458,7 +462,7 @@ Implement R2 Untrusted Taint Policy exactly per §B of the plan. Hard rules:
    after. Provide a paste of the pre-implementation red output and the post-implementation green output
    in the EXECUTOR REPORT.
 
-9. Run the full success gate (§0.6). Bump version to 1.0.29 (build 129) and update all six version files.
+9. Run the full success gate (§0.6). Bump version to 1.0.30 (build 130) and update all six version files.
 
 STOP TRIGGERS specific to Phase B:
 - The AgentLoop.swift LOC delta exceeds +20.
@@ -470,7 +474,7 @@ STOP TRIGGERS specific to Phase B:
 - Read-only tools (per §B "Tools NOT subject to taint" list) become blockable.
 ```
 
-**Success gate (B):** 12 new tests green; AgentLoop.swift LOC delta ≤ +20; banner visible only when tainted; `/lift` clears; version bumped to 1.0.29; PolicyRegressionTests still green.
+**Success gate (B):** 12 new tests green; AgentLoop.swift LOC delta ≤ +20; banner visible only when tainted; `/lift` clears; version bumped to 1.0.30; PolicyRegressionTests still green.
 
 ---
 

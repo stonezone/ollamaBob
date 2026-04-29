@@ -58,12 +58,14 @@ enum PromptComposer {
     static func compose(
         persona: Persona,
         includeCheatSheet: Bool = true,
-        availableToolNames: Set<String>? = nil
+        availableToolNames: Set<String>? = nil,
+        taintActive: Bool = false
     ) -> String {
         composeWithBreakdown(
             persona: persona,
             includeCheatSheet: includeCheatSheet,
-            availableToolNames: availableToolNames
+            availableToolNames: availableToolNames,
+            taintActive: taintActive
         ).prompt
     }
 
@@ -78,10 +80,11 @@ enum PromptComposer {
         persona: Persona,
         includeCheatSheet: Bool = true,
         uncensoredMode: Bool = false,
-        availableToolNames: Set<String>? = nil
+        availableToolNames: Set<String>? = nil,
+        taintActive: Bool = false
     ) -> (prompt: String, breakdown: Breakdown) {
         let operatingRules = BobOperatingRules
-            .prompt(availableToolNames: availableToolNames)
+            .prompt(availableToolNames: availableToolNames, taintActive: taintActive)
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let personaText = persona.systemPromptMarkdown.trimmingCharacters(in: .whitespacesAndNewlines)
         let modeOverride = uncensoredMode ? uncensoredModePromptOverride : ""

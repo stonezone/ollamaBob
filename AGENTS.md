@@ -52,7 +52,7 @@ Key constraints:
 
 ## Current State
 
-Current visible app version: `1.0.29`
+Current visible app version: `1.0.30`
 
 Current model defaults:
 
@@ -74,6 +74,7 @@ Current shipped surface:
 - Jarvis call supervision tools for listing active calls, reading active-call transcripts, and modal-gated mid-call message injection.
 - Bob's Desk status strip surfaces Mac context, Code Companion mode, walkie-talkie state, and Focus Guardian state when active.
 - Clipboard Cortex stack traces and walkie-talkie transcripts can be submitted into Bob's Desk.
+- Untrusted-output taint protection disables write/action tools after file, web, mail, clipboard, YouTube-search, or screen-OCR data enters a turn until the user sends a fresh message or types `/lift`.
 - Local Jarvis address book resolves env aliases, JSON alias maps, and VCF exports such as `~/Downloads/bobs_contacts.vcf`.
 
 ## Active Task Protocol

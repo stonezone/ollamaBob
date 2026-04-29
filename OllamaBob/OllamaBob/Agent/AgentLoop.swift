@@ -175,7 +175,8 @@ final class AgentLoop: ObservableObject {
             persona: PersonaStore.shared.activePersona,
             includeCheatSheet: uncensoredMode == false,
             uncensoredMode: uncensoredMode,
-            availableToolNames: Set(registry.toolNames)
+            availableToolNames: Set(registry.toolNames),
+            taintActive: TaintPolicy.shared.tainted(forSession: conversationId)
         )
         messages.insert(.system(composed.prompt), at: 0)
         messages.append(.user(userMessage))
