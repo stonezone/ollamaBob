@@ -139,6 +139,47 @@ final class PolicyRegressionTests: XCTestCase {
         )
     }
 
+    func testApprovalPolicyRejectsQuotedAndEscapedForbiddenShellCommands() {
+        XCTAssertEqual(
+            ApprovalPolicy.check(toolName: "shell", arguments: ["command": #""sudo" whoami"#]),
+            .forbidden
+        )
+        XCTAssertEqual(
+            ApprovalPolicy.check(toolName: "shell", arguments: ["command": #"s\udo whoami"#]),
+            .forbidden
+        )
+        XCTAssertEqual(
+            ApprovalPolicy.check(toolName: "shell", arguments: ["command": "rm -rf /"]),
+            .forbidden
+        )
+    }
+
+    func testApprovalPolicyLetsForbiddenPathBeatWriteModal() {
+        XCTAssertEqual(
+            ApprovalPolicy.check(toolName: "shell", arguments: ["command": "rm /dev/disk0"]),
+            .forbidden
+        )
+        XCTAssertEqual(
+            ApprovalPolicy.check(toolName: "shell", arguments: ["command": "echo hi > /dev/disk0"]),
+            .forbidden
+        )
+        XCTAssertEqual(
+            ApprovalPolicy.check(toolName: "shell", arguments: ["command": "echo hi >/dev/disk0"]),
+            .forbidden
+        )
+        XCTAssertEqual(
+            ApprovalPolicy.check(toolName: "shell", arguments: ["command": "echo hi 2>/dev/disk0"]),
+            .forbidden
+        )
+    }
+
+    func testApprovalPolicyReturnsHighestSeverityAcrossShellPaths() {
+        XCTAssertEqual(
+            ApprovalPolicy.check(toolName: "shell", arguments: ["command": "cat /etc/hosts /dev/disk0"]),
+            .forbidden
+        )
+    }
+
     func testShellToolReturnsFailureWhenShellCannotLaunch() async {
         let result = await ShellTool.execute(
             command: "echo hello",
@@ -150,5 +191,34 @@ final class PolicyRegressionTests: XCTestCase {
         XCTAssertEqual(result.toolName, "shell")
         XCTAssertFalse(result.content.contains("[exit code: -1]"))
         XCTAssertFalse(result.content.isEmpty)
+    }
+
+    func testShellToolAllowsLongStdoutAndReturnsDisplayTruncation() async {
+        let result = await ShellTool.execute(
+            command: #"awk 'BEGIN { for (i = 0; i < 12050; i++) printf "x" }'"#,
+            timeout: 5
+        )
+
+        XCTAssertTrue(result.success, result.content)
+        XCTAssertEqual(result.toolName, "shell")
+        XCTAssertTrue(result.content.hasPrefix("xxx"), result.content)
+        XCTAssertTrue(
+            result.content.contains("... [TRUNCATED: 12050 total chars, showing first 10000] ..."),
+            result.content
+        )
+        XCTAssertFalse(result.content.contains("[output limit exceeded]"), result.content)
+    }
+
+    func testProcessRunnerStopsReadingWhenStdoutLimitIsExceeded() async {
+        let result = await ProcessRunner.run(
+            executable: "/usr/bin/yes",
+            arguments: [],
+            timeout: 5,
+            stdoutMaxBytes: 1_024,
+            stderrMaxBytes: 1_024
+        )
+
+        XCTAssertTrue(result.outputLimitExceeded)
+        XCTAssertLessThanOrEqual(result.stdout.utf8.count, 1_024)
     }
 }

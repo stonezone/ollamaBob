@@ -1,10 +1,29 @@
 import Foundation
 
 enum DirectoryCreateTool {
-    static func execute(path: String) async -> ToolResult {
+    static func execute(path: String, approvedResolvedPath: String? = nil) async -> ToolResult {
         let start = Date()
         guard let directoryURL = FileToolPaths.resolvedURL(for: path) else {
             return .failure(tool: "create_directory", error: "Missing directory path.", durationMs: 0)
+        }
+
+        if let approvedResolvedPath, directoryURL.path != approvedResolvedPath {
+            return .failure(
+                tool: "create_directory",
+                error: "Approved resolved path changed before execution: \(approvedResolvedPath) -> \(directoryURL.path)",
+                durationMs: 0
+            )
+        }
+
+        switch PathPolicy.check(directoryURL.path) {
+        case .denied:
+            return .failure(tool: "create_directory", error: "Path is in a forbidden zone: \(directoryURL.path)", durationMs: 0)
+        case .requiresApproval:
+            guard approvedResolvedPath != nil else {
+                return .failure(tool: "create_directory", error: "Path requires approval: \(directoryURL.path)", durationMs: 0)
+            }
+        case .allowed:
+            break
         }
 
         var isDirectory: ObjCBool = false

@@ -50,6 +50,48 @@ enum ApprovalPolicy {
         return .none
     }
 
+    // MARK: - Resolved path capture (REF-1, REF-2, REF-3)
+
+    /// Compute the resolved filesystem paths for a tool call so they can be
+    /// captured at approval time and re-validated at execution time.
+    static func resolvedPaths(toolName: String, arguments: [String: Any]) -> [String: String] {
+        var paths: [String: String] = [:]
+        switch toolName {
+        case "write_file", "create_directory", "list_directory":
+            if let raw = arguments["path"] as? String,
+               let resolved = FileToolPaths.resolvedURL(for: raw) {
+                paths["path"] = resolved.path
+            }
+        case "read_file":
+            if let raw = arguments["path"] as? String,
+               let resolved = FileToolPaths.resolvedURL(for: raw) {
+                paths["path"] = resolved.path
+            }
+        case "move_file":
+            if let raw = arguments["source"] as? String,
+               let resolved = FileToolPaths.resolvedURL(for: raw) {
+                paths["source"] = resolved.path
+            }
+            if let raw = arguments["destination"] as? String,
+               let resolved = FileToolPaths.resolvedURL(for: raw) {
+                paths["destination"] = resolved.path
+            }
+        case "git_status", "git_diff":
+            if let raw = arguments["repo_path"] as? String,
+               let resolved = FileToolPaths.resolvedURL(for: raw) {
+                paths["repo_path"] = resolved.path
+            }
+        case "search_files":
+            if let raw = arguments["path"] as? String,
+               let resolved = FileToolPaths.resolvedURL(for: raw) {
+                paths["path"] = resolved.path
+            }
+        default:
+            break
+        }
+        return paths
+    }
+
     private static func baseCheck(toolName: String, arguments: [String: Any]) -> ApprovalLevel {
         switch toolName {
         case "read_file":
@@ -267,11 +309,9 @@ enum ApprovalPolicy {
         case "shell":
             let cmd = (arguments["command"] as? String ?? "").trimmingCharacters(in: .whitespaces)
             let lower = cmd.lowercased()
-            let forbiddenPatterns = [
-                "sudo ", "su ", "mkfs", "dd if=", "> /dev/",
-                "rm -rf /", "chmod -r 777 /", "chmod 777 /"
-            ]
-            if forbiddenPatterns.contains(where: { lower.contains($0) }) {
+            let tokens = shellTokens(from: cmd)
+            let normalizedTokens = tokens.map(normalizedShellToken)
+            if containsForbiddenShellOperation(normalizedTokens) {
                 return .forbidden
             }
             let downloaders = ["curl ", "wget "]
@@ -280,7 +320,7 @@ enum ApprovalPolicy {
                 && (shellSinks.contains(where: { lower.contains($0) }) || containsDownloadThenExecuteChain(lower)) {
                 return .forbidden
             }
-            return extractPathApproval(from: cmd)
+            return extractPathApproval(from: tokens)
         case "applescript", "mail_check", "mail_triage", "phone_call":
             return .modal
         default:
@@ -297,9 +337,15 @@ enum ApprovalPolicy {
     }
 
     private static func maxApproval(_ lhs: ApprovalLevel, _ rhs: ApprovalLevel) -> ApprovalLevel {
-        if lhs == .forbidden || rhs == .forbidden { return .forbidden }
-        if lhs == .modal || rhs == .modal { return .modal }
-        return .none
+        severity(lhs) >= severity(rhs) ? lhs : rhs
+    }
+
+    private static func severity(_ approval: ApprovalLevel) -> Int {
+        switch approval {
+        case .none: return 0
+        case .modal: return 1
+        case .forbidden: return 2
+        }
     }
 
     // MARK: - Shell Command Analysis
@@ -307,14 +353,10 @@ enum ApprovalPolicy {
     private static func shellApproval(_ arguments: [String: Any]) -> ApprovalLevel {
         let cmd = (arguments["command"] as? String ?? "").trimmingCharacters(in: .whitespaces)
         let lower = cmd.lowercased()
+        let tokens = shellTokens(from: cmd)
+        let normalizedTokens = tokens.map(normalizedShellToken)
 
-        // Forbidden — never allow. All patterns must be lowercase: they are
-        // compared against `lower`, so capital letters here would never match.
-        let forbiddenPatterns = [
-            "sudo ", "su ", "mkfs", "dd if=", "> /dev/",
-            "rm -rf /", "chmod -r 777 /", "chmod 777 /"
-        ]
-        if forbiddenPatterns.contains(where: { lower.contains($0) }) {
+        if containsForbiddenShellOperation(normalizedTokens) {
             return .forbidden
         }
 
@@ -325,6 +367,13 @@ enum ApprovalPolicy {
         if downloaders.contains(where: { lower.contains($0) })
             && (shellSinks.contains(where: { lower.contains($0) }) || containsDownloadThenExecuteChain(lower)) {
             return .forbidden
+        }
+
+        // Check path policy before write-pattern fallback so forbidden paths
+        // such as /dev can never be downgraded to a user-approvable modal.
+        let pathApproval = extractPathApproval(from: tokens)
+        if pathApproval != .none {
+            return pathApproval
         }
 
         // Modal — destructive or write operations
@@ -338,12 +387,6 @@ enum ApprovalPolicy {
         ]
         if writePatterns.contains(where: { lower.contains($0) }) {
             return .modal
-        }
-
-        // Check path policy for any path-like arguments in the command.
-        let pathApproval = extractPathApproval(from: cmd)
-        if pathApproval != .none {
-            return pathApproval
         }
 
         // None — read-only commands
@@ -391,18 +434,21 @@ enum ApprovalPolicy {
     /// Best-effort path extraction from shell commands. Quoted, relative, env-expanded,
     /// and subshell-based paths are treated conservatively instead of being ignored.
     private static func extractPathApproval(from command: String) -> ApprovalLevel {
-        for token in shellTokens(from: command) {
+        extractPathApproval(from: shellTokens(from: command))
+    }
+
+    private static func extractPathApproval(from tokens: [String]) -> ApprovalLevel {
+        var highest: ApprovalLevel = .none
+        for token in tokens {
             if let approval = approvalForShellToken(token) {
-                if approval != .none {
-                    return approval
-                }
+                highest = maxApproval(highest, approval)
             }
         }
-        return .none
+        return highest
     }
 
     private static func approvalForShellToken(_ token: String) -> ApprovalLevel? {
-        let candidate = token.trimmingCharacters(in: pathTokenTrimCharacters)
+        let candidate = shellPathCandidate(from: token)
         guard looksPathLike(candidate) else { return nil }
 
         if candidate.contains("$(") || candidate.contains("`") {
@@ -422,6 +468,27 @@ enum ApprovalPolicy {
         token.hasPrefix("~") ||
         token.hasPrefix("$") ||
         token.contains("/")
+    }
+
+    private static func shellPathCandidate(from token: String) -> String {
+        var candidate = token.trimmingCharacters(in: pathTokenTrimCharacters)
+
+        while candidate.first?.isNumber == true {
+            candidate.removeFirst()
+        }
+        while candidate.first == ">" {
+            candidate.removeFirst()
+        }
+
+        if let equals = candidate.firstIndex(of: "=") {
+            let valueStart = candidate.index(after: equals)
+            let value = String(candidate[valueStart...])
+            if looksPathLike(value) {
+                candidate = value
+            }
+        }
+
+        return candidate.trimmingCharacters(in: pathTokenTrimCharacters)
     }
 
     private static func canonicalShellPath(from token: String) -> String? {
@@ -525,6 +592,30 @@ enum ApprovalPolicy {
     }
 
     private static let pathTokenTrimCharacters = CharacterSet(charactersIn: "()[]{}<>.,;|&")
+
+    private static func normalizedShellToken(_ token: String) -> String {
+        token.trimmingCharacters(in: pathTokenTrimCharacters).lowercased()
+    }
+
+    private static func containsForbiddenShellOperation(_ tokens: [String]) -> Bool {
+        if tokens.contains(where: { $0 == "sudo" || $0 == "su" || $0 == "dd" || $0.hasPrefix("mkfs") }) {
+            return true
+        }
+
+        if tokens.contains("rm"),
+           tokens.contains(where: { $0 == "-rf" || $0 == "-fr" || $0 == "-r" }),
+           tokens.contains("/") {
+            return true
+        }
+
+        if tokens.contains("chmod"),
+           tokens.contains("/"),
+           (tokens.contains("777") || tokens.contains("-r")) {
+            return true
+        }
+
+        return false
+    }
 
     private static func containsDownloadThenExecuteChain(_ command: String) -> Bool {
         let pattern = #"(?:curl|wget)\b[\s\S]*?(?:&&|\|\||;)\s*(?:sh|bash|zsh)\b"#
