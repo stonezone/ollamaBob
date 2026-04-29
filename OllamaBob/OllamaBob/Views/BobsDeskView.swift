@@ -371,6 +371,10 @@ struct BobsDeskView: View {
     @ObservedObject private var settings = AppSettings.shared
     @ObservedObject private var personaStore = PersonaStore.shared
     @ObservedObject private var avatarStore = AvatarStore.shared
+    @ObservedObject private var macContextStore = MacContextStore.shared
+    @ObservedObject private var devModeStore = DevModeStore.shared
+    @ObservedObject private var speechService = SpeechService.shared
+    @ObservedObject private var focusService = FocusService.shared
     @StateObject private var session: ChatSessionController
     @State private var breathPhase     = false
     @State private var bubbleVisible   = false
@@ -642,7 +646,17 @@ struct BobsDeskView: View {
         .onReceive(NotificationCenter.default.publisher(for: .bobToggleHistoryOverlay)) { _ in
             showHistoryOverlay.toggle()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .bobWalkieTalkieTranscript)) { notification in
+            handleWalkieTalkieTranscript(notification)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .clipboardCortexSummarizeStackTrace)) { notification in
+            handleClipboardStackTraceRequest(notification)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .bobDeskPromptAvailable)) { _ in
+            drainPendingDeskPrompts()
+        }
         .onAppear {
+            drainPendingDeskPrompts()
             refreshFactCount()
             startMemoryRefreshTimer()
             refreshProcessMemory()
@@ -794,6 +808,10 @@ struct BobsDeskView: View {
                 .padding(.top, 14)
                 .padding(.bottom, 8)
 
+            deskStatusStrip
+                .padding(.horizontal, 16)
+                .padding(.bottom, shouldShowDeskStatusStrip ? 8 : 0)
+
             transcriptSection
                 .frame(maxHeight: .infinity)
 
@@ -808,6 +826,36 @@ struct BobsDeskView: View {
                 .fill(Self.bgBlack.opacity(surfaceOpacity))
                 .shadow(color: .black.opacity(0.4 * surfaceOpacity), radius: 12, x: 0, y: 4)
         )
+    }
+
+    private var shouldShowDeskStatusStrip: Bool {
+        macContextStore.lastContext != nil
+            || devModeStore.repoRoot != nil
+            || speechService.state != .idle
+            || settings.focusGuardianEnabled
+            || focusService.manualLockEnabled
+    }
+
+    @ViewBuilder
+    private var deskStatusStrip: some View {
+        if shouldShowDeskStatusStrip {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(alignment: .center, spacing: 8) {
+                    ContextChipView()
+                        .tint(Self.phosphorGreen)
+                    DevModeIndicator()
+                    WalkieTalkieIndicator()
+
+                    if settings.focusGuardianEnabled || focusService.manualLockEnabled {
+                        FocusGuardianIndicator()
+                            .frame(width: 260)
+                    }
+
+                    Spacer(minLength: 0)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
     }
 
     // MARK: - Portrait Section
@@ -1572,6 +1620,30 @@ struct BobsDeskView: View {
             Heartbeat.shared.registerActivity()
         }
         session.sendCurrentInput(allowsLocalCommands: true)
+    }
+
+    private func handleWalkieTalkieTranscript(_ notification: Notification) {
+        guard let prompt = DeskPromptActions.walkieTalkiePrompt(from: notification) else { return }
+        stageOrSendInjectedPrompt(prompt)
+    }
+
+    private func handleClipboardStackTraceRequest(_ notification: Notification) {
+        guard let prompt = DeskPromptActions.stackTracePrompt(from: notification) else { return }
+        stageOrSendInjectedPrompt(prompt)
+        openWindow(id: "chat")
+    }
+
+    private func drainPendingDeskPrompts() {
+        for prompt in DeskPromptInbox.shared.drain() {
+            stageOrSendInjectedPrompt(prompt)
+        }
+    }
+
+    private func stageOrSendInjectedPrompt(_ prompt: String) {
+        session.inputText = prompt
+        inputFocused = true
+        guard !agentLoop.isProcessing else { return }
+        sendWithSound()
     }
 
     private func enforceMasterUncensoredSetting() {

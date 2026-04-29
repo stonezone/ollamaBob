@@ -52,7 +52,7 @@ Key constraints:
 
 ## Current State
 
-Current visible app version: `1.0.27`
+Current visible app version: `1.0.28`
 
 Current model defaults:
 
@@ -71,6 +71,9 @@ Current shipped surface:
 - Preferences tool badges support persisted per-tool `Auto` / `Ask` / `Deny` overrides, with path policy and forbidden shell-command blocks preserved as non-bypassable floors.
 - Naughty Bob v1 as a per-conversation uncensored mode with tools and compaction disabled.
 - Jarvis phone tools gated by Preferences and both Jarvis secrets, with bounded recent OllamaBob session context and earlier-work highlights attached to outbound recap calls when useful.
+- Jarvis call supervision tools for listing active calls, reading active-call transcripts, and modal-gated mid-call message injection.
+- Bob's Desk status strip surfaces Mac context, Code Companion mode, walkie-talkie state, and Focus Guardian state when active.
+- Clipboard Cortex stack traces and walkie-talkie transcripts can be submitted into Bob's Desk.
 - Local Jarvis address book resolves env aliases, JSON alias maps, and VCF exports such as `~/Downloads/bobs_contacts.vcf`.
 
 ## Active Task Protocol

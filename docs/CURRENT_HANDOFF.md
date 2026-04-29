@@ -1,19 +1,21 @@
 # OllamaBob - Current Handoff
 
-**Date:** 2026-04-27
+**Date:** 2026-04-28
 **Audience:** the next coding agent or operator picking the project up cold.
 
 ## Repository State
 
-- Active branch should be `main`.
+- Active working branch at handoff time: `codex/phase-bcd-ui-jarvis-docs`.
+- The branch has uncommitted Phase B/C/D usability-hardening and active-doc cleanup changes. Do not assume `main` contains this work until it is explicitly committed and merged.
 - No active execution plan is tracked in `docs/`.
-- Active docs are intentionally small; historical plans and old handoffs are in `archive/`.
-- Current visible app version: `1.0.27`.
+- Active docs are intentionally small; historical plans, old peer-review notes, and superseded handoffs are in `archive/`.
+- Current visible app version: `1.0.28`.
 
-Local-only note for Zack's workstation:
+Local-only notes for Zack's workstation:
 
-- Before this cleanup, a peer-review security/correctness implementation was parked in a local stash named `peer-review security correctness pass`.
-- Treat that stash as unlanded work, not as part of `main`. Check `git stash list` before resuming that thread.
+- Kimi implemented Phase A security/correctness cleanup in a separate worktree: `/Users/zack/ollamaBob-kimi-phase-a` on branch `codex/kimi-phase-a-security`.
+- Kimi's export is `/Users/zack/ollamaBob-kimi-phase-a/kimi-export-b7049281-20260428-221733.md`.
+- Kimi's work is not integrated into this branch. It touches approval/path/shell/process files and must be reviewed/merged separately.
 
 ## Current Product State
 
@@ -29,6 +31,14 @@ OllamaBob is live as a single local macOS menu-bar product with:
 - `mail_triage` is a modal-gated Apple Mail preview tool for explicit "read my mail and tell me what needs attention" requests; it returns date/read state/sender/subject plus short truncated previews only and does not mutate mail
 - Preferences tool badges with persisted per-tool `Auto` / `Ask` / `Deny` overrides that still preserve path policy and forbidden shell-command safety floors
 - local Jarvis phone address-book aliases from env vars, JSON maps, and VCF exports, including Zack's `~/Downloads/bobs_contacts.vcf`
+- live Jarvis call supervision tools: list active calls, fetch active-call transcripts, and inject a modal-approved mid-call message
+- Jarvis supervision tools are hidden until Jarvis phone is enabled and both Jarvis secrets are configured
+- DEBUG builds default to the real Jarvis HTTP supervision client; a Preferences-only DEBUG toggle can opt into the canned mock client
+- Bob's Desk status strip for Mac context snapshots, Code Companion mode, walkie-talkie recording/speaking state, and Focus Guardian state
+- Clipboard Cortex and walkie-talkie prompts route through `DeskPromptInbox` so app-originated prompts are not lost if Bob's Desk is still mounting
+- Clipboard Cortex stack-trace summaries open Bob's Desk and submit the full stack trace wrapped as untrusted data
+- Daily Briefing has Preferences controls for enable/time/run-now plus a history window from the menu bar
+- Daily Briefing synthesis prompts explicitly tell the model to treat `<untrusted>` tool-output blocks as data, not instructions
 - authorized personal music collection workflow for resolving album tracks or pasted song lists, auto-picking high-confidence YouTube candidates by title/duration, confirming only ambiguous tracks, saving approved MP3 files under underscore-safe generated folders like `~/Music/Bob/<Artist>_<Album>`, and using a whole-album single-file workflow when explicitly requested
 - local FLAC-to-MP3 batch conversion through `ffmpeg` via shell, with a larger batch-audio loop budget and no per-file continuation prompts
 - agent-loop batch-continuation guard that rejects status-only final replies like "Next up..." during batch audio turns and internally nudges Bob to call the next tool
@@ -39,6 +49,7 @@ OllamaBob is live as a single local macOS menu-bar product with:
 Runtime UI note:
 
 - The shipped chat surface is `BobsDeskView`.
+- `BobsDeskView` owns app-originated prompt dispatch through `DeskPromptInbox` and `DeskPromptActions`; keep clipboard/walkie-talkie prompt injection additive and wrapped as untrusted when sourced from clipboard content.
 - `ChatPanel.swift` remains in the repo but is not the live app scene graph entrypoint.
 
 Claude OS / Codex OS local RAG note:
@@ -84,6 +95,10 @@ Start with these files only:
 
 Everything else that was an implementation plan, old handoff, or historical memo is under `archive/`. Use `archive/README.md` as the index.
 
+Important archive note:
+
+- `archive/HANDOFF_TO_CODEX_2026-04-28.md`, `archive/PEER_REVIEW_TODO_2026-04-28.md`, `archive/PEER_REVIEW_2026-04-27.md`, and `archive/PHASE_5_PLAN_2026-04-28.md` are historical context only. Some of them mention old blocked Jarvis routes (`/call/list`, `/call/transcript`, `/call/inject`) that are superseded by the current routes below.
+
 ## Important Runtime Contracts
 
 Ollama:
@@ -102,10 +117,12 @@ Approvals:
 
 Jarvis phone:
 
-- Tools: `phone_call`, `phone_hangup`, `phone_status`
+- Tools: `phone_call`, `phone_hangup`, `phone_status`, `phone_list_calls`, `phone_get_transcript`, `phone_inject`
 - Gating: Jarvis phone enabled, valid base URL, non-empty `JARVIS_API_KEY`, non-empty `OPERATOR_API_SECRET`
-- `/call/*` requests send both `X-Jarvis-Key` and `x-operator-secret`
+- `/call/*` and `/calls/*` requests send both `X-Jarvis-Key` and `x-operator-secret`
+- Supervision HTTP routes are `/calls/active`, `/call/status/:id`, and `/call/:id/message`
 - `/health` is only a reachability check
+- `phone_inject` is modal-gated in the agent path. Live Call window suggested injections also check `ApprovalPolicy`, respect per-tool `Deny`, and log injection attempts to the Privacy Ledger.
 
 Rich presentation:
 
@@ -132,7 +149,7 @@ brew install yt-dlp
 
 Optional secrets:
 
-- `BRAVE_API_KEY` enables `web_search`.
+- `BRAVE_API_KEY` enables `web_search`; Preferences can import it from `.env` into the Keychain.
 - `JARVIS_API_KEY` and `OPERATOR_API_SECRET` enable Jarvis phone tools.
 - `ZACK_PERSONAL_NUMBER`, `GLENNEL_PERSONAL_NUMBER`, `jarvis-address-book.local.json`, and local VCF exports such as `~/Downloads/bobs_contacts.vcf` support local call aliases.
 
@@ -143,16 +160,26 @@ Run from `OllamaBob/`:
 ```bash
 swift build
 swift test
+./build.sh
 ./build.sh --run
 ```
 
-Last verified during the 2026-04-27 phone call context highlight pass:
+Last verified during the 2026-04-28 Phase B/C/D usability-hardening pass:
 
 - `swift build` passed
-- `swift test` passed: 132 tests, 0 failures
+- `swift test` passed: 382 tests, 0 failures
 - `./build.sh` passed and assembled `build/OllamaBob.app`
-- generated bundle metadata reports `CFBundleShortVersionString = 1.0.27` and `CFBundleVersion = 127`
-- `./build.sh --run` passed and launched the rebuilt app from `build/OllamaBob.app`
+- generated bundle metadata reports `CFBundleShortVersionString = 1.0.28` and `CFBundleVersion = 128`
+- `git diff --check` passed
+- Jarvis daemon probes: `/health` returned `200`; unauthenticated `/calls/active` returned `401`; authenticated `/calls/active` returned `200`; authenticated deliberately nonexistent `/call/status/codex-nonexistent` and `/call/codex-nonexistent/message` returned `404`, confirming route shape and auth gates
+- Codex OS refreshed: project memory, knowledge docs, project profile, and structural project index. Lifecycle health for memories/docs/profile still recommends dedup maintenance. Semantic project-index refresh was started as `semantic-ollamaBob-project_index-600a3621`; it was still running during handoff, last observed at 115/468 files before the local API became slow to respond.
+
+Kimi Phase A verification in the separate worktree:
+
+- Branch/worktree: `/Users/zack/ollamaBob-kimi-phase-a`, `codex/kimi-phase-a-security`
+- Files touched there: `AgentLoopToolDispatch.swift`, `ApprovalPolicy.swift`, `AppConfig.swift`, `DirectoryCreateTool.swift`, `FileMoveTool.swift`, `FileWriteTool.swift`, `ProcessRunner.swift`, `ShellTool.swift`, `PolicyRegressionTests.swift`, `StructuredFileToolTests.swift`
+- Reported verification: `swift build` passed, `swift test` passed with 378 tests / 0 failures, and `./build.sh` passed
+- Integration warning: both this branch and Kimi's branch touch `AppConfig.swift` and `AgentLoopToolDispatch.swift`; merge deliberately and rerun full verification afterward.
 
 Known warning note:
 
@@ -167,10 +194,11 @@ swift test
 
 ## Remaining Backlog
 
-No active task is binding right now. Candidate next work, in priority order only if the user asks:
+No active task is binding after this handoff unless the user explicitly asks to continue. Candidate next work, in priority order:
 
-- Decide whether to resume and land the parked peer-review security/correctness stash.
-- Expose more Jarvis daemon capabilities in OllamaBob: call list, mid-call injection, supervision, contacts, follow-ups, and memory search.
+- Run a fresh Opus deep review/audit of this branch's final diff and Kimi's separate Phase A diff before committing or merging.
+- Integrate and review Kimi's separate Phase A security/correctness branch before landing anything that touches approval/path/shell safety.
+- Expose more Jarvis daemon capabilities in OllamaBob: contacts, follow-ups, memory search, and richer live supervision controls.
 - Add a Preferences contact manager: import VCF files into app storage, list/search aliases, and add/edit/delete local phone aliases without hand-editing JSON.
 - Broaden rich HTML sanitization beyond the current regex/CSP/JS-disabled defense.
 - Decide whether `ChatPanel.swift` should be removed or revived as a real secondary surface.

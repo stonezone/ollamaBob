@@ -109,7 +109,7 @@ struct ToolRegistry {
         )
         reqs["search_files"] = ["pattern"]
 
-        // phone_list_calls / phone_get_transcript / phone_inject — Phase 4a call supervision
+        // phone_list_calls / phone_get_transcript / phone_inject — call supervision
         defs["phone_list_calls"] = .tool(
             name: "phone_list_calls",
             description: "List active Jarvis phone calls being supervised. Returns callID, destination, persona, status, and duration for each active call.",
@@ -576,7 +576,8 @@ struct ToolRegistry {
         switch name {
         case "present":
             return AppSettings.shared.richPresentationEnabled
-        case "phone_call", "phone_hangup", "phone_status":
+        case "phone_call", "phone_hangup", "phone_status",
+             "phone_list_calls", "phone_get_transcript", "phone_inject":
             return PhoneTool.isConfigured
         default:
             return true

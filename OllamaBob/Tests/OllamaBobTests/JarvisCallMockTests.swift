@@ -53,41 +53,5 @@ final class JarvisCallMockTests: XCTestCase {
         XCTAssertEqual(injectedLine.text, "What time does it close?")
     }
 
-    // MARK: - HTTP stub
-
-    func testHTTPStubThrowsNotImplementedForListCalls() async {
-        let stub = JarvisCallClientHTTP()
-        do {
-            _ = try await stub.listCalls()
-            XCTFail("Expected notImplemented error")
-        } catch let error as JarvisCallClientError {
-            XCTAssertEqual(error, .notImplemented)
-        } catch {
-            XCTFail("Unexpected error type: \(error)")
-        }
-    }
-
-    func testHTTPStubThrowsNotImplementedForTranscript() async {
-        let stub = JarvisCallClientHTTP()
-        do {
-            _ = try await stub.transcript(callID: "any_id")
-            XCTFail("Expected notImplemented error")
-        } catch let error as JarvisCallClientError {
-            XCTAssertEqual(error, .notImplemented)
-        } catch {
-            XCTFail("Unexpected error type: \(error)")
-        }
-    }
-
-    func testHTTPStubThrowsNotImplementedForInject() async {
-        let stub = JarvisCallClientHTTP()
-        do {
-            _ = try await stub.inject(callID: "any_id", text: "test")
-            XCTFail("Expected notImplemented error")
-        } catch let error as JarvisCallClientError {
-            XCTAssertEqual(error, .notImplemented)
-        } catch {
-            XCTFail("Unexpected error type: \(error)")
-        }
-    }
+    // HTTP route/auth coverage lives in PhoneSupervisionToolsTests.
 }

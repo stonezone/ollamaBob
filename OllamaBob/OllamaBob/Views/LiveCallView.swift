@@ -1,9 +1,9 @@
 import SwiftUI
 
 // MARK: - LiveCallView
-// Phase 4a: call supervision window.
+// Call supervision window.
 // Renders a call summary header, live transcript scroll, and
-// suggested-injection buttons (static Phase 4a placeholders).
+// suggested-injection buttons.
 // Each injection button is approval-gated via the normal tool path.
 
 struct LiveCallView: View {
@@ -12,8 +12,9 @@ struct LiveCallView: View {
     @State private var transcript: JarvisTranscript? = nil
     @State private var statusMessage: String = "Loading calls…"
     @State private var isRefreshing = false
+    @State private var transcriptRefreshTask: Task<Void, Never>?
 
-    // Phase 4a static suggested injections — Phase 4b will swap to model-generated
+    // Static suggested injections; freeform injection stays tool/approval gated.
     private let suggestedInjections = [
         "Got it, thanks.",
         "Can you say more about that?",
@@ -30,6 +31,8 @@ struct LiveCallView: View {
         }
         .frame(minWidth: 480, minHeight: 420)
         .task { await refresh() }
+        .onAppear { startTranscriptRefresh() }
+        .onDisappear { stopTranscriptRefresh() }
     }
 
     // MARK: - Call Header
@@ -65,7 +68,7 @@ struct LiveCallView: View {
                     }
                 }
                 .pickerStyle(.menu)
-                .onChange(of: selectedCallID) { _ in
+                .onChange(of: selectedCallID) {
                     Task { await loadTranscript() }
                 }
 
@@ -111,7 +114,7 @@ struct LiveCallView: View {
                 .padding()
             }
             .frame(minHeight: 180)
-            .onChange(of: transcript?.lines.count) { _ in
+            .onChange(of: transcript?.lines.count) {
                 if let last = transcript?.lines.indices.last {
                     withAnimation { proxy.scrollTo(last, anchor: .bottom) }
                 }
@@ -180,7 +183,9 @@ struct LiveCallView: View {
                 calls = fetched
                 if fetched.isEmpty {
                     statusMessage = "No active calls."
-                } else if selectedCallID == nil {
+                    selectedCallID = nil
+                } else if selectedCallID == nil ||
+                            !fetched.contains(where: { $0.callID == selectedCallID }) {
                     selectedCallID = fetched.first?.callID
                 }
             }
@@ -207,43 +212,69 @@ struct LiveCallView: View {
         }
     }
 
-    /// Injection is handled through the approval gate in the normal agent tool path.
-    /// In the Live Call window we show an NSAlert to confirm before constructing a
-    /// ToolCall — in Phase 4a the button fires a direct client call via the factory
-    /// after confirming with a quick alert. The approval modal text mirrors what
-    /// the agent would show.
+    /// Suggested injections use the same approval policy as `phone_inject`.
     private func handleSuggestedInjection(_ text: String) {
         guard let callID = selectedCallID,
               let call = calls.first(where: { $0.callID == callID }) else { return }
 
         let lastLine = transcript?.lines.last?.text ?? "(no transcript yet)"
+        let args: [String: Any] = ["call_id": callID, "text": text]
+        let approval = ApprovalPolicy.check(toolName: "phone_inject", arguments: args)
+        let command = "Inject into call \(callID): \"\(text)\"\nCall to: \(call.to)\nLast transcript line: \(lastLine)"
 
-        let alert = NSAlert()
-        alert.messageText = "Inject into active call?"
-        alert.informativeText = "Call to: \(call.to)\nLast transcript line: \(lastLine)\n\nInject: \"\(text)\""
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: "Inject")
-        alert.addButton(withTitle: "Cancel")
-
-        let response = alert.runModal()
-        guard response == .alertFirstButtonReturn else { return }
+        switch approval {
+        case .forbidden:
+            showInjectionError("Injection blocked by Bob's tool policy.")
+            return
+        case .modal:
+            guard ApprovalAlert.show(command: command, toolName: "phone_inject", level: approval) else { return }
+        case .none:
+            break
+        }
 
         Task {
-            let client = JarvisCallClientFactory.current()
-            do {
-                _ = try await client.inject(callID: callID, text: text)
+            let result = await PhoneInjectTool.execute(callID: callID, text: text)
+            try? DatabaseManager.shared.appendExecutionLog(
+                toolName: "phone_inject",
+                approvalLevel: approval,
+                summary: result.content,
+                success: result.success,
+                durationMs: result.durationMs
+            )
+
+            if result.success {
                 await loadTranscript()
-            } catch {
-                // Surface error quietly for Phase 4a
-                await MainActor.run {
-                    let errAlert = NSAlert()
-                    errAlert.messageText = "Injection failed"
-                    errAlert.informativeText = error.localizedDescription
-                    errAlert.alertStyle = .warning
-                    errAlert.runModal()
-                }
+            } else {
+                await MainActor.run { showInjectionError(result.content) }
             }
         }
+    }
+
+    private func startTranscriptRefresh() {
+        transcriptRefreshTask?.cancel()
+        transcriptRefreshTask = Task { @MainActor in
+            while !Task.isCancelled {
+                do {
+                    try await Task.sleep(nanoseconds: 5_000_000_000)
+                } catch {
+                    break
+                }
+                await loadTranscript()
+            }
+        }
+    }
+
+    private func stopTranscriptRefresh() {
+        transcriptRefreshTask?.cancel()
+        transcriptRefreshTask = nil
+    }
+
+    private func showInjectionError(_ message: String) {
+        let errAlert = NSAlert()
+        errAlert.messageText = "Injection failed"
+        errAlert.informativeText = message
+        errAlert.alertStyle = .warning
+        errAlert.runModal()
     }
 
     // MARK: - Helpers

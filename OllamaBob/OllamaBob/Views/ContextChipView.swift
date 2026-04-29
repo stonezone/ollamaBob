@@ -4,10 +4,6 @@ import SwiftUI
 /// Observes `MacContextStore.shared` and hides itself when no context
 /// has been captured yet or after the user dismisses it.
 ///
-/// NOT yet wired into `BobsDeskView` — it is ready to drop in during
-/// Phase 8 when the desk UI is refactored. Place it wherever the desk
-/// view's input row is assembled.
-///
 /// Renders: app icon (SF symbol fallback) + localized app name +
 /// window title snippet + Finder selection count + OCR snippet length.
 /// Uses monospaced caption font and the phosphorGreen accent colour that

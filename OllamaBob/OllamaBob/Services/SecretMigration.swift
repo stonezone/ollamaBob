@@ -120,14 +120,27 @@ enum SecretMigration {
     /// Default modal prompt. Returns true on Approve, false on Decide later.
     @MainActor
     static func defaultConfirm() -> Bool {
+        let pending = pendingMigrations()
+        let count = pending.count
+        let keyList = pending
+            .map { "\($0.userDefaultsKey) -> \($0.secret.rawValue)" }
+            .joined(separator: "\n")
+
         let alert = NSAlert()
-        alert.messageText = "Move API keys to the macOS Keychain?"
+        alert.messageText = "Move \(count) API key\(count == 1 ? "" : "s") to the macOS Keychain?"
         alert.informativeText = """
         OllamaBob will move your stored API keys (Brave, Jarvis) from the
         app's preferences plist into the macOS Keychain so they're never
         on disk in plaintext. You can decide later — Bob will keep using
         the existing values until you approve.
         """
+        if !keyList.isEmpty {
+            let details = NSTextField(wrappingLabelWithString: "Details:\n\(keyList)")
+            details.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
+            details.textColor = .secondaryLabelColor
+            details.frame = NSRect(x: 0, y: 0, width: 360, height: 54)
+            alert.accessoryView = details
+        }
         alert.alertStyle = .informational
         alert.addButton(withTitle: "Approve")
         alert.addButton(withTitle: "Decide later")

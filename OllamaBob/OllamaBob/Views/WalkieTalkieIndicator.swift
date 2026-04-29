@@ -5,7 +5,7 @@ import SwiftUI
 /// Shows "Listening…" while `SpeechService` is recording and "Speaking…"
 /// while the synthesizer is active.  Shows nothing (`EmptyView`) when idle.
 ///
-/// **Drop-in usage** — NOT integrated into BobsDeskView.
+/// **Drop-in usage** — mounted by BobsDeskView and reusable elsewhere.
 /// To show the indicator, overlay it from any parent view:
 /// ```swift
 /// .overlay(alignment: .topTrailing) { WalkieTalkieIndicator() }

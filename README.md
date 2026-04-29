@@ -2,7 +2,7 @@
 
 OllamaBob is a native macOS menu-bar assistant for local Ollama models. It is a SwiftUI/AppKit app that talks directly to `http://localhost:11434/api/chat`, owns its agent loop in Swift, runs first-party tools, and stores local data in SQLite through GRDB.
 
-Current app version: `1.0.27`
+Current app version: `1.0.28`
 
 ## Quick Start
 
@@ -51,6 +51,9 @@ swift run OllamaBob
 - Preferences tool badges can be clicked to set per-tool `Auto`, `Ask`, or `Deny` behavior.
 - Naughty Bob v1 as a per-conversation uncensored mode. Tools and compaction are disabled while uncensored mode is active, and the app does not silently fall back to the standard model stack.
 - Jarvis phone tools behind explicit Preferences gating and a modal approval for outbound calls, with recent OllamaBob session context and earlier-work highlights attached for context-aware recap calls.
+- Desk status chips now surface captured Mac context, Code Companion mode, walkie-talkie state, and Focus Guardian state in the live chat surface.
+- Clipboard Cortex stack-trace chips open Bob's Desk and submit a wrapped, untrusted stack-trace summary prompt.
+- Daily Briefing history is available from the menu bar.
 
 ## Safety Model
 
@@ -67,7 +70,7 @@ The app sandbox is off because Bob can run local tools. Safety depends on first-
 
 Set these through Preferences or a local gitignored `.env` file:
 
-- `BRAVE_API_KEY` enables `web_search`.
+- `BRAVE_API_KEY` enables `web_search`; it can be imported into the Keychain from Preferences.
 - `JARVIS_API_KEY` and `OPERATOR_API_SECRET` enable Jarvis phone routes.
 - `ZACK_PERSONAL_NUMBER`, `GLENNEL_PERSONAL_NUMBER`, `jarvis-address-book.local.json`, and local VCF exports such as `~/Downloads/bobs_contacts.vcf` provide local phone aliases.
 - `ELEVENLABS_API_KEY` and `OLLAMABOB_VOICE_ID` are only needed when regenerating bundled voice clips.
@@ -95,7 +98,7 @@ Historical plans, superseded handoffs, and old review memos live in [archive/](a
 ## Troubleshooting
 
 - `Ollama not running`: start Ollama or run `ollama serve`.
-- Missing `web_search`: add `BRAVE_API_KEY`.
+- Missing `web_search`: add or import `BRAVE_API_KEY` in Preferences, then restart Bob so the tool registry refreshes.
 - Missing phone tools: enable Jarvis phone service and set both Jarvis secrets.
 - Missing YouTube tools: install `yt-dlp` and restart the app.
 - Missing uncensored model: pull the configured tag shown in the app banner.

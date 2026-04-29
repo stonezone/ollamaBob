@@ -1,7 +1,7 @@
 import Foundation
 
 // MARK: - Jarvis Call Supervision Protocol and Value Types
-// Phase 4a: protocol + mock implementation. Phase 4b: swap to real HTTP client.
+// Call supervision protocol shared by the DEBUG mock and production HTTP client.
 
 protocol JarvisCallClient: Sendable {
     func listCalls() async throws -> [JarvisCallSummary]

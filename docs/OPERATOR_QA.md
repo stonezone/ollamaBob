@@ -50,7 +50,7 @@
 
 1. Preferences -> Tools shows the full built-in catalog. Verify expected categories: Files, Shell, Git, Web, Mail, Phone, Presentation, Media, Utility, YouTube, Clipboard, Automation, Memory.
 2. `youtube_search` and `youtube_download` require `yt-dlp` on PATH. If missing, Bob returns "yt-dlp not found on PATH. Install with: brew install yt-dlp".
-3. `phone_call`, `phone_hangup`, `phone_status` only appear when Jarvis phone is enabled in Preferences and both `JARVIS_API_KEY` and `OPERATOR_API_SECRET` are configured.
+3. `phone_call`, `phone_hangup`, `phone_status`, `phone_list_calls`, `phone_get_transcript`, and `phone_inject` only appear when Jarvis phone is enabled in Preferences and both `JARVIS_API_KEY` and `OPERATOR_API_SECRET` are configured.
 4. `web_search` only appears when `BRAVE_API_KEY` is configured.
 5. Read-only tools (green dot) should run silently. Write/ASK tools (orange dot) should show a modal approval dialog.
 6. Click a built-in tool permission badge and verify it cycles through `Auto`, `Ask`, and `Deny`.
@@ -109,6 +109,12 @@
 5. If the daemon returns `401`:
    - capital-`U` `Unauthorized` means the operator secret failed
    - lowercase `unauthorized` means the Jarvis API key failed
+6. Ask Bob to list active calls.
+   - expected: `phone_list_calls` runs silently and returns either `No active calls.` or active `callID=...` rows
+7. Ask Bob for the transcript of an active `callID`.
+   - expected: `phone_get_transcript` runs silently and returns timestamped `[caller]` / `[callee]` lines
+8. Ask Bob to inject a short update into an active `callID`.
+   - expected: `phone_inject` shows a native approval modal before POSTing to Jarvis
 
 ### Jarvis Call Prompt Policy
 
@@ -148,11 +154,15 @@ When checking Bob's actual behavior, verify these prompt/policy rules:
 
 ### Jarvis Auth Contract
 
-- The current daemon contract puts `/call/*` behind two layers:
+- The current daemon contract puts `/call/*` and `/calls/*` behind two layers:
   - `x-operator-secret`
   - `X-Jarvis-Key`
 - `/health` is open and does not validate either one.
 - A healthy `/health` check is not enough to prove calls will succeed.
+- Supervision route shapes:
+  - `GET /calls/active`
+  - `GET /call/status/:id`
+  - `POST /call/:id/message`
 
 ### Local Jarvis Address Book
 
@@ -172,16 +182,30 @@ Live in OllamaBob today:
 - `phone_call`
 - `phone_hangup`
 - `phone_status`
+- `phone_list_calls`
+- `phone_get_transcript`
+- `phone_inject`
 
 Live in the Jarvis daemon but not yet exposed as first-class OllamaBob tools:
 
-- call list
-- mid-call message injection
-- supervision
+- richer supervision directives
 - approval queues
 - contacts APIs
 - follow-up APIs
 - memory search
+
+### Bob's Desk Ambient Surfaces
+
+1. Capture Mac context through the context tools and verify a context chip appears in Bob's Desk.
+2. Enable Code Companion mode and verify the Dev Mode badge appears with the repo name.
+3. Enable walkie-talkie mode, hold the configured hotkey, speak a short request, and release.
+   - expected: the Listening/Speaking badge appears while active
+   - expected: the final transcript is submitted to chat when Bob is idle
+4. Enable Focus Guardian and switch to a mapped app.
+   - expected: the Focus Guardian chip shows the watched app or lock state
+5. Enable Clipboard Cortex, copy a stack trace, click the stack-trace chip in the menu bar.
+   - expected: Bob's Desk opens and Bob receives a stack-trace summary prompt with clipboard content treated as untrusted data
+6. Open `Briefing History...` from the menu bar and verify recent briefing entries load.
 
 ### Uncensored Mode Prerequisite
 

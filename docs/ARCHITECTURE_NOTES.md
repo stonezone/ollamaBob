@@ -29,6 +29,8 @@ These tools exist to keep approvals predictable, reduce shell-quoting failure mo
 - `AutomationProbe` (added V2.9.2) — a `@MainActor ObservableObject` singleton that fires cheap read-only probes against Mail/Calendar/Reminders/Contacts/Music/Finder/System Events. Mail counts accounts; the others return app names. Drives the onboarding Permissions step and the Preferences → Tools → Mac App Permissions section. The probe is never reachable from the agent loop; keeping it in `Services/` makes that separation explicit.
 - `MailTool` — model-callable, modal-gated Apple Mail helpers. `mail_check` is metadata-only (date/read state/sender/subject). `mail_triage` is only for explicit attention-triage requests and adds short truncated previews without mutating Mail. Both use hardcoded AppleScript so common mail checks do not require the model to generate arbitrary Mail scripts.
 - `LocalAddressBook` — runtime phone alias loader for Jarvis calls. It merges env aliases, local JSON maps, and VCF exports such as `~/Downloads/bobs_contacts.vcf`; it is not a full Contacts database.
+- `JarvisCallClientHTTP` — production HTTP client for call supervision. It uses the daemon's two-header auth contract and maps `/calls/active`, `/call/status/:id`, and `/call/:id/message` into Bob's `phone_list_calls`, `phone_get_transcript`, and `phone_inject` tools.
+- `DeskPromptActions` — pure adapter for app-originated prompts. Walkie-talkie transcripts are trimmed before submission; clipboard stack traces are wrapped with `UntrustedWrapper` before Bob sees them.
 
 ## TCC / Automation
 
@@ -43,3 +45,5 @@ When adding new behavior, prefer fast XCTest coverage at the controller/tool lay
 - `DatabaseManagerTests` for persistence ordering and metadata storage
 - `StructuredFileToolTests` and `StructuredGitToolTests` for tool approval and execution paths
 - `Phase2_9ToolTests` for the V2.9 Phase A native tools (OCR, say, weather, units, sips, yt-dlp)
+- `PhoneSupervisionToolsTests` for Jarvis supervision route/auth mapping
+- `DeskPromptActionsTests` for notification-to-chat prompt adapters

@@ -16,12 +16,14 @@ struct PreferencesView: View {
     @ObservedObject var personaStore = PersonaStore.shared
     @ObservedObject var avatarStore = AvatarStore.shared
     @ObservedObject var automationProbe = AutomationProbe.shared
+    @ObservedObject var scheduler = SchedulerService.shared
     @State private var selectedTab = 0
     @State private var facts: [FactRecord] = []
     @State private var factsError: String?
     @State private var editingFactID: String?
     @State private var editingContent: String = ""
     @State private var jarvisHealthState = JarvisHealthState()
+    @State private var briefingRunState = BriefingRunState()
 
     // MARK: Body
 
@@ -99,6 +101,20 @@ struct PreferencesView: View {
                 .padding(.top, 12)
 
             standardModelSection
+
+            Divider()
+                .background(PreferencesView.phosphorGreen.opacity(0.2))
+                .padding(.horizontal, 24)
+                .padding(.top, 12)
+
+            webSearchSection
+
+            Divider()
+                .background(PreferencesView.phosphorGreen.opacity(0.2))
+                .padding(.horizontal, 24)
+                .padding(.top, 12)
+
+            dailyBriefingSection
 
             Divider()
                 .background(PreferencesView.phosphorGreen.opacity(0.2))
@@ -212,6 +228,78 @@ struct PreferencesView: View {
         "\(value / 1024)K"
     }
 
+    private var briefingHour: Int {
+        settings.briefingScheduleMinutes / 60
+    }
+
+    private var briefingMinute: Int {
+        min(55, max(0, (settings.briefingScheduleMinutes % 60) / 5 * 5))
+    }
+
+    private var briefingHourBinding: Binding<Int> {
+        Binding(
+            get: { briefingHour },
+            set: { setBriefingTime(hour: $0) }
+        )
+    }
+
+    private var briefingMinuteBinding: Binding<Int> {
+        Binding(
+            get: { briefingMinute },
+            set: { setBriefingTime(minute: $0) }
+        )
+    }
+
+    private var formattedBriefingTime: String {
+        let suffix = briefingHour >= 12 ? "PM" : "AM"
+        let displayHour = briefingHour % 12 == 0 ? 12 : briefingHour % 12
+        return "\(displayHour):\(String(format: "%02d", briefingMinute)) \(suffix)"
+    }
+
+    private var dailyBriefingStatusText: String {
+        if let next = scheduler.nextRunAt {
+            return "Next run: \(PreferencesView.briefingDateFormatter.string(from: next))."
+        }
+        return "Enabled. The next run will be scheduled shortly."
+    }
+
+    private static let briefingDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter
+    }()
+
+    private func setBriefingTime(hour: Int? = nil, minute: Int? = nil) {
+        let nextHour = min(23, max(0, hour ?? briefingHour))
+        let nextMinute = min(55, max(0, minute ?? briefingMinute))
+        settings.briefingScheduleMinutes = nextHour * 60 + nextMinute
+        updateBriefingScheduler()
+    }
+
+    private func updateBriefingScheduler() {
+        if settings.briefingScheduleEnabled {
+            SchedulerService.shared.stop()
+            SchedulerService.shared.start()
+        } else {
+            SchedulerService.shared.stop()
+        }
+    }
+
+    private func runBriefingNowFromPreferences() async {
+        briefingRunState = BriefingRunState(isRunning: true, isError: false, message: nil)
+        await SchedulerService.shared.runBriefingNow()
+        if let result = SchedulerService.shared.lastRunResult {
+            briefingRunState = BriefingRunState(
+                isRunning: false,
+                isError: !result.success,
+                message: result.success ? "Briefing saved." : "Briefing failed."
+            )
+        } else {
+            briefingRunState = BriefingRunState(isRunning: false, isError: true, message: "No briefing result.")
+        }
+    }
+
     private var standardModelSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             VStack(alignment: .leading, spacing: 3) {
@@ -242,6 +330,59 @@ struct PreferencesView: View {
                     .fixedSize(horizontal: false, vertical: true)
             } else {
                 Text(settings.effectiveStandardModelName)
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundColor(PreferencesView.textGrey)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 14)
+        .background(PreferencesView.bgPanel)
+    }
+
+    private var webSearchSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("WEB SEARCH")
+                    .font(.system(.caption, design: .monospaced).weight(.bold))
+                    .foregroundColor(PreferencesView.phosphorGreen)
+                Text("Optional Brave Search key for Bob's web_search tool. Stored in the macOS Keychain.")
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundColor(PreferencesView.textGrey)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .lineSpacing(2)
+            }
+
+            SecureField("Brave API key", text: $settings.braveAPIKey)
+                .textFieldStyle(.plain)
+                .font(.system(.caption, design: .monospaced))
+                .foregroundColor(.white)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .background(
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(PreferencesView.bgBlack)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .stroke(PreferencesView.phosphorGreen.opacity(0.35), lineWidth: 1)
+                )
+
+            HStack(spacing: 10) {
+                Button("Import from .env") {
+                    if let result = SecretMigration.importFromEnvironment(.braveAPIKey),
+                       result.success,
+                       let imported = KeychainService.current.read(.braveAPIKey) {
+                        settings.braveAPIKey = imported
+                    }
+                }
+                .buttonStyle(.plain)
+                .font(.system(.caption2, design: .monospaced))
+                .foregroundColor(PreferencesView.phosphorGreen)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+
+                Text("Restart Bob after changing this key to refresh the registered web_search tool.")
                     .font(.system(.caption2, design: .monospaced))
                     .foregroundColor(PreferencesView.textGrey)
                     .fixedSize(horizontal: false, vertical: true)
@@ -454,6 +595,104 @@ struct PreferencesView: View {
         }
     }
 
+    private var dailyBriefingSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("DAILY BRIEFING")
+                    .font(.system(.caption, design: .monospaced).weight(.bold))
+                    .foregroundColor(PreferencesView.phosphorGreen)
+                Text("Run Bob's read-only morning briefing on a schedule. Uses Mail summaries, weather, and memory facts.")
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundColor(PreferencesView.textGrey)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .lineSpacing(2)
+            }
+            .padding(.horizontal, 24)
+            .padding(.top, 12)
+
+            HStack(alignment: .center, spacing: 16) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Enable Daily Briefing")
+                        .font(.system(.caption, design: .monospaced).weight(.medium))
+                        .foregroundColor(.white)
+                    Text(settings.briefingScheduleEnabled ? dailyBriefingStatusText : "Off. Run now is still available for a manual briefing.")
+                        .font(.system(.caption2, design: .monospaced))
+                        .foregroundColor(PreferencesView.textGrey)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer()
+                Toggle("", isOn: Binding(
+                    get: { settings.briefingScheduleEnabled },
+                    set: { enabled in
+                        settings.briefingScheduleEnabled = enabled
+                        updateBriefingScheduler()
+                    }
+                ))
+                .toggleStyle(.switch)
+                .tint(.orange)
+                .labelsHidden()
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 10)
+            .background(PreferencesView.bgPanel)
+
+            HStack(spacing: 14) {
+                Stepper(value: briefingHourBinding, in: 0...23) {
+                    Text("Hour \(briefingHour)")
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundColor(.white)
+                }
+                .frame(width: 150)
+
+                Stepper(value: briefingMinuteBinding, in: 0...55, step: 5) {
+                    Text("Minute \(String(format: "%02d", briefingMinute))")
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundColor(.white)
+                }
+                .frame(width: 170)
+
+                Text("Runs at \(formattedBriefingTime)")
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundColor(PreferencesView.phosphorGreen)
+                    .monospacedDigit()
+                Spacer()
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 10)
+            .background(PreferencesView.bgPanel)
+
+            HStack(spacing: 10) {
+                Button(briefingRunState.isRunning ? "Running..." : "Run now") {
+                    Task { await runBriefingNowFromPreferences() }
+                }
+                .buttonStyle(.plain)
+                .font(.system(.caption, design: .monospaced).weight(.bold))
+                .foregroundColor(.black)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 5)
+                .background(
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(PreferencesView.phosphorGreen.opacity(briefingRunState.isRunning ? 0.5 : 0.95))
+                )
+                .disabled(briefingRunState.isRunning)
+
+                if let message = briefingRunState.message {
+                    HStack(spacing: 6) {
+                        Image(systemName: briefingRunState.isError ? "xmark.circle.fill" : "checkmark.circle.fill")
+                            .foregroundColor(briefingRunState.isError ? .red : PreferencesView.phosphorGreen)
+                        Text(message)
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundColor(briefingRunState.isError ? Color(red: 1.0, green: 0.45, blue: 0.35) : PreferencesView.textGrey)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 10)
+            .background(PreferencesView.bgPanel)
+        }
+    }
+
     private var jarvisPhoneServiceSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             VStack(alignment: .leading, spacing: 3) {
@@ -474,7 +713,7 @@ struct PreferencesView: View {
                     Text("Enable Jarvis phone service")
                         .font(.system(.caption, design: .monospaced).weight(.medium))
                         .foregroundColor(.white)
-                    Text("Bob will expose Jarvis-related settings now and phone tools later.")
+                    Text("Bob exposes phone tools when this is on and both Jarvis secrets are configured.")
                         .font(.system(.caption2, design: .monospaced))
                         .foregroundColor(PreferencesView.textGrey)
                         .fixedSize(horizontal: false, vertical: true)
@@ -488,6 +727,28 @@ struct PreferencesView: View {
             .padding(.horizontal, 24)
             .padding(.vertical, 10)
             .background(PreferencesView.bgPanel)
+
+            #if DEBUG
+            HStack(alignment: .center, spacing: 16) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Use mocked call supervision client")
+                        .font(.system(.caption, design: .monospaced).weight(.medium))
+                        .foregroundColor(.white)
+                    Text("Debug builds only. Off uses the live Jarvis HTTP routes; on uses the canned local fixture.")
+                        .font(.system(.caption2, design: .monospaced))
+                        .foregroundColor(PreferencesView.textGrey)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer()
+                Toggle("", isOn: $settings.useMockedJarvisClient)
+                    .toggleStyle(.switch)
+                    .tint(.orange)
+                    .labelsHidden()
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 10)
+            .background(PreferencesView.bgPanel)
+            #endif
 
             VStack(alignment: .leading, spacing: 8) {
                 VStack(alignment: .leading, spacing: 3) {
@@ -1713,6 +1974,12 @@ struct PreferencesView: View {
 
 private struct JarvisHealthState {
     var isChecking = false
+    var isError = false
+    var message: String?
+}
+
+private struct BriefingRunState {
+    var isRunning = false
     var isError = false
     var message: String?
 }
