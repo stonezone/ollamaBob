@@ -10,8 +10,8 @@ struct AppConfig {
     }
 
     // MARK: - App Version
-    static let appVersion = "1.0.42"
-    static let appBuild = "142"
+    static let appVersion = "1.0.43"
+    static let appBuild = "143"
 
     // MARK: - HTML Sanitizer
     /// Bumped whenever PresentationService's HTML allowlist or

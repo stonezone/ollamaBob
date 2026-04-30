@@ -28,6 +28,8 @@ struct LiveCallView: View {
     @State private var actionItemsByCallID: [String: JarvisCallActionItems] = [:]
     @State private var actionItemsLoadingForCallID: String? = nil
 
+    @Environment(\.openWindow) private var openWindow
+
     // Compose state
     @State private var composePersona: String = "bob"
     @State private var composeAlias: String = ""              // selected alias from picker
@@ -545,14 +547,7 @@ struct LiveCallView: View {
                 }
 
                 ForEach(items.followUps, id: \.self) { item in
-                    HStack(alignment: .top, spacing: BobSpacing.xs + 2) {
-                        Text("•")
-                            .foregroundStyle(BobColors.Signal.success)
-                        Text(item)
-                            .font(.system(size: 12))
-                            .foregroundStyle(BobColors.Text.onGlass)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
+                    actionItemButton(item: item, for: call)
                 }
 
                 if items.facts.isEmpty == false {
@@ -561,6 +556,11 @@ struct LiveCallView: View {
                         .foregroundStyle(BobColors.Text.onGlassSecondary)
                         .padding(.top, 2)
                 }
+
+                Text("Tap any item to hand it to Bob.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(BobColors.Text.onGlassSecondary)
+                    .padding(.top, 2)
             }
             .padding(.vertical, BobSpacing.xs + 2)
             .task(id: callID) { await fetchActionItemsIfNeeded(for: callID) }
@@ -574,6 +574,56 @@ struct LiveCallView: View {
                 .frame(height: 0)
                 .task(id: callID) { await fetchActionItemsIfNeeded(for: callID) }
         }
+    }
+
+    /// One bullet button for a follow-up item. Tapping hands the item off
+    /// to Bob's existing agent loop with a meta-prompt that explicitly
+    /// directs him to use his existing tools (memory bank, AppleScript
+    /// for Reminders/Calendar, etc.) rather than building any parallel
+    /// tracking system. The chat window opens so the user can watch /
+    /// approve any side-effecting tool calls Bob proposes.
+    @ViewBuilder
+    private func actionItemButton(item: String, for call: JarvisCallSummary) -> some View {
+        Button {
+            handOffActionItem(item, from: call)
+        } label: {
+            HStack(alignment: .top, spacing: BobSpacing.xs + 2) {
+                Image(systemName: "arrow.right.circle")
+                    .foregroundStyle(BobColors.Signal.success)
+                    .font(.system(size: 11))
+                Text(item)
+                    .font(.system(size: 12))
+                    .foregroundStyle(BobColors.Text.onGlass)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .multilineTextAlignment(.leading)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, BobSpacing.xs + 2)
+            .padding(.vertical, 4)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Hand action item to Bob: \(item)")
+        .help("Tap to hand this item to Bob — he'll use his existing tools (memory, reminders, calendar) and ask before any side effects.")
+    }
+
+    private func handOffActionItem(_ item: String, from call: JarvisCallSummary) {
+        // Meta-prompt: tells Bob this came from a finished call, identifies
+        // the contact + persona, names the existing tool families he should
+        // reach for, and reminds him to confirm before side effects. The
+        // approval policy already gates the actual side-effecting tools —
+        // this prompt is just framing.
+        let prompt = """
+        Action item from a completed phone call to \(call.to) (persona: \(call.persona)). \
+        Item: "\(item)". \
+        Use your existing tools — memory bank (remember/list_facts), Apple Reminders/Calendar via applescript, \
+        write_file for notes, etc. — to handle this. Ask me to confirm before any side effects \
+        (writes, AppleScript runs, etc.). If the item is just a fact to remember, save it via the memory bank. \
+        Be concise.
+        """
+        DeskPromptInbox.shared.enqueue(prompt)
+        openWindow(id: "chat")
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     private func fetchActionItemsIfNeeded(for callID: String) async {
