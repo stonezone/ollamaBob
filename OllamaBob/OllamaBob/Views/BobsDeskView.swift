@@ -19,6 +19,7 @@ struct BobsDeskView: View {
     @ObservedObject private var personaStore = PersonaStore.shared
     @ObservedObject private var personaRegistry = BobPersonaRegistry.shared
     @ObservedObject private var taintPolicy = TaintPolicy.shared
+    @ObservedObject private var gazeTracker = GazeTracker.shared
     @StateObject private var session: ChatSessionController
     @StateObject private var viewModel: DeskViewModel
 
@@ -171,6 +172,12 @@ struct BobsDeskView: View {
                     .frame(minWidth: 420, idealWidth: 520, minHeight: 520, idealHeight: 760)
             }
         }
+        // Round the visible content of the chrome-less window. macOS only
+        // rounds .titled windows automatically when titlebars are visible;
+        // because we hide them, we have to clip the SwiftUI content
+        // ourselves so the top edge is visibly rounded instead of
+        // squared off where the window meets the desktop wallpaper.
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .background(Color.clear)
         .background(DeskWindowChrome(avatarOnly: settings.avatarOnlyMode))
         .task {
@@ -312,7 +319,6 @@ struct BobsDeskView: View {
 
             if settings.showBob {
                 portraitSection
-                    .frame(height: 240)
                     .padding(.top, 4)
             }
 
@@ -471,16 +477,43 @@ struct BobsDeskView: View {
     }
 
     private var bobPortrait: some View {
-        let mood = agentLoop.bobMood
-        let persona = personaRegistry.active
-        let expression = BobPersonaExpression(BobPersonaMood(mood))
+        // Wrap the persona character in a GeometryReader so we can convert
+        // the cursor's window-space position (from `GazeTracker`) into a
+        // 0...1 normalized gaze relative to the portrait's own frame. The
+        // character views interpret 0.5,0.5 as "looking straight ahead".
+        GeometryReader { proxy in
+            let mood = agentLoop.bobMood
+            let persona = personaRegistry.active
+            let expression = BobPersonaExpression(BobPersonaMood(mood))
+            let gaze = normalizedGaze(in: proxy)
 
-        return persona
-            .character(expression: expression, gaze: nil, size: 140)
-            .id(persona.id)
-            .opacity(surfaceOpacity)
-            .transition(.opacity)
-            .animation(.easeInOut(duration: 0.25), value: mood)
+            persona
+                .character(expression: expression, gaze: gaze, size: 140)
+                .id(persona.id)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .opacity(surfaceOpacity)
+                .transition(.opacity)
+                .animation(.easeInOut(duration: 0.25), value: mood)
+        }
+        .frame(width: 140, height: 140)
+    }
+
+    private func normalizedGaze(in proxy: GeometryProxy) -> CGPoint? {
+        // GazeTracker publishes cursor coords already flipped to SwiftUI's
+        // top-left origin so they're directly comparable to .global frames.
+        // We expand the "gaze radius" past the portrait's frame so cursor
+        // movement across the full chat window still produces visible pupil
+        // movement (otherwise pupils only move when cursor is near Bob's face).
+        guard let cursor = gazeTracker.cursorInWindow else { return nil }
+        let portraitFrame = proxy.frame(in: .global)
+        guard portraitFrame.width > 0, portraitFrame.height > 0 else { return nil }
+
+        let dxNorm = ((cursor.x - portraitFrame.midX) / max(portraitFrame.width * 2.5, 1)) + 0.5
+        let dyNorm = ((cursor.y - portraitFrame.midY) / max(portraitFrame.height * 2.5, 1)) + 0.5
+
+        let clampedX = max(0.0, min(1.0, dxNorm))
+        let clampedY = max(0.0, min(1.0, dyNorm))
+        return CGPoint(x: clampedX, y: clampedY)
     }
 
     // MARK: - Thoughts Overlay
@@ -554,7 +587,7 @@ struct BobsDeskView: View {
     // MARK: - Speech Bubble
 
     private static let minBubbleHeight: CGFloat = 56
-    private static let portraitBubbleMaxHeight: CGFloat = 104
+    private static let portraitBubbleMaxHeight: CGFloat = 220
 
     private func speechBubbleView(maxHeight: CGFloat) -> some View {
         DeskSpeechBubbleView(

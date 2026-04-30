@@ -96,6 +96,22 @@ final class JarvisCallClientMock: JarvisCallClient, @unchecked Sendable {
         return t
     }
 
+    func actionItems(callID: String) async throws -> JarvisCallActionItems? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard _transcripts[callID] != nil else { return nil }
+        return JarvisCallActionItems(
+            callID: callID,
+            outcome: "Mock call ended successfully.",
+            followUps: [
+                "Save Glennel's new number to contacts",
+                "Follow up about the dinner Friday",
+            ],
+            facts: ["Glennel was at the office until 6pm."],
+            topics: ["family", "logistics"]
+        )
+    }
+
     func inject(callID: String, text: String) async throws -> JarvisInjectResult {
         lock.lock()
         defer { lock.unlock() }

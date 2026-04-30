@@ -13,21 +13,15 @@ struct DevModeIndicator: View {
     var body: some View {
         if let root = store.repoRoot {
             let repoName = URL(fileURLWithPath: root).lastPathComponent
-            HStack(spacing: 4) {
+            BobChip(
+                label: "Dev mode: \(repoName)",
+                tint: BobColors.Accent.bobBlue,
+                isProminent: true
+            ) {
                 Image(systemName: "hammer.fill")
                     .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(.white)
-                Text("Dev mode: \(repoName)")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(.white)
+                    .foregroundStyle(BobColors.Text.onGlass)
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
-            .background(
-                Capsule()
-                    .fill(Color.accentColor.opacity(0.85))
-            )
-            .shadow(color: .black.opacity(0.2), radius: 2, x: 0, y: 1)
         }
     }
 }

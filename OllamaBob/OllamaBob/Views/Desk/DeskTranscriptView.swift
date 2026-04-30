@@ -474,7 +474,12 @@ struct DeskSpeechBubbleView: View {
         .compositingGroup()
         .shadow(color: .black.opacity(0.22), radius: 12, x: 0, y: 5)
         .frame(maxWidth: isAvatarOnly ? 360 : 332)
-        .frame(minHeight: minHeight, maxHeight: (bubbleVisible || isProcessing) ? maxHeight : minHeight)
+        // Content-driven height: shrinks to a single-line bubble for short
+        // replies, grows up to `maxHeight` for long ones, then the inner
+        // ScrollView takes over. `fixedSize(vertical: true)` is what makes
+        // the bubble hug the text — the outer .frame caps the upper bound.
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(minHeight: minHeight, maxHeight: (bubbleVisible || isProcessing) ? maxHeight : minHeight, alignment: .bottom)
         .animation(.easeInOut(duration: 0.3), value: bubbleVisible)
         .animation(.easeInOut(duration: 0.25), value: isProcessing)
     }

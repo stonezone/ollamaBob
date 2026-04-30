@@ -41,9 +41,13 @@ cat > "$CONTENTS/Info.plist" <<'PLIST'
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0.40</string>
+    <string>1.0.42</string>
     <key>CFBundleVersion</key>
-    <string>140</string>
+    <string>142</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
+    <key>CFBundleIconName</key>
+    <string>AppIcon</string>
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
     <key>LSUIElement</key>
@@ -85,12 +89,30 @@ if [[ -d "$RESOURCE_BUNDLE" ]]; then
     cp -R "$RESOURCE_BUNDLE" "$CONTENTS/Resources/OllamaBob_OllamaBob.bundle"
 fi
 
-# Ad-hoc re-sign so macOS launchd spawns the app after new framework imports.
+# App icon — copy AppIcon.icns into Contents/Resources so the Info.plist
+# CFBundleIconFile/CFBundleIconName entries can resolve it.
+APP_ICNS="OllamaBob/Resources/AppIcon/AppIcon.icns"
+if [[ -f "$APP_ICNS" ]]; then
+    cp "$APP_ICNS" "$CONTENTS/Resources/AppIcon.icns"
+fi
+
+# Re-sign so macOS launchd spawns the app after new framework imports.
 # Without this, `open` can fail with "Launchd job spawn failed" (error 162)
 # when a freshly-rebuilt binary gains a new linked framework (AVFoundation,
-# EventKit, etc.) — the cached signature becomes invalid. See
-# .learnings/ERRORS.md (ERR-20260417-001).
-codesign --force --deep --sign - "$APP_BUNDLE" > /dev/null 2>&1 || true
+# EventKit, etc.) — the cached signature becomes invalid.
+#
+# Prefer a stable code-signing identity over ad-hoc (`-`) signing: ad-hoc
+# signatures use a per-binary hash, so every rebuild invalidates the prior
+# Keychain "Always Allow" ACLs and the user gets re-prompted for every
+# secret on every launch. A stable identity gives a consistent hash, so
+# Keychain ACLs persist across rebuilds.
+SIGNING_IDENTITY="${OLLAMABOB_SIGNING_IDENTITY:-Apple Development}"
+if security find-identity -v -p codesigning 2>/dev/null | grep -q "$SIGNING_IDENTITY"; then
+    codesign --force --deep --sign "$SIGNING_IDENTITY" "$APP_BUNDLE" > /dev/null 2>&1 || \
+        codesign --force --deep --sign - "$APP_BUNDLE" > /dev/null 2>&1 || true
+else
+    codesign --force --deep --sign - "$APP_BUNDLE" > /dev/null 2>&1 || true
+fi
 
 echo "Build complete: $APP_BUNDLE"
 

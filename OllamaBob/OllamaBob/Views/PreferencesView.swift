@@ -179,6 +179,12 @@ struct PreferencesView: View {
                 isOn: $settings.activityTimelineEnabled,
                 dimmed: false
             )
+            sliderRow(
+                title: "Chat window translucency",
+                subtitle: "Lower values let your desktop show through the chat panel.",
+                value: $settings.chatWindowOpacity,
+                range: 0.4...1.0
+            )
             hudSummonHotkeyRow
             numCtxRow
         }

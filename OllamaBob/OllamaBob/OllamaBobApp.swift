@@ -9,15 +9,13 @@ struct OllamaBobApp: App {
     @Environment(\.openWindow) private var openWindow
 
     var body: some Scene {
-        MenuBarExtra {
+        MenuBarExtra(
+            "OllamaBob",
+            systemImage: appState.agentLoop.isProcessing
+                ? "bubble.left.and.bubble.right.fill"
+                : "bubble.left.fill"
+        ) {
             BobMenuBarPopover(appState: appState, settings: settings)
-        } label: {
-            BobMenuBarMark(
-                status: BobMenuBarMark.Status.resolve(
-                    isProcessing: appState.agentLoop.isProcessing,
-                    hasError: false
-                )
-            )
         }
         .menuBarExtraStyle(.window)
 
@@ -98,7 +96,9 @@ struct OllamaBobApp: App {
             LiveCallView()
                 .allowsHitTesting(true)
         }
-        .defaultSize(width: 520, height: 520)
+        .defaultSize(width: 560, height: 640)
+        .windowStyle(.hiddenTitleBar)
+        .windowResizability(.contentMinSize)
 
         Window("Briefing History", id: "briefing-history") {
             BriefingHistoryView()

@@ -14,6 +14,16 @@ enum LocalAddressBook {
         return trimmed.isEmpty ? nil : trimmed
     }
 
+    /// Snapshot of all known alias→number pairs, sorted by alias for stable
+    /// rendering. Empty when no env-seeded numbers and no file-based imports
+    /// are present. Pairs are deduplicated by canonical alias.
+    static func allEntries() -> [(alias: String, number: String)] {
+        values
+            .map { (alias: $0.key, number: $0.value.trimmingCharacters(in: .whitespacesAndNewlines)) }
+            .filter { !$0.number.isEmpty }
+            .sorted { $0.alias.localizedCaseInsensitiveCompare($1.alias) == .orderedAscending }
+    }
+
     private static func loadValues() -> [String: String] {
         var merged = seededAliases()
 

@@ -1,13 +1,15 @@
 import SwiftUI
+import AppKit
 
-/// Live cartoon "Mumbai Bob" — cheerful warm-amber face with tracking eyes,
-/// expressive mouth, and a hint of the signature blue polo. Replaces the
-/// static `mumbai_*.png` sprite pack with composed SwiftUI shapes:
-/// head (circle), hair cap, eyes (whites + tracking pupils), brows,
-/// mouth, polo collar.
+/// Mumbai Bob — Pixar-style cartoon portrait of a friendly Indian
+/// call-center employee-of-the-month. Animated sprite-sheet style: nine
+/// pre-rendered PNG frames (center, four gaze directions, two blink
+/// phases, smile-open, yawn) chosen at runtime based on cursor position
+/// and a periodic blink/yawn schedule.
 ///
-/// Idle motion: 3.5s breath loop + ~5s blinks + smoothed cursor gaze.
-/// Mood expressions blend brow tilt + mouth curvature + eye width.
+/// All frames share the same character likeness because they were
+/// generated with the same reference image; the state machine just picks
+/// which PNG to display each frame.
 struct MumbaiBobCharacterView: View {
 
     let expression: BobPersonaExpression
@@ -17,19 +19,35 @@ struct MumbaiBobCharacterView: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var breath: CGFloat = 1.0
-    @State private var blinkPhase: CGFloat = 1.0  // 1 = open, 0.05 = closed
+    @State private var animationOverride: AnimationOverride?
+    @State private var blinkTask: Task<Void, Never>?
+    @State private var yawnTask: Task<Void, Never>?
+
+    private enum AnimationOverride: Equatable {
+        case blinkHalf
+        case blinkClosed
+        case yawn
+        case smileOpen
+
+        var assetName: String {
+            switch self {
+            case .blinkHalf:    return "mumbai_bob_blink_half_alpha"
+            case .blinkClosed:  return "mumbai_bob_blink_closed_alpha"
+            case .yawn:         return "mumbai_bob_yawn_alpha"
+            case .smileOpen:    return "mumbai_bob_smile_open_alpha"
+            }
+        }
+    }
 
     var body: some View {
         ZStack {
-            poloCollar
-            head
-            hair
-            eyes
-            brows
-            mouth
-            cheeks
+            currentFrame
+                .resizable()
+                .interpolation(.high)
+                .aspectRatio(contentMode: .fit)
+                .frame(width: size, height: size)
         }
-        .frame(width: size, height: size * 1.10)
+        .frame(width: size, height: size)
         .scaleEffect(breath)
         .onAppear { startIdleLoop() }
         .onChange(of: expression.mood) { _, _ in startIdleLoop() }
@@ -38,286 +56,118 @@ struct MumbaiBobCharacterView: View {
         .accessibilityValue(expression.mood.rawValue)
     }
 
-    // MARK: - Layers
+    // MARK: - Frame selection
 
-    private var head: some View {
-        Circle()
-            .fill(skinGradient)
-            .overlay {
-                Circle().stroke(palette.glyphStroke.opacity(0.35), lineWidth: 1.0)
-            }
-            .frame(width: size * 0.78, height: size * 0.78)
-            .shadow(color: palette.accentColor.opacity(0.20), radius: size * 0.06, x: 0, y: size * 0.02)
-    }
-
-    private var hair: some View {
-        // Asymmetric crescent across the top of the head — gives Mumbai
-        // Bob his side-parted look without trying to render strands.
-        HairCrescent()
-            .fill(Color(red: 0.18, green: 0.10, blue: 0.06))
-            .frame(width: size * 0.78, height: size * 0.78)
-            .offset(y: -size * 0.005)
-    }
-
-    private var eyes: some View {
-        HStack(spacing: size * 0.13) {
-            eye
-            eye
+    private var currentFrame: Image {
+        // Override > mood > gaze direction > center.
+        if let override = animationOverride {
+            return loadImage(override.assetName)
         }
-        .offset(y: -size * 0.05)
-    }
-
-    private var eye: some View {
-        ZStack {
-            Capsule()
-                .fill(Color.white)
-                .frame(width: size * 0.13, height: size * 0.10 * blinkPhase)
-            // Pupil tracks gaze
-            Circle()
-                .fill(Color(red: 0.22, green: 0.14, blue: 0.08))
-                .frame(width: size * 0.05, height: size * 0.05 * blinkPhase)
-                .offset(x: gazeOffset.width, y: gazeOffset.height)
+        if let moodAsset = moodFrameOverride {
+            return loadImage(moodAsset)
         }
+        return loadImage(gazeAsset)
     }
 
-    private var brows: some View {
-        HStack(spacing: size * 0.16) {
-            BrowShape(tilt: leftBrowTilt)
-                .stroke(Color(red: 0.18, green: 0.10, blue: 0.06), style: StrokeStyle(lineWidth: 2.4, lineCap: .round))
-                .frame(width: size * 0.13, height: size * 0.05)
-            BrowShape(tilt: rightBrowTilt)
-                .stroke(Color(red: 0.18, green: 0.10, blue: 0.06), style: StrokeStyle(lineWidth: 2.4, lineCap: .round))
-                .frame(width: size * 0.13, height: size * 0.05)
-        }
-        .offset(y: -size * 0.13)
-    }
-
-    private var mouth: some View {
-        MouthShape(curvature: mouthCurvature, openness: mouthOpenness)
-            .stroke(Color(red: 0.32, green: 0.16, blue: 0.12),
-                    style: StrokeStyle(lineWidth: 2.6, lineCap: .round, lineJoin: .round))
-            .frame(width: size * 0.30, height: size * 0.10)
-            .offset(y: size * 0.12)
-    }
-
-    private var cheeks: some View {
-        // Faint rosy circles for happy/sheepish; transparent otherwise.
-        let visibility: Double = {
-            switch expression.mood {
-            case .happy, .sheepish:     return 0.55
-            case .speaking, .listening: return 0.25
-            default:                    return 0.0
-            }
-        }()
-        return HStack(spacing: size * 0.30) {
-            Circle().fill(BobColors.Signal.danger.opacity(visibility * 0.4))
-                .frame(width: size * 0.10, height: size * 0.07)
-            Circle().fill(BobColors.Signal.danger.opacity(visibility * 0.4))
-                .frame(width: size * 0.10, height: size * 0.07)
-        }
-        .offset(y: size * 0.04)
-        .blur(radius: size * 0.015)
-    }
-
-    private var poloCollar: some View {
-        // Suggestion of a blue polo neckline at the bottom of the frame.
-        PoloCollar()
-            .fill(Color(red: 0.22, green: 0.42, blue: 0.78))
-            .overlay {
-                PoloCollar().stroke(Color(red: 0.16, green: 0.30, blue: 0.58), lineWidth: 1.0)
-            }
-            .frame(width: size * 0.78, height: size * 0.30)
-            .offset(y: size * 0.42)
-    }
-
-    // MARK: - Mood-driven values
-
-    private var skinGradient: LinearGradient {
-        let base = palette.characterBaseHues.first ?? BobColors.Persona.mumbaiAmber
-        let highlight = palette.characterBaseHues.dropFirst().first ?? base.opacity(0.85)
-        return LinearGradient(
-            colors: [highlight, base],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
-    }
-
-    private var mouthCurvature: CGFloat {
+    /// Mood-based frames take precedence over gaze tracking. Bob looks
+    /// happy when he's actually speaking, eyes-up when thinking, etc.
+    private var moodFrameOverride: String? {
         switch expression.mood {
-        case .happy:        return 1.0
-        case .speaking:     return 0.4
-        case .sheepish:     return 0.2
-        case .confused:     return -0.4
-        case .error:        return -0.6
-        case .thinking:     return 0.0
-        case .listening:    return 0.15
-        case .typing:       return 0.3
-        case .naughty:      return 0.7
-        case .idle:         return 0.25
+        case .happy:        return "mumbai_bob_smile_open_alpha"
+        case .speaking:     return "mumbai_bob_smile_open_alpha"
+        case .thinking:     return "mumbai_bob_eyes_up_alpha"
+        case .typing:       return "mumbai_bob_eyes_down_alpha"
+        case .confused:     return "mumbai_bob_eyes_up_alpha"
+        case .sheepish:     return "mumbai_bob_blink_half_alpha"
+        case .listening:    return nil    // follow gaze
+        case .error:        return "mumbai_bob_blink_half_alpha"
+        case .idle:         return nil    // follow gaze
+        case .naughty:      return "mumbai_bob_smile_open_alpha"
         }
     }
 
-    private var mouthOpenness: CGFloat {
-        switch expression.mood {
-        case .speaking:     return 0.7
-        case .happy:        return 0.4
-        case .confused:     return 0.3
-        case .error:        return 0.5
-        default:            return 0.05
+    /// Quantize the gaze CGPoint (each axis 0...1) into one of five frames:
+    /// center / left / right / up / down. The thresholds are deliberately
+    /// generous so the gaze locks to "center" most of the time and only
+    /// shifts to a directional frame when the cursor is genuinely off to
+    /// the side.
+    private var gazeAsset: String {
+        guard let gaze else { return "mumbai_bob_center_alpha" }
+        let dx = gaze.x - 0.5
+        let dy = gaze.y - 0.5
+        let absDx = abs(dx)
+        let absDy = abs(dy)
+        let threshold: CGFloat = 0.18
+
+        if absDx < threshold && absDy < threshold {
+            return "mumbai_bob_center_alpha"
+        }
+        if absDx >= absDy {
+            return dx > 0 ? "mumbai_bob_eyes_right_alpha" : "mumbai_bob_eyes_left_alpha"
+        } else {
+            return dy > 0 ? "mumbai_bob_eyes_down_alpha" : "mumbai_bob_eyes_up_alpha"
         }
     }
 
-    private var leftBrowTilt: CGFloat {
-        switch expression.mood {
-        case .confused:     return -0.5
-        case .error:        return -0.7
-        case .thinking:     return 0.2
-        case .happy:        return 0.15
-        case .naughty:      return 0.4
-        default:            return 0.0
+    /// Loads a sprite frame via `Bundle.module`. The frame PNGs live at
+    /// the top level of the SPM resource bundle.
+    private func loadImage(_ name: String) -> Image {
+        if let url = Bundle.module.url(forResource: name, withExtension: "png"),
+           let nsImage = NSImage(contentsOf: url) {
+            return Image(nsImage: nsImage)
         }
-    }
-
-    private var rightBrowTilt: CGFloat {
-        switch expression.mood {
-        case .confused:     return 0.5
-        case .error:        return 0.3
-        case .thinking:     return -0.2
-        case .happy:        return -0.15
-        case .naughty:      return -0.6
-        default:            return 0.0
-        }
-    }
-
-    private var gazeOffset: CGSize {
-        guard let gaze else { return .zero }
-        let dx = (gaze.x - 0.5) * size * 0.04
-        let dy = (gaze.y - 0.5) * size * 0.03
-        return CGSize(width: dx, height: dy)
+        return Image(systemName: "person.crop.circle")
     }
 
     // MARK: - Animation loops
 
     private func startIdleLoop() {
+        // Cancel any previously-running tasks first. SwiftUI may call
+        // `.onAppear` and `.onChange(of: expression.mood)` repeatedly as
+        // the chat window updates — without explicit cancellation we'd
+        // accumulate concurrent blink/yawn tasks, each fighting to set
+        // and clear `animationOverride`, which manifests as Bob freezing
+        // mid-blink for several seconds at a time.
+        blinkTask?.cancel()
+        yawnTask?.cancel()
+        animationOverride = nil
+
         guard !reduceMotion else {
             breath = 1.0
-            blinkPhase = 1.0
             return
         }
         withAnimation(BobMotion.breath) {
             breath = 1.022
         }
-        // Blink loop — fast close, slower open, randomized via phase ratio.
-        Task { @MainActor in
-            while !reduceMotion {
-                try? await Task.sleep(nanoseconds: UInt64.random(in: 3_500_000_000...6_000_000_000))
-                guard !reduceMotion else { break }
-                withAnimation(.easeIn(duration: 0.10)) { blinkPhase = 0.05 }
+        blinkTask = Task { @MainActor in
+            while !Task.isCancelled {
+                let interval = Double.random(in: 4.0...6.5) * 1_000_000_000
+                try? await Task.sleep(nanoseconds: UInt64(interval))
+                if Task.isCancelled || reduceMotion { break }
+                // Three-phase blink: open -> half -> closed -> half -> open.
+                animationOverride = .blinkHalf
+                try? await Task.sleep(nanoseconds: 60_000_000)
+                if Task.isCancelled { break }
+                animationOverride = .blinkClosed
                 try? await Task.sleep(nanoseconds: 110_000_000)
-                withAnimation(.easeOut(duration: 0.14)) { blinkPhase = 1.0 }
+                if Task.isCancelled { break }
+                animationOverride = .blinkHalf
+                try? await Task.sleep(nanoseconds: 60_000_000)
+                if Task.isCancelled { break }
+                animationOverride = nil
             }
         }
-    }
-}
-
-// MARK: - Custom shapes
-
-private struct HairCrescent: Shape {
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        let r = rect.width / 2
-        let center = CGPoint(x: rect.midX, y: rect.midY)
-        // Top ~40% of the head, with an asymmetric side part.
-        path.addArc(center: center, radius: r,
-                    startAngle: .degrees(195), endAngle: .degrees(345),
-                    clockwise: false)
-        path.addLine(to: CGPoint(x: rect.maxX - r * 0.15, y: rect.minY + r * 0.55))
-        path.addQuadCurve(to: CGPoint(x: rect.minX + r * 0.30, y: rect.minY + r * 0.40),
-                          control: CGPoint(x: rect.midX + r * 0.10, y: rect.minY + r * 0.05))
-        path.closeSubpath()
-        return path
-    }
-}
-
-private struct MouthShape: Shape {
-    /// -1 (frown) ... 0 (flat) ... 1 (smile)
-    var curvature: CGFloat
-    /// 0 (closed line) ... 1 (open oval)
-    var openness: CGFloat
-
-    var animatableData: AnimatablePair<CGFloat, CGFloat> {
-        get { AnimatablePair(curvature, openness) }
-        set {
-            curvature = newValue.first
-            openness = newValue.second
+        yawnTask = Task { @MainActor in
+            while !Task.isCancelled {
+                // Yawn rarely — every 60-180s when Bob is idle.
+                let interval = Double.random(in: 60.0...180.0) * 1_000_000_000
+                try? await Task.sleep(nanoseconds: UInt64(interval))
+                if Task.isCancelled || reduceMotion { break }
+                guard expression.mood == .idle, animationOverride == nil else { continue }
+                animationOverride = .yawn
+                try? await Task.sleep(nanoseconds: 1_400_000_000)
+                animationOverride = nil
+            }
         }
-    }
-
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        if openness < 0.15 {
-            // Just a curved line.
-            let yMid = rect.midY
-            let lift = curvature * rect.height * 0.55
-            path.move(to: CGPoint(x: rect.minX, y: yMid))
-            path.addQuadCurve(
-                to: CGPoint(x: rect.maxX, y: yMid),
-                control: CGPoint(x: rect.midX, y: yMid + lift)
-            )
-        } else {
-            // Open mouth ellipse, taller for more "speaking" intensity.
-            let h = rect.height * (0.30 + 0.70 * openness)
-            let oval = CGRect(
-                x: rect.minX + rect.width * 0.1,
-                y: rect.midY - h / 2 + curvature * rect.height * 0.20,
-                width: rect.width * 0.8,
-                height: h
-            )
-            path.addEllipse(in: oval)
-        }
-        return path
-    }
-}
-
-private struct BrowShape: Shape {
-    /// -1 (worried, inner-low) ... 0 (level) ... 1 (raised)
-    var tilt: CGFloat
-
-    var animatableData: CGFloat {
-        get { tilt }
-        set { tilt = newValue }
-    }
-
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        let lift = tilt * rect.height * 0.6
-        path.move(to: CGPoint(x: rect.minX, y: rect.midY - lift))
-        path.addQuadCurve(
-            to: CGPoint(x: rect.maxX, y: rect.midY + lift * 0.4),
-            control: CGPoint(x: rect.midX, y: rect.midY - rect.height * 0.5)
-        )
-        return path
-    }
-}
-
-private struct PoloCollar: Shape {
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        // V-neck collar shape — two angled flaps meeting at a notch.
-        let notchY = rect.midY
-        let notchX = rect.midX
-        path.move(to: CGPoint(x: rect.minX, y: rect.maxY))
-        path.addLine(to: CGPoint(x: rect.minX, y: rect.minY + rect.height * 0.15))
-        path.addQuadCurve(
-            to: CGPoint(x: notchX, y: notchY),
-            control: CGPoint(x: rect.minX + rect.width * 0.30, y: rect.minY + rect.height * 0.10)
-        )
-        path.addQuadCurve(
-            to: CGPoint(x: rect.maxX, y: rect.minY + rect.height * 0.15),
-            control: CGPoint(x: rect.maxX - rect.width * 0.30, y: rect.minY + rect.height * 0.10)
-        )
-        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
-        path.closeSubpath()
-        return path
     }
 }

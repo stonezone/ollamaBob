@@ -32,17 +32,11 @@ struct WalkieTalkieIndicator: View {
 
     @ViewBuilder
     private func badge(label: String, color: Color, icon: String) -> some View {
-        HStack(spacing: 4) {
+        BobChip(label: label, tint: color, isProminent: true) {
             Image(systemName: icon)
+                .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(color)
-            Text(label)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.primary)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(.regularMaterial, in: Capsule())
-        .overlay(Capsule().stroke(color.opacity(0.4), lineWidth: 1))
     }
 }
 

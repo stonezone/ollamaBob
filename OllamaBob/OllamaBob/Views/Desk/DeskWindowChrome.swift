@@ -47,13 +47,15 @@ struct DeskWindowChrome: NSViewRepresentable {
         window.hasShadow = !avatarOnly
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
-        if avatarOnly {
-            window.styleMask.remove(.titled)
-            window.styleMask.remove(.fullSizeContentView)
-        } else {
-            window.styleMask.insert(.titled)
-            window.styleMask.insert(.fullSizeContentView)
-        }
+        // Keep `.titled` in both modes. A borderless NSWindow returns
+        // false from `canBecomeKey` by default, which means TextFields
+        // inside the window can't receive keyboard focus — that's why
+        // the avatar-only input was unusable when we previously toggled
+        // `.titled` off. With `titlebarAppearsTransparent` + hidden
+        // visibility + hidden traffic-light buttons, the window still
+        // looks chrome-less while remaining a real key window.
+        window.styleMask.insert(.titled)
+        window.styleMask.insert(.fullSizeContentView)
         window.styleMask.insert(.resizable)
         window.standardWindowButton(.closeButton)?.isHidden = true
         window.standardWindowButton(.miniaturizeButton)?.isHidden = true

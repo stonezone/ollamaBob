@@ -103,7 +103,9 @@ struct OnboardingView: View {
             VStack(alignment: .leading, spacing: 14) {
                 pillRow(icon: "🔒", title: "Private by default", body: "Everything runs locally through Ollama. Your conversations never leave your machine (except opt-in web searches).")
                 pillRow(icon: "🛠", title: "Real tools, not just chat", body: "Bob can inspect your filesystem, run shell commands, read files, search the web, and write files — with your approval.")
-                pillRow(icon: "📞", title: "Phone calls when you want them", body: "Enable Jarvis in Preferences → Tools and Bob can place real calls, check status, and hang up active calls.")
+                pillRow(icon: "⌨️", title: "Summon Bob from anywhere", body: "Press ⌘⇧Space to bring up Bob's floating HUD — ask a question and the chat opens with the prompt already sent. Rebind in Preferences if it conflicts with Spotlight.")
+                pillRow(icon: "📋", title: "Menu bar quick-ask", body: "Click Bob in the menu bar for a glass popover with a quick-input field, mode toggles, and shortcuts to all of Bob's surfaces.")
+                pillRow(icon: "📞", title: "Phone calls when you want them", body: "Enable Jarvis in Preferences → Tools and Bob can place real outbound calls. The Live Call window lets you compose, supervise transcripts, inject mid-call messages, and hang up.")
                 pillRow(icon: "🖼", title: "Rich presentation", body: "Bob can open formatted HTML pages, URLs, and local files in real macOS windows instead of dumping everything into chat.")
                 pillRow(icon: "🧠", title: "Remembers what matters", body: "Tell Bob \"remember I prefer tabs\" and he'll carry that forward across every future conversation.")
                 pillRow(icon: "🎭", title: "Five personas + uncensored mode", body: "Pick the voice that fits the moment, then optionally enable the per-conversation UNCENSORED pill later in Preferences → Models.")

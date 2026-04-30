@@ -41,6 +41,29 @@ final class JarvisCallClientHTTP: JarvisCallClient {
         return JarvisTranscript(callID: resolvedID, lines: lines)
     }
 
+    func actionItems(callID: String) async throws -> JarvisCallActionItems? {
+        let trimmed = callID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.isEmpty == false else {
+            throw JarvisCallClientError.other("Missing call_id.")
+        }
+        do {
+            let data = try await send(method: "GET", path: "/call/action-items/\(Self.pathSegment(trimmed))", body: nil)
+            let response = try decode(ActionItemsResponse.self, from: data)
+            return JarvisCallActionItems(
+                callID: response.callSid ?? trimmed,
+                outcome: response.outcome,
+                followUps: response.followUps,
+                facts: response.facts,
+                topics: response.topics
+            )
+        } catch JarvisCallClientError.other(let detail) where detail.contains("404") {
+            // Daemon returns 404 while the call is still in flight or when
+            // extraction was skipped — treat as "no action items yet" and
+            // let the UI render an empty state instead of erroring.
+            return nil
+        }
+    }
+
     func inject(callID: String, text: String) async throws -> JarvisInjectResult {
         let trimmedID = callID.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -234,4 +257,12 @@ private struct InjectResponse: Decodable {
     let acknowledged: Bool?
     let message: String?
     let detail: String?
+}
+
+private struct ActionItemsResponse: Decodable {
+    let callSid: String?
+    let outcome: String
+    let followUps: [String]
+    let facts: [String]
+    let topics: [String]
 }
