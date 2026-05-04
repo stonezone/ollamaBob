@@ -183,7 +183,6 @@ final class PolicyRegressionTests: XCTestCase {
     func testShellToolReturnsFailureWhenShellCannotLaunch() async {
         let result = await ShellTool.execute(
             command: "echo hello",
-            timeout: 1,
             executable: "/definitely/not/a/real/zsh"
         )
 
@@ -196,7 +195,7 @@ final class PolicyRegressionTests: XCTestCase {
     func testShellToolAllowsLongStdoutAndReturnsDisplayTruncation() async {
         let result = await ShellTool.execute(
             command: #"awk 'BEGIN { for (i = 0; i < 12050; i++) printf "x" }'"#,
-            timeout: 5
+            hardCap: 5
         )
 
         XCTAssertTrue(result.success, result.content)

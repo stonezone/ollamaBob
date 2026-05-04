@@ -21,29 +21,79 @@ enum YouTubeTool {
 
         let clamped = max(1, min(10, limit ?? 5))
         let term = "ytsearch\(clamped):\(trimmed)"
-        let run = await ProcessRunner.run(executable: ytdlp, arguments: ["--dump-json", "--no-warnings", term], timeout: 30)
+        // v1.0.49: switched from `--dump-json` to `--print` with a
+        // pipe-delimited template. `--dump-json` returned the full
+        // metadata document per result (every video format, every
+        // storyboard, every thumbnail URL) — ~200 KB per result. With
+        // 5 results that approached or exceeded ProcessRunner's 1 MB
+        // stdout cap, which would cause us to send SIGTERM mid-stream
+        // and yt-dlp would exit 15. The template format below is ~80
+        // bytes per result so 5–10 results stay well under any limit.
+        // Fields: id|title|channel|duration_seconds|webpage_url.
+        // idle=30/hardCap=120 still applies as defense.
+        let printTemplate = "%(id)s|%(title)s|%(channel)s|%(duration)s|%(webpage_url)s"
+        let run = await ProcessRunner.run(
+            executable: ytdlp,
+            arguments: [
+                "--no-warnings",
+                "--flat-playlist",
+                "--print", printTemplate,
+                term
+            ],
+            idleTimeout: 30,
+            hardCap: 120
+        )
         let durationMs = Int(Date().timeIntervalSince(start) * 1000)
 
         if run.timedOut {
-            return .failure(tool: "youtube_search", error: "Command timed out after 30s", durationMs: durationMs)
+            let why = run.idleTimedOut ? "idle for 30s" : (run.hardCapped ? "hard cap of 120s" : "timed out")
+            return .failure(tool: "youtube_search", error: "yt-dlp search killed: \(why)", durationMs: durationMs)
+        }
+        // v1.0.49: explicit check for output-limit termination so we
+        // report the real cause instead of a generic exit code.
+        // (Previous behavior surfaced as "exited 15" — SIGTERM —
+        // which is misleading since yt-dlp didn't fail; we killed it.)
+        if run.outputLimitExceeded {
+            return .failure(
+                tool: "youtube_search",
+                error: "yt-dlp search produced more than \(AppConfig.processOutputMaxBytes / 1024) KB of output and was terminated. Try a more specific query (artist + song name) for fewer results.",
+                durationMs: durationMs
+            )
         }
         if run.exitCode != 0 {
-            let err = run.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
-            return .failure(tool: "youtube_search", error: err.isEmpty ? "yt-dlp search failed." : err, durationMs: durationMs)
+            // v1.0.47: surface the exit code AND a stdout/stderr preview so
+            // the model (and the debug log) can see what actually went wrong.
+            let stderrTrim = run.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+            let stdoutTail = String(run.stdout.suffix(400)).trimmingCharacters(in: .whitespacesAndNewlines)
+            var diagnostic = "yt-dlp search exited \(run.exitCode)."
+            if !stderrTrim.isEmpty {
+                diagnostic += " stderr: \(stderrTrim.prefix(400))"
+            }
+            if stderrTrim.isEmpty && !stdoutTail.isEmpty {
+                diagnostic += " stdout-tail: \(stdoutTail)"
+            }
+            if stderrTrim.isEmpty && stdoutTail.isEmpty {
+                diagnostic += " (no output — likely network/DNS issue or transient yt-dlp glitch; retry the same query once)."
+            }
+            return .failure(tool: "youtube_search", error: diagnostic, durationMs: durationMs)
         }
 
-        let lines = run.stdout.split(whereSeparator: \.isNewline)
+        // Parse pipe-delimited output. Empty or all-whitespace lines
+        // are skipped (yt-dlp sometimes emits a trailing newline).
+        // Field positions: 0=id, 1=title, 2=channel, 3=duration_seconds, 4=webpage_url.
         var entries: [String] = []
-        for (idx, line) in lines.enumerated() {
-            guard let data = String(line).data(using: .utf8),
-                  let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
-                continue
-            }
-            let title = (obj["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "(untitled)"
-            let uploader = (obj["uploader"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "(unknown uploader)"
-            let url = (obj["webpage_url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "(missing url)"
-            let durationText = formatDuration(durationSeconds: obj["duration"])
-            entries.append("\(idx + 1). [\(durationText)] \(title) — \(uploader)\n   \(url)")
+        var idx = 0
+        for raw in run.stdout.split(whereSeparator: \.isNewline) {
+            let line = String(raw).trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !line.isEmpty else { continue }
+            let fields = line.components(separatedBy: "|")
+            guard fields.count >= 5 else { continue }
+            idx += 1
+            let title = fields[1].isEmpty ? "(untitled)" : fields[1]
+            let uploader = fields[2].isEmpty || fields[2] == "NA" ? "(unknown uploader)" : fields[2]
+            let url = fields[4].isEmpty ? "(missing url)" : fields[4]
+            let durationText = formatDuration(durationSeconds: Double(fields[3]))
+            entries.append("\(idx). [\(durationText)] \(title) — \(uploader)\n   \(url)")
         }
 
         let body = entries.isEmpty ? "(no results)" : entries.joined(separator: "\n")
@@ -86,14 +136,50 @@ enum YouTubeTool {
         let outputTemplate = outputTemplate(resolvedDir: resolvedDir, filename: filename, format: normalizedFormat)
         let args = downloadArguments(url: trimmedURL, format: normalizedFormat, outputTemplate: outputTemplate)
 
-        let run = await ProcessRunner.run(executable: ytdlp, arguments: args, timeout: 300)
+        // v1.0.46: migrated from legacy `timeout: 300` (fixed wall clock)
+        // to idle/hardCap. yt-dlp prints download progress every ~1s
+        // during the download phase, so idle=120 lets a slow connection
+        // keep going as long as bytes are arriving. hardCap=1800 (30min)
+        // is the absolute ceiling for a single track — anything over
+        // that is almost certainly a stalled / re-encoding pathology.
+        let run = await ProcessRunner.run(
+            executable: ytdlp,
+            arguments: args,
+            idleTimeout: 120,
+            hardCap: 1800
+        )
         let durationMs = Int(Date().timeIntervalSince(start) * 1000)
         if run.timedOut {
-            return .failure(tool: "youtube_download", error: "Command timed out after 300s", durationMs: durationMs)
+            let why = run.idleTimedOut
+                ? "no progress from yt-dlp for 120s"
+                : (run.hardCapped ? "exceeded 30-min hard cap" : "timed out")
+            return .failure(tool: "youtube_download", error: "yt-dlp killed: \(why)", durationMs: durationMs)
+        }
+        // v1.0.49: report the real cause when ProcessRunner SIGTERM'd
+        // due to output cap (rare for download but possible if yt-dlp
+        // dumps verbose progress at high frequency).
+        if run.outputLimitExceeded {
+            return .failure(
+                tool: "youtube_download",
+                error: "yt-dlp produced more than \(AppConfig.processOutputMaxBytes / 1024) KB of progress output and was terminated. The download may have partially succeeded — check the destination folder.",
+                durationMs: durationMs
+            )
         }
         if run.exitCode != 0 {
-            let err = run.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
-            return .failure(tool: "youtube_download", error: err.isEmpty ? "yt-dlp download failed." : err, durationMs: durationMs)
+            // v1.0.47: same informativeness fix as youtube_search above.
+            let stderrTrim = run.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+            let stdoutTail = String(run.stdout.suffix(400)).trimmingCharacters(in: .whitespacesAndNewlines)
+            var diagnostic = "yt-dlp download exited \(run.exitCode)."
+            if !stderrTrim.isEmpty {
+                diagnostic += " stderr: \(stderrTrim.prefix(400))"
+            }
+            if stderrTrim.isEmpty && !stdoutTail.isEmpty {
+                diagnostic += " stdout-tail: \(stdoutTail)"
+            }
+            if stderrTrim.isEmpty && stdoutTail.isEmpty {
+                diagnostic += " (no output — likely network/DNS issue or transient yt-dlp glitch)."
+            }
+            return .failure(tool: "youtube_download", error: diagnostic, durationMs: durationMs)
         }
 
         var savedPath: String?

@@ -23,7 +23,7 @@ struct ToolActivityView: View {
 }
 
 struct ToolActivityRow: View {
-    let entry: AgentLoop.ToolLogEntry
+    @ObservedObject var entry: AgentLoop.ToolLogEntry
     @State private var isExpanded = false
 
     var body: some View {

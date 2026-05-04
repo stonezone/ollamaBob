@@ -94,14 +94,31 @@ extension AgentLoop {
         let approvedPaths = ApprovalPolicy.resolvedPaths(toolName: name, arguments: args)
 
         // Execute
-        let result = await executeTool(name: name, args: args, approvedPaths: approvedPaths)
+        DebugLog.log(.tool, "dispatch", [
+            "name": name,
+            "args": "\(args)",
+            "approval": "\(approval)"
+        ])
+        let result: ToolResult
+        if name == "shell" {
+            // Phase A: shell takes the live-entry path. The dispatcher
+            // creates the ToolLogEntry up-front, registers a CancelHandle,
+            // streams chunks live, and finalizes on completion. The
+            // standard `logTool(...)` call below is suppressed for shell
+            // because the entry is already in `toolActivity`.
+            result = await executeShellWithLiveEntry(args: args, approval: approval)
+        } else {
+            result = await executeTool(name: name, args: args, approvedPaths: approvedPaths)
+        }
         if name != "timeline_search" {
             ActivityIndexer.shared.recordToolCall(name: name, success: result.success, conversationID: currentConversationId)
         }
         if let sessionID = currentConversationId {
             TaintPolicy.shared.markTaintedIfNeeded(afterTool: name, sessionID: sessionID, success: result.success)
         }
-        logTool(name: name, input: "\(args)", output: result.content, approval: approval, approved: true, durationMs: result.durationMs)
+        if name != "shell" {
+            logTool(name: name, input: "\(args)", output: result.content, approval: approval, approved: true, durationMs: result.durationMs)
+        }
 
         // Privacy Ledger: append a row for approved side-effecting executions.
         // Logging failure must never block the tool result — wrapped in try?.
@@ -116,6 +133,13 @@ extension AgentLoop {
             )
         }
 
+        DebugLog.log(.tool, "complete", [
+            "name": name,
+            "success": "\(result.success)",
+            "durationMs": "\(result.durationMs)",
+            "outputLen": "\(result.content.count)",
+            "outputPreview": String(result.content.prefix(300))
+        ])
         if result.success {
             consecutiveFailures = 0
             bobMood = .typing
@@ -125,11 +149,78 @@ extension AgentLoop {
         return result
     }
 
+    /// Phase A: shell dispatch path that creates a live `ToolLogEntry`,
+    /// registers a CancelHandle, and streams stdout/stderr chunks into the
+    /// entry as they arrive. The entry is appended to `toolActivity`
+    /// immediately so the in-flight tool-call bubble can render a "running…"
+    /// state with a tail of recent output.
+    ///
+    /// SkillRunner-driven shell calls go through `executeTool(name:args:)`
+    /// instead and use the legacy non-streaming path — skills are scripted
+    /// and don't need the streaming UI affordances.
+    func executeShellWithLiveEntry(args: [String: Any], approval: ApprovalLevel) async -> ToolResult {
+        let command = args["command"] as? String ?? ""
+        let idle = Self.parseTimeInterval(args["idle_timeout_seconds"]) ?? AppConfig.shellIdleTimeoutSeconds
+        let cap = Self.parseTimeInterval(args["max_total_seconds"]) ?? AppConfig.shellMaxTotalSeconds
+
+        let cancelHandle = ProcessRunner.CancelHandle()
+        let entry = ToolLogEntry(
+            toolName: "shell",
+            input: "\(args)",
+            output: "",
+            approval: approval,
+            approved: true,
+            durationMs: 0,
+            isInFlight: true,
+            success: true,
+            timestamp: Date(),
+            cancelHandle: cancelHandle
+        )
+        toolActivity.append(entry)
+        registerCancelHandle(cancelHandle, entryId: entry.id)
+
+        let onChunk: ProcessRunner.OutputChunkHandler = { [weak entry] _, chunk in
+            guard let entry else { return }
+            Task { @MainActor in
+                entry.appendOutput(chunk)
+            }
+        }
+
+        let result = await ShellTool.execute(
+            command: command,
+            idleTimeout: idle,
+            hardCap: cap,
+            cancelHandle: cancelHandle,
+            onOutputChunk: onChunk
+        )
+
+        deregisterCancelHandle(entryId: entry.id)
+        entry.finalize(
+            output: result.content,
+            durationMs: result.durationMs,
+            success: result.success
+        )
+        return result
+    }
+
+    /// Parse a TimeInterval from Ollama-emitted JSON (Int, Double, NSNumber,
+    /// or string). Falls back to nil for invalid/missing input — the caller
+    /// substitutes the configured default.
+    static func parseTimeInterval(_ value: Any?) -> TimeInterval? {
+        if let d = value as? Double { return d }
+        if let i = value as? Int { return TimeInterval(i) }
+        if let n = value as? NSNumber { return n.doubleValue }
+        if let s = value as? String { return TimeInterval(s.trimmingCharacters(in: .whitespaces)) }
+        return nil
+    }
+
     func executeTool(name: String, args: [String: Any], approvedPaths: [String: String] = [:]) async -> ToolResult {
         switch name {
         case "shell":
             let command = args["command"] as? String ?? ""
-            return await ShellTool.execute(command: command)
+            let idle = Self.parseTimeInterval(args["idle_timeout_seconds"]) ?? AppConfig.shellIdleTimeoutSeconds
+            let cap = Self.parseTimeInterval(args["max_total_seconds"]) ?? AppConfig.shellMaxTotalSeconds
+            return await ShellTool.execute(command: command, idleTimeout: idle, hardCap: cap)
 
         case "read_file":
             let path = args["path"] as? String ?? ""

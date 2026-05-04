@@ -51,6 +51,10 @@ struct DeskTranscriptView<TopBanner: View, BottomBanner: View>: View {
     let surfaceOpacity: Double
     let textOpacity: Double
     let bgPanel: Color
+    /// Phase B: when `true`, tool-only assistant turns are visible inline
+    /// and `thinking` panels render even without tool calls. Avatar-only
+    /// mode passes `false` to keep the compact silhouette unchanged.
+    var fullChatMode: Bool = false
     let topBanner: () -> TopBanner
     let bottomBanner: () -> BottomBanner
 
@@ -129,12 +133,13 @@ struct DeskTranscriptView<TopBanner: View, BottomBanner: View>: View {
     private func row(for item: DeskTranscriptItem) -> some View {
         switch item.content {
         case .message(let msg):
-            if Self.shouldShowInTranscript(msg) {
+            if Self.shouldShowInTranscript(msg, fullChatMode: fullChatMode) {
                 ChatBubble(
                     message: msg,
                     chatWindowOpacity: chatWindowOpacity,
                     richPresentationEnabled: richPresentationEnabled,
-                    richPresentationArtifactChipsEnabled: richPresentationArtifactChipsEnabled
+                    richPresentationArtifactChipsEnabled: richPresentationArtifactChipsEnabled,
+                    fullChatMode: fullChatMode
                 )
                 .id(msg.id)
             }
@@ -176,8 +181,10 @@ struct DeskTranscriptView<TopBanner: View, BottomBanner: View>: View {
     }
 
     /// Pure tool-invocation wrappers (assistant turn with only tool_calls, no
-    /// visible body) live in the thoughts overlay. Everything else stays visible.
-    static func shouldShowInTranscript(_ msg: ChatMessage) -> Bool {
+    /// visible body) live in the thoughts overlay in avatar-only mode. In
+    /// full chat mode they render as the inline gear bubble so the user can
+    /// see what Bob is doing.
+    static func shouldShowInTranscript(_ msg: ChatMessage, fullChatMode: Bool = false) -> Bool {
         switch msg.role {
         case .system: return false
         case .tool: return true
@@ -185,7 +192,7 @@ struct DeskTranscriptView<TopBanner: View, BottomBanner: View>: View {
         case .assistant:
             let body = msg.content.trimmingCharacters(in: .whitespacesAndNewlines)
             if body.isEmpty, let calls = msg.toolCalls, !calls.isEmpty {
-                return false
+                return fullChatMode
             }
             return true
         }
@@ -264,6 +271,8 @@ struct DeskHistoryOverlay: View {
     private func row(for item: DeskTranscriptItem) -> some View {
         switch item.content {
         case .message(let msg):
+            // History overlay always uses the strict (avatar-only) filter
+            // — it's a compact list of past turns, not a live thought stream.
             if DeskTranscriptView<EmptyView, EmptyView>.shouldShowInTranscript(msg) {
                 ChatBubble(
                     message: msg,

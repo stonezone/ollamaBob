@@ -90,6 +90,9 @@ struct DeskInputView: View {
     let bubbleStroke: Color
     let onToggleUncensoredMode: () -> Void
     let onSend: () -> Void
+    /// Phase A: invoked by the ⏹ button when `isProcessing` is true.
+    /// Defaulted so call sites that haven't been updated still compile.
+    var onCancel: () -> Void = {}
 
     private var trimmedInput: String {
         inputText.trimmingCharacters(in: .whitespaces)
@@ -98,6 +101,12 @@ struct DeskInputView: View {
     private var canSend: Bool {
         !trimmedInput.isEmpty && !isProcessing
     }
+
+    /// Phase A: when a turn is in flight the Send button becomes a Cancel
+    /// (⏹) button so the user can stop a long-running shell command, a
+    /// stalled Ollama request, or a multi-tool chain at any seam. Mirrors
+    /// the macOS-standard ⌘. shortcut.
+    private var isCancelMode: Bool { isProcessing }
 
     var body: some View {
         switch style {
@@ -121,25 +130,45 @@ struct DeskInputView: View {
 
             uncensoredTogglePill()
 
-            Button(action: onSend) {
-                Image(systemName: "arrow.up.circle.fill")
-                    .font(.title2)
-                    .foregroundColor(phosphorGreen.opacity(textOpacity))
+            if isCancelMode {
+                Button(action: onCancel) {
+                    Image(systemName: "stop.circle.fill")
+                        .font(.title2)
+                        .foregroundColor(Color(red: 0.95, green: 0.35, blue: 0.30).opacity(textOpacity))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Cancel current turn")
+                .accessibilityHint("Stops the in-flight shell command, Ollama request, or tool chain.")
+            } else {
+                Button(action: onSend) {
+                    Image(systemName: "arrow.up.circle.fill")
+                        .font(.title2)
+                        .foregroundColor(phosphorGreen.opacity(textOpacity))
+                }
+                .buttonStyle(.plain)
+                .disabled(!canSend)
+                .accessibilityLabel("Send message")
+                .accessibilityHint(canSend
+                    ? "Sends the current chat input."
+                    : "Enter a message to enable sending.")
             }
-            .buttonStyle(.plain)
-            .disabled(!canSend)
-            .accessibilityLabel("Send message")
-            .accessibilityHint(canSend
-                ? "Sends the current chat input."
-                : "Enter a message to enable sending.")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(
-            Button("") { inputFocused = true }
-                .keyboardShortcut("k", modifiers: .command)
-                .opacity(0)
-                .accessibilityHidden(true)
+            ZStack {
+                Button("") { inputFocused = true }
+                    .keyboardShortcut("k", modifiers: .command)
+                    .accessibilityHidden(true)
+                // Phase A: macOS-standard ⌘. for Cancel. Active only while
+                // the turn is in flight; otherwise it's a no-op trigger that
+                // the .disabled modifier prevents from firing.
+                Button("Cancel turn", action: onCancel)
+                    .keyboardShortcut(".", modifiers: .command)
+                    .disabled(!isCancelMode)
+                    .accessibilityHidden(true)
+            }
+            .opacity(0)
         )
     }
 
@@ -164,17 +193,28 @@ struct DeskInputView: View {
 
             uncensoredTogglePill(compact: true, darkText: true)
 
-            Button(action: onSend) {
-                Image(systemName: canSend ? "arrow.up.circle.fill" : "mic.circle.fill")
-                    .font(.system(size: 16, weight: .regular))
-                    .foregroundColor(.black.opacity(0.55 * textOpacity))
+            if isCancelMode {
+                Button(action: onCancel) {
+                    Image(systemName: "stop.circle.fill")
+                        .font(.system(size: 16, weight: .regular))
+                        .foregroundColor(Color(red: 0.85, green: 0.25, blue: 0.20).opacity(textOpacity))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Cancel current turn")
+                .accessibilityHint("Stops the in-flight shell command, Ollama request, or tool chain.")
+            } else {
+                Button(action: onSend) {
+                    Image(systemName: canSend ? "arrow.up.circle.fill" : "mic.circle.fill")
+                        .font(.system(size: 16, weight: .regular))
+                        .foregroundColor(.black.opacity(0.55 * textOpacity))
+                }
+                .buttonStyle(.plain)
+                .disabled(!canSend)
+                .accessibilityLabel("Send message")
+                .accessibilityHint(canSend
+                    ? "Sends the current chat input."
+                    : "Enter a message to enable sending.")
             }
-            .buttonStyle(.plain)
-            .disabled(!canSend)
-            .accessibilityLabel("Send message")
-            .accessibilityHint(canSend
-                ? "Sends the current chat input."
-                : "Enter a message to enable sending.")
         }
         .padding(.horizontal, 14)
         .padding(.top, 19)

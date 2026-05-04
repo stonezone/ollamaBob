@@ -136,6 +136,27 @@ final class TaintPolicyTests: XCTestCase {
         XCTAssertEqual(TaintPolicy.shared.decision(toolName: "git_status", sessionID: sessionID), .allow)
     }
 
+    func testTaintPolicyAllowsYoutubeDownloadAfterYoutubeSearch() {
+        // v1.0.47 regression test: youtube_search taints the session
+        // (its results are wrapped as untrusted), but youtube_download
+        // must still be allowed in the same turn — otherwise the
+        // entire authorized music-batch workflow (search → download
+        // each track) is impossible. youtube_download has its own
+        // modal approval per call, which is the actual security
+        // checkpoint for this tool.
+        let sessionID = "music-workflow"
+        TaintPolicy.shared.markTaintedIfNeeded(afterTool: "youtube_search", sessionID: sessionID, success: true)
+        XCTAssertTrue(
+            TaintPolicy.shared.tainted(forSession: sessionID),
+            "youtube_search must still taint the session (its output is untrusted)"
+        )
+        XCTAssertEqual(
+            TaintPolicy.shared.decision(toolName: "youtube_download", sessionID: sessionID),
+            .allow,
+            "youtube_download must NOT be blocked when tainted — it has its own modal approval and the URL came from our own youtube_search"
+        )
+    }
+
     func testTaintPolicyClearsOnUserMessage() {
         let sessionID = "clear-user"
         TaintPolicy.shared.markTainted(forSession: sessionID, source: .tool("web_search"))

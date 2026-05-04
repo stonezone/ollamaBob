@@ -6,7 +6,7 @@ This is the Claude-facing project guide. For task execution, read it with `AGENT
 
 OllamaBob is a native macOS menu-bar assistant that runs locally. It talks directly to Ollama over the native `/api/chat` endpoint, owns its agent loop in Swift, executes first-party tools, persists local state in SQLite through GRDB, and uses native approval dialogs before risky actions.
 
-Current app version: `1.0.40`
+Current app version: `1.0.53`
 
 ## Current Product State
 
@@ -19,12 +19,22 @@ Shipped capabilities:
 - Rich presentation through one `present` tool and `PresentationService`.
 - Naughty Bob v1 as a per-conversation uncensored mode.
 - Jarvis phone tools gated by Preferences, `JARVIS_API_KEY`, and `OPERATOR_API_SECRET`; outbound recap calls can include recent OllamaBob session context plus earlier-work highlights for the phone persona.
-- Jarvis call supervision tools (`phone_list_calls`, `phone_get_transcript`, `phone_inject`) use the local daemon's authenticated HTTP routes.
+- Jarvis call supervision tools (`phone_list_calls`, `phone_get_transcript`, `phone_inject`) use the local daemon's authenticated HTTP routes; `phone_inject` requires modal approval per injection.
+- Live Call view (rebuilt) shows the active Jarvis call; post-call action items are extracted from the transcript and rendered as tappable chips that hand off to Bob's agent loop.
+- Mumbai Bob image avatar.
 - Bob's Desk status strip surfaces Mac context, Code Companion mode, walkie-talkie state, and Focus Guardian state when active.
 - Clipboard Cortex stack-trace summaries and walkie-talkie transcripts can submit directly into the active chat.
 - Untrusted-output taint protection disables write/action tools after file, web, mail, clipboard, YouTube-search, or screen-OCR data enters a turn until the user sends a fresh message or types `/lift`.
 - Local Jarvis address book aliases from env vars, JSON maps, and VCF exports such as `~/Downloads/bobs_contacts.vcf`.
 - Bundled Bob voice clips and persona-aware avatar behavior.
+- Long-running shell: idle timer (default 60s, clamped 5–600s) + hard cap (default 1800s/30min, clamped 10–7200s); SIGTERM→SIGKILL ladder with configurable grace period (default 2s).
+- Shell optional args `idle_timeout_seconds` and `max_total_seconds` allow per-call timeout tuning.
+- Live stdout/stderr streaming via `availableData` (fixes silent macOS pipe buffering regression); ToolActivityRow updates in real time.
+- Tool wall time excluded from the 120s agent-loop budget.
+- Cancel button (`Cmd-.`) and Stop toggle on the Send button; cancel kills in-flight ProcessRunners via the active-tool registry.
+- Tool-call-only assistant turns render inline in the full-chat transcript; `thinking` field renders as a collapsible inline strip.
+- Shell runs via `/bin/zsh -lc` (login shell) so Homebrew and user PATH entries are available when launched from Finder/Dock.
+- `build.sh` refuses silent fallback to ad-hoc signing, preserving Keychain "Always Allow" grants across builds.
 
 Authoritative current handoff: `docs/CURRENT_HANDOFF.md`
 
@@ -145,6 +155,10 @@ Before non-trivial work, search the Claude OS project KBs with the `ollamaBob-` 
 | 2026-04-19 | Rich presentation uses one `present` pipeline | HTML, URL, file, and transcript artifact chips share `PresentationService`. |
 | 2026-04-20 | Naughty Bob v1 is a mode inside the current app | It keeps persistence/settings unified and disables tools/compaction while active. |
 | 2026-04-20 | Jarvis phone calls require two secrets | App-side `/call/*` requests send both `X-Jarvis-Key` and `x-operator-secret`. |
+| 2026-05-01 | Shell idle timer + hard cap replace fixed 30s timeout | Allows long builds/installs to complete; `idle_timeout_seconds` and `max_total_seconds` args give per-call control. |
+| 2026-05-01 | Tool wall time excluded from agent-loop budget | Prevents long shell commands from racing the 120s model timeout. |
+| 2026-05-01 | `availableData` for shell pipe reads | `readData(ofLength:)` silently buffered on macOS pipes; `availableData` delivers incremental output correctly. |
+| 2026-05-01 | Login shell for ShellTool | `/bin/zsh -lc` ensures `/opt/homebrew/bin` is on PATH for Finder/Dock launches. |
 
 ## Active Docs
 

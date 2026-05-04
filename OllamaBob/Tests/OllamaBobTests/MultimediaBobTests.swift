@@ -233,7 +233,15 @@ final class MultimediaBobTests: XCTestCase {
 
         XCTAssertTrue(prompt.contains("include real clickable `<a href=\"...\">` links"))
         XCTAssertTrue(prompt.contains("prefer `present` with `kind=\"html\"` instead of writing a temporary file first"))
-        XCTAssertTrue(prompt.contains("If a tool returns an error, denial, or refusal"))
+        // v1.0.46: failure-class block was rewritten to distinguish
+        // PERMISSION/POLICY (surface to user) from SYNTAX/USAGE
+        // (diagnose stderr and retry). The test now asserts the new
+        // structure rather than the old monolithic phrase.
+        XCTAssertTrue(prompt.contains("Distinguish failure classes"), prompt)
+        XCTAssertTrue(prompt.contains("PERMISSION/POLICY failures"), prompt)
+        XCTAssertTrue(prompt.contains("SYNTAX/USAGE failures"), prompt)
+        XCTAssertTrue(prompt.contains("RETRY ONCE with corrected syntax"), prompt)
+        XCTAssertTrue(prompt.contains("netstat -nr"), prompt)
         XCTAssertTrue(prompt.contains("say what was refused and why in one short sentence"))
     }
 
@@ -260,9 +268,30 @@ final class MultimediaBobTests: XCTestCase {
         XCTAssertTrue(prompt.contains("quote paths that contain spaces"), prompt)
         XCTAssertTrue(prompt.contains("downloaded, missing, and any extra/unmatched files"), prompt)
         XCTAssertTrue(prompt.contains("Use silence detection only as a secondary QA/fallback"), prompt)
-        XCTAssertTrue(prompt.contains("Only call `youtube_download` for URLs the user authorized you to save"), prompt)
+        // v1.0.50: rephrased to fix the search-loop bug where Bob
+        // interpreted "URLs the user authorized" as needing per-URL
+        // explicit approval and never moved from search → download.
+        // The new rule explicitly says search results in the same
+        // turn are pre-authorized by the batch request.
+        XCTAssertTrue(prompt.contains("URLs returned by your OWN `youtube_search` results in this turn are PRE-AUTHORIZED"), prompt)
+        XCTAssertTrue(prompt.contains("SEQUENCING RULE"), prompt)
+        XCTAssertTrue(prompt.contains("NEVER call `youtube_search` twice in a row"), prompt)
         XCTAssertTrue(prompt.contains("pass `filename` like `01_Track_Title`"), prompt)
         XCTAssertTrue(prompt.contains("Existing folders may still have spaces"), prompt)
+    }
+
+    func testOperatingRulesTeachLocalNetworkSelfDiscovery() {
+        // v1.0.53 regression: Bob was asking the user for their subnet
+        // ("nmap needs to know which specific network range we need to
+        // check, sir? Like 192.168.1.0/24") instead of using shell to
+        // discover it himself. The new rule explicitly tells Bob he has
+        // shell and shows him the exact commands to use.
+        let prompt = BobOperatingRules.systemPrompt
+        XCTAssertTrue(prompt.contains("Local network self-discovery"), prompt)
+        XCTAssertTrue(prompt.contains("route -n get default"), prompt)
+        XCTAssertTrue(prompt.contains("DISCOVER IT YOURSELF"), prompt)
+        XCTAssertTrue(prompt.contains("ifconfig en0"), prompt)
+        XCTAssertTrue(prompt.contains("nmap -sn"), prompt)
     }
 
     func testOperatingRulesPreferMailCheckForMailQuestions() {
@@ -328,6 +357,60 @@ final class MultimediaBobTests: XCTestCase {
         let normalBudget = AgentLoop.loopBudget(for: "What is on my calendar today?")
         XCTAssertEqual(normalBudget.maxIterations, AppConfig.agentLoopMaxIterations)
         XCTAssertEqual(normalBudget.timeoutSeconds, AppConfig.agentLoopTimeoutSeconds)
+    }
+
+    func testLoopBudgetClassifierTolerantToTypoActionVerb() {
+        // v1.0.48 regression: real production failure was the user
+        // typing "downlaod" (typo). The classifier required both an
+        // action term AND an audio term, so the typo defaulted to
+        // 120s budget — the batch-audit continuation guard never
+        // fired and Bob did one search then quit. Track-list pattern
+        // detection (3+ "Title — Artist" lines + a music keyword
+        // anywhere in the message) now catches this case regardless
+        // of whether the action verb is spelled correctly, missing
+        // entirely, or replaced with a colloquial verb.
+        let realFailure = """
+        cand find my cds, can you downlaod these mp3s from youtube: \
+        Respect — Aretha Franklin
+        Superstition — Stevie Wonder
+        What's Going On — Marvin Gaye
+        A Change Is Gonna Come — Sam Cooke
+        Stand by Me — Ben E. King
+        """
+        let typoBudget = AgentLoop.loopBudget(for: realFailure)
+        XCTAssertEqual(
+            typoBudget.maxIterations,
+            AppConfig.batchAudioAgentLoopMaxIterations,
+            "track-list pattern + 'mp3s' keyword must trigger batch budget even with typo'd action verb"
+        )
+        XCTAssertEqual(typoBudget.timeoutSeconds, AppConfig.batchAudioAgentLoopTimeoutSeconds)
+    }
+
+    func testLoopBudgetClassifierIgnoresShortLists() {
+        // Negative case: a 2-line list should NOT trigger batch
+        // budget (3+ entries required to avoid false-positive on
+        // any prose with two em-dashes).
+        let twoLineFalsePositive = """
+        Hi Bob — quick favor: \
+        I lost a file — can you find it?
+        """
+        let normal = AgentLoop.loopBudget(for: twoLineFalsePositive)
+        XCTAssertEqual(normal.maxIterations, AppConfig.agentLoopMaxIterations)
+    }
+
+    func testLoopBudgetClassifierRequiresMusicKeyword() {
+        // Negative case: 3+ list lines without any music keyword
+        // (e.g. a shopping list or task list) must NOT trigger
+        // batch-audio budget.
+        let shoppingList = """
+        I need to buy these — get them today:
+        Milk — for cereal
+        Bread — for sandwiches
+        Eggs — for breakfast
+        Butter — for cooking
+        """
+        let normal = AgentLoop.loopBudget(for: shoppingList)
+        XCTAssertEqual(normal.maxIterations, AppConfig.agentLoopMaxIterations)
     }
 
     func testBatchAudioContinuationGuardRejectsStatusOnlyNextUpReply() {
@@ -478,6 +561,71 @@ final class MultimediaBobTests: XCTestCase {
         let summary = AgentLoop.batchAudioFinalSummary(audit: audit!)
         XCTAssertTrue(summary.contains("Downloaded 1 of 3 requested tracks"), summary)
         XCTAssertTrue(summary.contains("Missing: Beyond Beliefs, Cappadocia."), summary)
+    }
+
+    func testBatchAudioAuditFiresWhenLastToolWasSearchAndDownloadStillMissing() {
+        // v1.0.51 regression: production failure was Bob doing
+        // youtube_search → returning a non-tool-call response without
+        // any "completion" word → audit guard NOT firing → loop
+        // exiting without any youtube_download. The new condition
+        // unconditionally fires when last successful tool was
+        // youtube_search AND tracks remain, regardless of surface
+        // text. Combined with v1.0.50 context-aware nudge text, this
+        // pushes Bob to download the search results he just got.
+        let userMessage = """
+        download these mp3s:
+        Respect — Aretha Franklin
+        Superstition — Stevie Wonder
+        What's Going On — Marvin Gaye
+        """
+        let messages: [OllamaMessage] = [
+            .toolResult(
+                name: "youtube_search",
+                content: "1. [2:30] Aretha Franklin - Respect — Aretha Franklin\n   https://www.youtube.com/watch?v=A134hShx_gw"
+            )
+        ]
+        let audit = AgentLoop.batchAudioAudit(userMessage: userMessage, messages: messages)
+        XCTAssertNotNil(audit)
+        let lastSearch = ToolResult.success(
+            tool: "youtube_search",
+            content: "1. [2:30] Aretha Franklin - Respect — Aretha Franklin\n   https://www.youtube.com/watch?v=A134hShx_gw",
+            durationMs: 2000
+        )
+        XCTAssertTrue(
+            AgentLoop.shouldForceBatchAudioAuditContinuation(
+                audit: audit,
+                // The exact "Downloaded 0 of 20" auto-summary text the
+                // user saw in production. No "complete" / "done" word
+                // — the OLD guard missed this.
+                assistantContent: "Downloaded 0 of 3 requested tracks. Missing: Respect — Aretha Franklin, Superstition — Stevie Wonder, What's Going On — Marvin Gaye.",
+                lastToolResult: lastSearch,
+                loopBudget: AgentLoop.loopBudget(for: userMessage),
+                nudgeCount: 0
+            ),
+            "must fire when last tool was youtube_search success and tracks remain, regardless of content"
+        )
+    }
+
+    func testBatchAudioAuditDoesNotFireAfterEmptySearchResults() {
+        // Negative case: if youtube_search returned "(no results)"
+        // we should NOT push for download. Nothing to download.
+        let userMessage = "download Respect — Aretha Franklin\nObscurity — Unknown Artist\nFog — Made-up Band"
+        let messages: [OllamaMessage] = []
+        let audit = AgentLoop.batchAudioAudit(userMessage: userMessage, messages: messages)
+        let emptySearch = ToolResult.success(
+            tool: "youtube_search",
+            content: "(no results)",
+            durationMs: 100
+        )
+        XCTAssertFalse(
+            AgentLoop.shouldForceBatchAudioAuditContinuation(
+                audit: audit,
+                assistantContent: "I couldn't find anything sir.",
+                lastToolResult: emptySearch,
+                loopBudget: AgentLoop.loopBudget(for: userMessage),
+                nudgeCount: 0
+            )
+        )
     }
 
     func testToolHelpListIncludesBuiltInInventory() {

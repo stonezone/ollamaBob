@@ -405,6 +405,10 @@ struct ChatBubble: View {
     let chatWindowOpacity: Double
     let richPresentationEnabled: Bool
     let richPresentationArtifactChipsEnabled: Bool
+    /// Phase B: when `true`, the bubble renders Bob's hidden state (thinking
+    /// panel) inline even on text-only assistant turns. The compact
+    /// avatar-only layout passes `false` to stay minimal.
+    var fullChatMode: Bool = false
 
     @State private var isToolPanelExpanded = false
     @State private var isThinkingPanelExpanded = false
@@ -431,6 +435,17 @@ struct ChatBubble: View {
                 } else {
                     if showAssistantText {
                         textBubble
+                    }
+                    // Phase B: in full chat mode, surface Bob's hidden
+                    // reasoning even on text-only turns. The thinking field
+                    // already bubbles up inside `toolCallBubble` for
+                    // tool-bearing turns, so only render here when the
+                    // tool-call bubble path won't.
+                    if fullChatMode,
+                       assistantCalls.isEmpty,
+                       let thinking = sanitizedThinking {
+                        transcriptPanel(title: "thinking", content: thinking, isExpanded: $isThinkingPanelExpanded)
+                            .padding(.horizontal, 4)
                     }
                     if assistantCalls.isEmpty == false {
                         toolCallBubble(calls: assistantCalls)

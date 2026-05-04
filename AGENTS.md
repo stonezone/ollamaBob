@@ -52,7 +52,7 @@ Key constraints:
 
 ## Current State
 
-Current visible app version: `1.0.40`
+Current visible app version: `1.0.53`
 
 Current model defaults:
 
@@ -71,11 +71,20 @@ Current shipped surface:
 - Preferences tool badges support persisted per-tool `Auto` / `Ask` / `Deny` overrides, with path policy and forbidden shell-command blocks preserved as non-bypassable floors.
 - Naughty Bob v1 as a per-conversation uncensored mode with tools and compaction disabled.
 - Jarvis phone tools gated by Preferences and both Jarvis secrets, with bounded recent OllamaBob session context and earlier-work highlights attached to outbound recap calls when useful.
-- Jarvis call supervision tools for listing active calls, reading active-call transcripts, and modal-gated mid-call message injection.
+- Jarvis call supervision tools for listing active calls, reading active-call transcripts, and modal-gated mid-call message injection (`phone_inject` requires `modal` approval per injection).
+- Live Call view (rebuilt) surfaces the active call; post-call action items are extracted from the transcript and rendered as tappable chips that dispatch a fresh prompt to `AgentLoop`.
+- Mumbai Bob image avatar; avatar-only mode behavior unchanged.
 - Bob's Desk status strip surfaces Mac context, Code Companion mode, walkie-talkie state, and Focus Guardian state when active.
 - Clipboard Cortex stack traces and walkie-talkie transcripts can be submitted into Bob's Desk.
 - Untrusted-output taint protection disables write/action tools after file, web, mail, clipboard, YouTube-search, or screen-OCR data enters a turn until the user sends a fresh message or types `/lift`.
 - Local Jarvis address book resolves env aliases, JSON alias maps, and VCF exports such as `~/Downloads/bobs_contacts.vcf`.
+- Long-running shell: idle timer (default 60s, clamped 5–600s) + hard cap (default 1800s/30min, clamped 10–7200s). SIGTERM→SIGKILL ladder with grace period (default 2s). Optional shell args `idle_timeout_seconds` and `max_total_seconds` tune limits per call.
+- Live stdout/stderr streaming via `FileHandle.availableData` (fixes macOS pipe buffering); `ToolActivityRow` live-updates as output arrives.
+- Tool wall time excluded from the 120s agent-loop budget; a 30-minute `brew upgrade` does not race the model timeout.
+- Cancel/Stop: `Cmd-.` shortcut; Send button toggles to Stop while a turn is in flight; `ToolRegistry` kills in-flight `ProcessRunner`s via SIGTERM→SIGKILL on cancel.
+- Tool-call-only assistant turns (no body text) render inline in the full-chat transcript instead of being hidden; `thinking` field renders as a collapsible inline strip when non-empty. Avatar-only mode is unchanged.
+- Shell runs via `/bin/zsh -lc` (login shell) so `/opt/homebrew/bin` is on PATH for Finder/Dock launches.
+- `build.sh` hard-fails when the signing identity is missing rather than silently falling back to ad-hoc, preserving Keychain "Always Allow" grants across rebuilds.
 
 ## Active Task Protocol
 

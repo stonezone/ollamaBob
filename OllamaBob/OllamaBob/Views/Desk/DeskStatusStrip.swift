@@ -51,6 +51,55 @@ struct DeskStatusStrip: View {
     }
 }
 
+/// Live wait diagnostic shown immediately below the main status line
+/// while AgentLoop is awaiting an Ollama response (v1.0.52). Hidden
+/// when `waitState == .idle` — collapses to zero height so it doesn't
+/// take vertical space when nothing is happening. Color shifts based
+/// on severity: phosphor green for normal "thinking/processing",
+/// amber/red for "modelDropped" / "exceededHardCap" so wedge cases
+/// catch the eye.
+struct DeskWaitStateLine: View {
+    let waitState: AgentLoop.WaitState
+    let phosphorGreen: Color
+    let textOpacity: Double
+
+    var body: some View {
+        let text = waitState.displayText
+        Group {
+            if !text.isEmpty {
+                HStack(spacing: 6) {
+                    Text("…")
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundColor(color.opacity(textOpacity))
+                    Text(text)
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundColor(color.opacity(textOpacity))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    Spacer(minLength: 0)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: text)
+    }
+
+    /// Color severity: green for healthy "thinking/processing" states,
+    /// amber for modelDropped (recoverable but suspect), red for
+    /// hard-cap (about to auto-cancel).
+    private var color: Color {
+        switch waitState {
+        case .idle, .thinking, .processing:
+            return phosphorGreen
+        case .modelDropped:
+            return Color(red: 1.0, green: 0.65, blue: 0.20)
+        case .exceededHardCap:
+            return Color(red: 1.0, green: 0.35, blue: 0.35)
+        }
+    }
+}
+
 struct DeskUncensoredConversationBadge: View {
     let helpText: String
 

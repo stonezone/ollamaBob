@@ -215,6 +215,39 @@ Live in the Jarvis daemon but not yet exposed as first-class OllamaBob tools:
 ollama pull huihui_ai/qwen3-abliterated:8b
 ```
 
+### Long-Running Shell (v1.0.44)
+
+1. Run `for i in $(seq 1 30); do echo line $i; sleep 1; done` via Bob. Verify: output lines appear live in the chat bubble as they are emitted — not all at once at the end. Verify: command completes successfully and the agent loop does not abort at 120 s.
+2. Run `brew update && brew upgrade` (or `npm install` in a real project). Verify: command completes regardless of duration, live output is visible in the Tool Activity window, no SIGTERM fires at 30 s.
+3. Run a silent hang: `read -n 1` or `sleep 600`. Verify: command is terminated at the idle timeout (default 60 s) and the tool result contains a clear "Command idle for 60s — terminated" message.
+4. Run a SIGTERM-resistant command: `trap '' TERM; sleep 100`. Verify: SIGKILL escalation fires after the grace period; command dies within ~62 s, not after 100 s.
+
+### Cancel (v1.0.44)
+
+1. Start a long shell command (`sleep 60` or a real `brew upgrade`). While the turn is in flight, click the Send button (it should now display ⏹ Stop) or press ⌘. Verify: the process dies within ~2.1 s, the tool result reads "Cancelled by user", and the send button returns to ▲.
+2. Send a complex prompt. Click ⏹ before the model finishes streaming. Verify: the HTTP request is cancelled and no synthetic assistant message bleeds into the transcript.
+3. Repeat the cancel flow in avatar-only mode. Verify: ⌘. shortcut works and the compact layout behaves the same as full-chat mode.
+
+### Full-Chat-Mode Visibility (v1.0.44)
+
+1. In full mode (avatar-only OFF in Preferences), ask "what's in my home directory?" (triggers `list_directory` with no body text). Verify: a tool-call bubble appears inline in the transcript, expanded with input and output. Pre-fix: nothing was visible when a tool response had no accompanying text.
+2. Send a multi-step reasoning prompt on `gemma4:e4b`. Verify: a collapsed "thinking" strip renders inline below the assistant turn, expands to full thought when clicked.
+3. Send a simple factual prompt that produces no thinking content. Verify: no "thinking" strip renders — no visual noise for empty thinking blocks.
+4. Toggle to avatar-only mode. Verify: compact layout is unchanged — no inline tool bubbles, no thinking strip, just the speech bubble.
+
+### Live Call Window and Post-Call Action Items (v1.0.42–v1.0.43)
+
+1. Ask Bob to place an outbound call (`phone_call`). After approval, verify the Live Call window appears and shows the active call state.
+2. Let the call end. Verify: an action-items section appears in the Live Call window after the call concludes.
+3. Click one of the post-call action items. Verify: the item text is injected into Bob's main chat as a new prompt and Bob processes it through the agent loop.
+4. During an active call, ask Bob to inject a short update via `phone_inject`. Verify: a native approval modal appears showing the injection text; on approval, the inject is sent; `phone_get_transcript` subsequently shows the injected message in the transcript.
+
+### Keychain and Build Hygiene (v1.0.44)
+
+1. Run `./build.sh --run` from `OllamaBob/`. Verify: the build output line reads `Signed with: Apple Development` and the app launches.
+2. Run `/usr/bin/defaults read <path-to-OllamaBob.app>/Contents/Info CFBundleShortVersionString`. Verify: it returns `1.0.44`.
+3. Click "Always Allow" once on any Keychain prompts during the first post-build launch. Do a clean rebuild followed by a fresh launch. Verify: no Keychain prompts re-appear for the same items.
+
 ## Useful Verification Commands
 
 Run from `OllamaBob/`:

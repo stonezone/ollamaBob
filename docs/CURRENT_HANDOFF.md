@@ -1,7 +1,36 @@
 # OllamaBob - Current Handoff
 
-**Date:** 2026-04-29
+**Date:** 2026-05-02
 **Audience:** the next coding agent or operator picking the project up cold.
+
+## Wake-Up Summary (v1.0.46, 2026-05-02 overnight pass)
+
+Zack went to sleep mid-debug at v1.0.45 with three production failures: (1) `nmap on the router` failed because Bob picked `netstat -ri` (BSD interface stats with routes) instead of `-nr` (routing table) and gave up after exit 1; (2) batch `youtube_download` of 14 songs died with "Ollama request timed out" mid-loop after youtube_search succeeded; (3) no debug-logging mode existed so failure root-cause was invisible. v1.0.46 ships fixes for all three plus structural debt the audit surfaced.
+
+**4 bugs found in audit, all fixed:**
+
+1. **OllamaClient HTTP idle timeout was hardwired to 120s** ([OllamaClient.swift:28](OllamaBob/Agent/OllamaClient.swift) used `agentLoopTimeoutSeconds`). With `stream: false` the URLSession idle timer fires when no bytes arrive for 120s, which is normal generation time for `qwen3.6:27b`/`gemma4:26b`/`gpt-oss:20b` and catastrophic for batch-audio loops with 3600s logical budget. Fixed by adding `AppConfig.ollamaHTTPRequestTimeoutSeconds = 600` (10 min) decoupled from the loop budget. The agent-loop iteration check + ⌘. Cancel button remain the actual escape hatch for stuck requests.
+
+2. **YouTubeTool used the legacy `timeout: 300` ProcessRunner API.** Migrated `youtube_search` to `idleTimeout=30, hardCap=120` and `youtube_download` to `idleTimeout=120, hardCap=1800`. yt-dlp emits progress lines during download — idle reset on each line means a slow-but-progressing download isn't killed mid-fetch. Failure messages now distinguish idle-kill vs hard-cap-kill.
+
+3. **No shell-failure recovery.** Bob ran `netstat -ri` → exit 1 → "I couldn't find the gateway, you can run it manually." The operating rules nudged Bob to *surface* failures, which is the right instinct for permission errors but the wrong instinct for syntax errors. New `AgentLoopShellRecoveryGuard.swift` (mirror of `AgentLoopContinuationGuard` from v1.0.45) detects shell exit non-zero + retryable stderr (`usage:` / `command not found` / `invalid option`) + assistant give-up language, and injects a system nudge: *"Diagnose the actual error and retry with a corrected command in the same turn… `netstat -nr` not `-ri`."* Cap=1, skips permission errors. 11 unit tests cover positive/negative cases. BobOperatingRules now distinguishes PERMISSION/POLICY (surface to user) from SYNTAX/USAGE (diagnose+retry) failure classes with macOS-specific BSD-vs-GNU examples.
+
+4. **No debug visibility.** New `DebugLog.swift` service writes session logs to `~/Library/Logs/OllamaBob/debug-YYYYMMDD-HHmmss.log`. Default OFF; new Preferences checkbox "Debug logging" enables it. Captures every Ollama request/response (model, msgs, tools, numCtx, content length, tool_calls, elapsed ms), every tool dispatch (name, args, success, output preview), every shell spawn/exit/SIGTERM/SIGKILL, every guard fire (continuation + shell-recovery), and every timeout with elapsed-ms vs configured-cap.
+
+**Tests:** 531 pass (was 520; +11 ShellRecoveryGuard tests). Existing batch-audio + continuation + version-consistency tests all green.
+
+**Bundle:** 1.0.46 / 146. App rebuilt + signed with stable Apple Development identity. Not auto-launched (you're sleeping).
+
+**To verify on wake-up:**
+1. Toggle Preferences → Debug logging ON.
+2. Retry the nmap router scenario. Bob should now: try `-ri`, fail, see the shell-recovery nudge in Tool Activity, retry with `-nr`, get the gateway IP, then run nmap. (If he still picks `-ri` first, the new BobOperatingRules examples should improve future turns; the recovery guard catches the failure either way.)
+3. Retry the batch song download. With `qwen3.6:27b` selected, Ollama responses can now take up to 10 minutes per turn; the batch shouldn't die mid-loop.
+4. Open the log file at `~/Library/Logs/OllamaBob/debug-*.log` — every request, response, tool dispatch, and timeout is in there grep-able.
+
+**Known limitations carried forward:**
+- Integration test for `AgentLoop.process()` end-to-end still missing (would require protocolizing `OllamaClient` actor; tracked in Remaining Backlog). All four guards (batch continuation, batch audit, generic continuation, shell recovery) are unit-tested at the static-helper level only.
+- System prompt is now ~6900 tokens vs 5000 budget at num_ctx=32768 (was 6889 before this pass; +14 tok from new failure-class examples). Not blocking but should be trimmed when convenient.
+- The user reported `qwen3.6:27b` showed `ram 9.6G` then `143M` in the status strip — that's a status-strip display oddity, not investigated.
 
 ## Repository State
 
@@ -10,7 +39,7 @@
 - This branch adds the 2026 UI modernization (Phases 1–5 + 4.5 + 5.5 + visibility/UX fixes) as a single bundled commit on top of codex's main. Pre-rebase backup tagged at `backup/ui-phases-pre-rebase-20260429`.
 - `docs/ACTIVE_EXECUTION_PLAN.md` is tracked. Next default phase after Phase E is F.1 (ArtifactStore + kinds); UI modernization runs in parallel and does not block F.1.
 - Active docs are intentionally small; historical plans, old peer-review notes, and superseded handoffs are in `archive/`.
-- Current visible app version: `1.0.40`.
+- Current visible app version: `1.0.53`.
 
 Local-only notes for Zack's workstation:
 
@@ -54,6 +83,9 @@ OllamaBob is live as a single local macOS menu-bar product with:
 - agent-loop batch completion audit for pasted track lists: Bob compares requested track names with downloaded MP3 filenames before accepting a batch as complete and emits a visible downloaded/missing/unmatched summary
 - Naughty Bob v1 as a per-conversation uncensored mode
 - Jarvis phone tools gated by Preferences and both Jarvis secrets, with bounded recent OllamaBob session context plus earlier-work highlights attached to outbound recap calls when useful
+- v1.0.42: image-based Mumbai Bob avatar; Live Call view rebuilt with a post-call action-items section populated by `JarvisCallClient.actionItems(callID:)` using `JarvisCallActionItems` model in `OllamaBob/Models/JarvisCallTypes.swift`
+- v1.0.43: action items are clickable — tapping one injects it as a new user prompt into Bob's session via the existing `DeskPromptInbox` / `DeskPromptActions` path
+- v1.0.44: long-running shell support with dual timers (`idleTimeout` resets on each output chunk; `hardCap` is a single-shot ceiling); both end via `terminateThenKill(grace:)` (SIGTERM then SIGKILL after 2 s); `ProcessRunner` gains `onOutputChunk` callback and `CancelHandle`; drain uses `handle.availableData` (not `readData(ofLength:)`) to prevent pipe-buffering stalls; `ShellTool` accepts optional `idle_timeout_seconds` and `max_total_seconds` and runs via `/bin/zsh -lc` so Homebrew is on PATH; `AgentLoop` exposes `cancel()` / `cancelToolEntry(id:)`, `activeCancelHandles` registry keyed by `ToolLogEntry.id`, and a loop-budget that excludes tool wall-time; `ToolLogEntry` promoted from struct to `final class ObservableObject` with `@Published output` so `ToolActivityRow` re-renders live chunks; `ChatBubble` and `DeskTranscriptView` accept a `fullChatMode` flag that unhides tool-only assistant turns and renders the thinking panel inline; `build.sh` hard-errors on signing-identity mismatch instead of silently falling back to ad-hoc
 
 Runtime UI note:
 
@@ -173,13 +205,20 @@ swift test
 ./build.sh --run
 ```
 
-Last verified during the 2026-04-29 UI modernization rebase pass (v1.0.40):
+Last verified on 2026-05-01 (v1.0.44):
 
 - `swift build` passed
+- `swift test` passed: 505 tests, 0 failures
+- `./build.sh` passed and assembled `build/OllamaBob.app`
+- bundle metadata reports `CFBundleShortVersionString = 1.0.44` and `CFBundleVersion = 144`
+- new files since v1.0.40: `OllamaBob/Models/JarvisCallTypes.swift` (`JarvisCallActionItems`), `Views/LiveCallView.swift` (rebuilt with action-items section), `Tests/OllamaBobTests/ShellLongRunningTests.swift`
+- key changes since v1.0.40: Mumbai Bob image avatar; clickable post-call action items via `DeskPromptInbox`; `ProcessRunner` dual-timer/streaming/cancel architecture; `ToolLogEntry` promoted to `ObservableObject`; `ShellTool` login-shell and timeout args; `AgentLoop` cancel registry and tool-time-excluded loop budget; `ChatBubble`/`DeskTranscriptView` `fullChatMode` flag; `build.sh` signing hard-error
+
+Earlier verification on the 2026-04-29 UI modernization rebase pass (v1.0.40):
+
 - `swift test` passed: 496 tests, 0 failures (441 inherited from codex's main + 55 new UI tests across `DesignSystemTests`, `BobPersonaTests`, `BubbleShapeTests`, `MenuBarMarkTests`, `HUDSettingsTests`, `MenuBarSummonHotkeyTests`, `HUDStateTests`)
 - `./build.sh` passed and assembled `build/OllamaBob.app`
-- generated bundle metadata reports `CFBundleShortVersionString = 1.0.40` and `CFBundleVersion = 140`
-- new `OllamaBob/OllamaBob/DesignSystem/` (6 token files + 5 primitives + persona protocol/registry), `OllamaBob/OllamaBob/Personas/` (Mumbai Bob + Classic Robot live SwiftUI characters), `Views/Desk/DeskWindowChrome.swift`, `Views/MenuBar/{BobMenuBarMark,BobMenuBarPopover}.swift`, `Views/HUD/{BobHUDScene,HUDWindowChrome}.swift`, `Models/HUDState.swift`, `Services/MenuBarSummonHotkey.swift`. Avatar PNG sprites (12) and `AvatarPack`/`AvatarStore` retired in favor of live persona renderers. `WindowTransparencyConfigurator` (formerly inside `DeskInputView.swift`) extracted to `DeskWindowChrome`. `BobsDeskView.chatContainer` rebuilt on `GlassSurface(role: .deskWindow)`. `ChatBubble.textBubble` renders inside `BobBubble`. `MenuBarExtra` switched to `.menuBarExtraStyle(.window)` with custom mark + glass popover (quick input + modes + windows + footer). Floating HUD scene with persona-tinted `GlassGlyph`, live transcript snippet, and ⌘⇧Space global summon hotkey (default ON; rebindable in Preferences). Codex's Phase D.1/D.2/D.5/E work preserved unchanged: Activity Timeline persistence + indexer + `timeline_search` tool, plus the Naughty Bob `UncensoredBudgetBanner` integrated into both the rebuilt full-mode `chatContainer` and the avatar-only layout.
+- new `OllamaBob/OllamaBob/DesignSystem/` (6 token files + 5 primitives + persona protocol/registry), `OllamaBob/OllamaBob/Personas/` (Mumbai Bob + Classic Robot live SwiftUI characters), `Views/Desk/DeskWindowChrome.swift`, `Views/MenuBar/{BobMenuBarMark,BobMenuBarPopover}.swift`, `Views/HUD/{BobHUDScene,HUDWindowChrome}.swift`, `Models/HUDState.swift`, `Services/MenuBarSummonHotkey.swift`. Avatar PNG sprites (12) and `AvatarPack`/`AvatarStore` retired in favor of live persona renderers. `WindowTransparencyConfigurator` extracted to `DeskWindowChrome`. `BobsDeskView.chatContainer` rebuilt on `GlassSurface(role: .deskWindow)`. `ChatBubble.textBubble` renders inside `BobBubble`. `MenuBarExtra` switched to `.menuBarExtraStyle(.window)` with custom mark + glass popover. Floating HUD scene with persona-tinted `GlassGlyph`, live transcript snippet, and ⌘⇧Space global summon hotkey.
 
 Earlier verification on the Phase E pass:
 

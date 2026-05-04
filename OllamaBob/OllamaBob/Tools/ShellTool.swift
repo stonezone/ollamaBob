@@ -1,31 +1,94 @@
 import Foundation
 
 enum ShellTool {
-    /// Execute a shell command with timeout and output caps.
+    /// Execute a shell command with idle + hard-cap timeouts and optional
+    /// live streaming + cancellation.
+    ///
+    /// - Parameters:
+    ///   - command: The shell command line (run via `/bin/zsh -lc` — login
+    ///     shell so `.zprofile` runs and Homebrew's `/opt/homebrew/bin` is
+    ///     on PATH even when OllamaBob is launched from Finder/Dock by
+    ///     launchd, which hands the app a minimal env that excludes brew).
+    ///     `.zshrc` does NOT run (that requires interactive `-i`), so heavy
+    ///     plugin init (oh-my-zsh, etc.) does not pay per-call latency.
+    ///   - idleTimeout: Kill if no stdout/stderr activity for this many
+    ///     seconds. Defaults to `AppConfig.shellIdleTimeoutSeconds` (60).
+    ///     Clamped to `[shellIdleTimeoutMin, shellIdleTimeoutMax]`.
+    ///   - hardCap: Absolute wall-clock ceiling. Defaults to
+    ///     `AppConfig.shellMaxTotalSeconds` (1800). Clamped to
+    ///     `[shellMaxTotalMin, shellMaxTotalMax]`.
+    ///   - executable: Shell binary. Defaults to `/bin/zsh`.
+    ///   - cancelHandle: Optional caller-owned handle for external cancel.
+    ///     Triggering it from the UI fires SIGTERM→SIGKILL on the child.
+    ///   - onOutputChunk: Optional callback for live streaming. Fires on a
+    ///     background queue for every chunk; consumers that bind to SwiftUI
+    ///     should hop to `@MainActor` and throttle.
     static func execute(
         command: String,
-        timeout: TimeInterval = AppConfig.toolTimeoutSeconds,
-        executable: String = "/bin/zsh"
+        idleTimeout: TimeInterval = AppConfig.shellIdleTimeoutSeconds,
+        hardCap: TimeInterval = AppConfig.shellMaxTotalSeconds,
+        executable: String = "/bin/zsh",
+        cancelHandle: ProcessRunner.CancelHandle? = nil,
+        onOutputChunk: ProcessRunner.OutputChunkHandler? = nil
     ) async -> ToolResult {
         let start = Date()
 
+        let clampedIdle = max(
+            AppConfig.shellIdleTimeoutMin,
+            min(idleTimeout, AppConfig.shellIdleTimeoutMax)
+        )
+        let clampedCap = max(
+            AppConfig.shellMaxTotalMin,
+            min(hardCap, AppConfig.shellMaxTotalMax)
+        )
+
         let result = await ProcessRunner.run(
             executable: executable,
-            arguments: ["-c", command],
+            // `-lc` — login shell so `.zprofile` runs (puts Homebrew on
+            // PATH). Required when the app is launched via `open` from
+            // Finder/Dock; launchd's env does not include `/opt/homebrew/bin`.
+            // See ToolRuntime.runWhich for the same trick used by the probe.
+            arguments: ["-lc", command],
             currentDirectoryURL: URL(fileURLWithPath: NSHomeDirectory()),
-            timeout: timeout,
+            idleTimeout: clampedIdle,
+            hardCap: clampedCap,
             stdoutMaxBytes: AppConfig.processOutputMaxBytes,
-            stderrMaxBytes: AppConfig.processOutputMaxBytes
+            stderrMaxBytes: AppConfig.processOutputMaxBytes,
+            onOutputChunk: onOutputChunk,
+            cancelHandle: cancelHandle
         )
 
         let durationMs = Int(Date().timeIntervalSince(start) * 1000)
 
-        if result.timedOut {
+        switch result.terminationCause {
+        case .cancelled:
             return .failure(
                 tool: "shell",
-                error: "Command timed out after \(Int(timeout))s",
+                error: "Cancelled by user.",
                 durationMs: durationMs
             )
+        case .idleTimeout:
+            return .failure(
+                tool: "shell",
+                error: "Command idle for \(Int(clampedIdle))s — terminated.",
+                durationMs: durationMs
+            )
+        case .hardCap:
+            return .failure(
+                tool: "shell",
+                error: "Command exceeded hard cap of \(Int(clampedCap))s — terminated.",
+                durationMs: durationMs
+            )
+        case .timedOut:
+            // Should not occur on this code path (we don't pass `timeout`),
+            // but kept for completeness.
+            return .failure(
+                tool: "shell",
+                error: "Command timed out.",
+                durationMs: durationMs
+            )
+        case .outputLimit, .none:
+            break
         }
 
         if result.exitCode == -1 {

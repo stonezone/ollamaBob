@@ -13,8 +13,12 @@ struct ToolRegistry {
         // shell
         defs["shell"] = .tool(
             name: "shell",
-            description: "Run a shell command on macOS. Returns stdout and stderr.",
-            properties: ["command": ("string", "The shell command to execute")],
+            description: "Run a shell command on macOS. Returns stdout and stderr. Streams output live to the chat. Defaults: kill if no output for 60s, hard cap 30 min. Override per call for unusual commands (e.g. `brew upgrade`, `npm install`, `pip install`, `make`, `cargo build`, `xcodebuild`) — defaults are usually fine; raise only if you expect long quiet stretches.",
+            properties: [
+                "command": ("string", "The shell command to execute"),
+                "idle_timeout_seconds": ("integer", "Optional. Kill the command if no stdout/stderr activity for this many seconds. Default 60. Clamped to [5, 600]."),
+                "max_total_seconds": ("integer", "Optional. Absolute wall-clock cap regardless of activity. Default 1800. Clamped to [10, 7200].")
+            ],
             required: ["command"]
         )
         reqs["shell"] = ["command"]

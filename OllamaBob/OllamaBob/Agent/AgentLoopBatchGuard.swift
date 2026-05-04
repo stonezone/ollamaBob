@@ -158,7 +158,20 @@ extension AgentLoop {
             return false
         }
         guard nudgeCount < AppConfig.batchAudioContinuationNudgeMax else { return false }
-        guard lastToolResult?.success == true else { return false }
+        guard let last = lastToolResult, last.success else { return false }
+
+        // v1.0.51 unconditional fire: if the previous tool was a
+        // successful `youtube_search` AND there are still missing
+        // tracks, this is a search-without-download situation —
+        // exactly the failure mode the production logs showed (Bob
+        // does search after search, never downloads). Fire the audit
+        // nudge regardless of the assistant's surface text. The
+        // batch-audio nudge text is already context-aware
+        // (v1.0.50) and will direct Bob to download the search
+        // results he just got, not search the next track.
+        if last.toolName == "youtube_search" && !last.content.contains("(no results)") {
+            return true
+        }
 
         let normalizedContent = assistantContent
             .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
@@ -191,12 +204,36 @@ extension AgentLoop {
         return mentionsMissing == false
     }
 
-    static func batchAudioAuditNudge(audit: BatchAudioAudit) -> String {
+    /// v1.0.50: nudge text is now context-aware. If the previous tool
+    /// was a successful `youtube_search` with returned URLs, the model
+    /// is in the "I have results, now download" state — push for
+    /// `youtube_download` not the next `youtube_search`. Otherwise
+    /// push for `youtube_search` of the next missing track. The
+    /// search-then-search loop the production logs showed (Bob did 4
+    /// successful searches but never one download) was caused by the
+    /// old nudge always saying "call youtube_search next" regardless
+    /// of state.
+    static func batchAudioAuditNudge(audit: BatchAudioAudit, lastToolResult: ToolResult? = nil) -> String {
         let missingPreview = audit.missingTracks.prefix(12).joined(separator: ", ")
         let more = audit.missingTracks.count > 12 ? ", ..." : ""
+        let header = "Batch audio audit: only \(audit.downloadedTracks.count) of \(audit.requestedTracks.count) requested tracks have a matching downloaded MP3. Missing: \(missingPreview)\(more)."
+
+        // If we just got search results and haven't downloaded from
+        // them yet, the next move is download — don't bounce to the
+        // next search.
+        if let last = lastToolResult,
+           last.toolName == "youtube_search",
+           last.success,
+           !last.content.contains("(no results)") {
+            return """
+            \(header)
+            You just got `youtube_search` results — DO NOT search again. Your immediate next tool call MUST be `youtube_download` with the auto-selected top candidate from those results (URLs from your own search are pre-authorized in this batch). Pass `format="mp3"`, the album output directory, and a `filename` like `01_Track_Title`. After the download succeeds, then call `youtube_search` for the next missing track.
+            """
+        }
+
         return """
-        Batch audio audit: only \(audit.downloadedTracks.count) of \(audit.requestedTracks.count) requested tracks have a matching downloaded MP3. Missing: \(missingPreview)\(more).
-        Do not claim completion. Immediately continue the batch by calling `youtube_search` for the first missing track: \(audit.missingTracks.first ?? "unknown"). Continue through the remaining missing tracks unless a track is truly ambiguous, denied, or fails.
+        \(header)
+        Do not claim completion. Immediately continue the batch by calling `youtube_search` for the first missing track: \(audit.missingTracks.first ?? "unknown"). After each search, immediately call `youtube_download` with the top auto-selectable candidate before moving to the next track — do not search two tracks in a row without a download in between.
         """
     }
 
@@ -215,14 +252,29 @@ extension AgentLoop {
         return lines.joined(separator: "\n")
     }
 
-    static func batchAudioContinuationNudge(for assistantContent: String) -> String {
+    /// v1.0.50: same context-awareness as the audit nudge above. If
+    /// the previous tool was a successful `youtube_search`, push for
+    /// `youtube_download` next, not another `youtube_search`.
+    static func batchAudioContinuationNudge(for assistantContent: String, lastToolResult: ToolResult? = nil) -> String {
         let preview = assistantContent
             .replacingOccurrences(of: "\n", with: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .prefix(300)
+        let header = "Batch audio task is still in progress. Your last reply was status-only: \"\(preview)\"."
+
+        if let last = lastToolResult,
+           last.toolName == "youtube_search",
+           last.success,
+           !last.content.contains("(no results)") {
+            return """
+            \(header)
+            Do not answer with text only and do NOT search another track. You just got `youtube_search` results — your IMMEDIATE next tool call must be `youtube_download` with the auto-selected top candidate (URLs from your own search are pre-authorized in this batch). Pass `format="mp3"`, the album output directory, and a `filename` like `01_Track_Title`. Only after that download completes should you search the next track.
+            """
+        }
+
         return """
-        Batch audio task is still in progress. Your last reply was status-only: "\(preview)".
-        Do not answer with text only. If requested tracks remain, immediately call `youtube_search` for the next named track, or `youtube_download` if you already have a confirmed URL. Continue the batch until all listed tracks are complete, a track is truly ambiguous, a download is denied, or a tool fails.
+        \(header)
+        Do not answer with text only. If requested tracks remain, immediately call the next tool — `youtube_search` for the next named track if the prior track is already downloaded, or `youtube_download` if you have a search-result URL waiting. Continue the batch until all listed tracks are complete, a track is truly ambiguous, a download is denied, or a tool fails.
         """
     }
 

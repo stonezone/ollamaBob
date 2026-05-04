@@ -15,6 +15,7 @@ final class AppSettings: ObservableObject {
     nonisolated static let toolApprovalOverridesKey = "toolApprovalOverrides"
     nonisolated static let useMockedJarvisClientKey = "useMockedJarvisClient"
     nonisolated static let activityTimelineEnabledKey = "activityTimelineEnabled"
+    nonisolated static let debugLoggingEnabledKey = "debugLoggingEnabled"
 
     @Published var showBob: Bool {
         didSet { UserDefaults.standard.set(showBob, forKey: Keys.showBob) }
@@ -75,6 +76,21 @@ final class AppSettings: ObservableObject {
     /// enabled, Bob records local tool/chat events for later timeline search.
     @Published var activityTimelineEnabled: Bool {
         didSet { UserDefaults.standard.set(activityTimelineEnabled, forKey: Self.activityTimelineEnabledKey) }
+    }
+
+    /// Debug logging (v1.0.46). When ON, every Ollama request/response,
+    /// tool dispatch, guard fire, and timeout is appended to a session
+    /// log file under `~/Library/Logs/OllamaBob/`. Default OFF — turn on
+    /// only while reproducing a bug, then ship the log file.
+    @Published var debugLoggingEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(debugLoggingEnabled, forKey: Self.debugLoggingEnabledKey)
+            DebugLog.enabled = debugLoggingEnabled
+            if debugLoggingEnabled {
+                DebugLog.startNewSession()
+                DebugLog.log(.agent, "debug-logging enabled by user")
+            }
+        }
     }
 
     /// When true, Bob's Desk renders only the avatar + an input bubble +
@@ -351,6 +367,9 @@ final class AppSettings: ObservableObject {
         if defaults.object(forKey: Self.activityTimelineEnabledKey) == nil {
             defaults.set(false, forKey: Self.activityTimelineEnabledKey)
         }
+        if defaults.object(forKey: Self.debugLoggingEnabledKey) == nil {
+            defaults.set(false, forKey: Self.debugLoggingEnabledKey)
+        }
         // Walkie-Talkie push-to-talk: default OFF / default chord.
         if defaults.object(forKey: Keys.pushToTalkEnabled) == nil {
             defaults.set(false, forKey: Keys.pushToTalkEnabled)
@@ -390,6 +409,11 @@ final class AppSettings: ObservableObject {
         self.bobVoiceEnabled       = defaults.bool(forKey: Keys.bobVoiceEnabled)
         self.heartbeatEnabled      = defaults.bool(forKey: Keys.heartbeatEnabled)
         self.activityTimelineEnabled = defaults.bool(forKey: Self.activityTimelineEnabledKey)
+        // `debugLoggingEnabled` initialized here; DebugLog.enabled is
+        // mirrored AFTER full self-initialization at the bottom of init
+        // (Swift's strict-init forbids `self.x` reads before every
+        // stored property has been assigned).
+        self.debugLoggingEnabled   = defaults.bool(forKey: Self.debugLoggingEnabledKey)
         self.avatarOnlyMode        = defaults.bool(forKey: Keys.avatarOnlyMode)
         self.fullModeWindowFrame   = defaults.string(forKey: Keys.fullModeWindowFrame) ?? ""
         self.avatarModeWindowFrame = defaults.string(forKey: Keys.avatarModeWindowFrame) ?? ""
@@ -442,6 +466,13 @@ final class AppSettings: ObservableObject {
 
         let storedCtx = defaults.integer(forKey: Keys.numCtx)
         self.numCtx = AppConfig.numCtxAllowed.contains(storedCtx) ? storedCtx : AppConfig.numCtx
+
+        // Mirror the persisted toggle into DebugLog so any call site
+        // (including those reached during early launch, before the UI
+        // has a chance to flip it) is gated correctly. Done at the end
+        // of init so all stored properties are guaranteed initialized
+        // (Swift's strict-init forbids `self.x` reads before that).
+        DebugLog.enabled = self.debugLoggingEnabled
     }
 
     var effectiveUncensoredModelName: String {

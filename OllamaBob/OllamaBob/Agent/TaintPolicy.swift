@@ -102,7 +102,7 @@ final class TaintPolicy: ObservableObject {
     static func blocksTool(_ toolName: String, arguments: [String: Any] = [:]) -> Bool {
         switch toolName {
         case "shell", "write_file", "move_file", "create_directory",
-             "clipboard_write", "youtube_download", "image_convert",
+             "clipboard_write", "image_convert",
              "applescript", "phone_call", "phone_inject",
              "phone_hangup", "enable_dev_mode", "create_skill",
              "delete_skill", "remember", "forget", "mail_triage",
@@ -111,6 +111,16 @@ final class TaintPolicy: ObservableObject {
         case "present":
             let kind = (arguments["kind"] as? String)?.lowercased()
             return kind == "file" || kind == "url"
+        // v1.0.47: `youtube_download` was previously blocked when tainted,
+        // which made the authorized music workflow impossible — `youtube_search`
+        // taints the session, so the very next `youtube_download` (the natural
+        // sequel) was silently denied. youtube_download already requires
+        // modal approval per call (the user sees the URL, format, and
+        // destination before each download); the taint guard was redundant
+        // belt-and-suspenders defense for this specific tool. yt-dlp does
+        // not execute URLs — it downloads videos — so the malicious-URL
+        // attack surface is essentially zero. We deliberately allow
+        // youtube_download to run even when the session is tainted.
         default:
             return false
         }

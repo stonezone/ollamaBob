@@ -417,6 +417,17 @@ struct BobsDeskView: View {
                     .padding(.top, BobSpacing.md + 2)
                     .padding(.bottom, BobSpacing.sm)
 
+                // v1.0.52: live wait diagnostic. Only renders when
+                // AgentLoop is awaiting an Ollama response — collapses
+                // to zero height when idle.
+                DeskWaitStateLine(
+                    waitState: agentLoop.waitState,
+                    phosphorGreen: Self.phosphorGreen,
+                    textOpacity: textOpacity
+                )
+                .padding(.horizontal, BobSpacing.lg)
+                .padding(.bottom, BobSpacing.sm)
+
                 DeskStatusStrip(accent: Self.phosphorGreen)
 
                 transcriptSection
@@ -450,18 +461,31 @@ struct BobsDeskView: View {
     // MARK: - Portrait Section
 
     private var portraitSection: some View {
-        VStack(spacing: 0) {
+        // v1.0.53: collapse the speech-bubble area to zero height
+        // when there's nothing to show. Previous behavior reserved
+        // 56pt minimum (and up to 220pt) of vertical space for the
+        // bubble even when empty, which ate ~220pt of chat-history
+        // real estate at the top of the window for the common case
+        // (Bob isn't actively speaking). When the bubble appears the
+        // frame animates open; when it disappears it animates closed.
+        let bubbleShown = viewModel.bubbleVisible || agentLoop.isProcessing
+        return VStack(spacing: 0) {
             ZStack(alignment: .bottom) {
                 thoughtsOverlay
                     .allowsHitTesting(false)
 
                 speechBubbleView(maxHeight: Self.portraitBubbleMaxHeight)
-                    .opacity(viewModel.bubbleVisible || agentLoop.isProcessing ? 1 : 0)
+                    .opacity(bubbleShown ? 1 : 0)
                     .animation(.easeInOut(duration: 0.3), value: viewModel.bubbleVisible)
                     .animation(.easeInOut(duration: 0.25), value: agentLoop.isProcessing)
             }
-            .frame(maxWidth: 360, minHeight: 56, maxHeight: Self.portraitBubbleMaxHeight)
-            .padding(.bottom, 6)
+            .frame(
+                maxWidth: 360,
+                minHeight: bubbleShown ? 56 : 0,
+                maxHeight: bubbleShown ? Self.portraitBubbleMaxHeight : 0
+            )
+            .padding(.bottom, bubbleShown ? 6 : 0)
+            .animation(.easeInOut(duration: 0.25), value: bubbleShown)
 
             bobPortrait
                 .padding(.bottom, 8)
@@ -546,7 +570,8 @@ struct BobsDeskView: View {
             bubbleFill: Self.bubbleFill,
             bubbleStroke: Self.bubbleStroke,
             onToggleUncensoredMode: { session.toggleConversationUncensoredMode() },
-            onSend: sendWithSound
+            onSend: sendWithSound,
+            onCancel: { agentLoop.cancel() }
         )
     }
 
@@ -639,6 +664,7 @@ struct BobsDeskView: View {
             surfaceOpacity: surfaceOpacity,
             textOpacity: textOpacity,
             bgPanel: Self.bgPanel,
+            fullChatMode: !settings.avatarOnlyMode,
             topBanner: { modelSwitchBanner },
             bottomBanner: { errorBanner }
         )
@@ -690,7 +716,8 @@ struct BobsDeskView: View {
             bubbleFill: Self.bubbleFill,
             bubbleStroke: Self.bubbleStroke,
             onToggleUncensoredMode: { session.toggleConversationUncensoredMode() },
-            onSend: sendWithSound
+            onSend: sendWithSound,
+            onCancel: { agentLoop.cancel() }
         )
     }
 

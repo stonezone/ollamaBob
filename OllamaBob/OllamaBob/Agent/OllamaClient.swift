@@ -25,7 +25,20 @@ actor OllamaClient {
     init(baseURL: String = AppConfig.ollamaBaseURL) {
         self.baseURL = baseURL
         let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = AppConfig.agentLoopTimeoutSeconds
+        // v1.0.46: HTTP idle timeout decoupled from agent-loop timeout.
+        // The 120s value (= agentLoopTimeoutSeconds) was firing on large
+        // models (qwen3.6:27b, gemma4:26b, gpt-oss:20b) during normal
+        // generation, and on batch-audio loops that legitimately need
+        // multi-minute model responses. URLSession's
+        // `timeoutIntervalForRequest` is the inter-byte idle timeout —
+        // with `stream: false`, no bytes arrive until generation is
+        // done, so the value must accommodate the longest acceptable
+        // model response. 600s (10 min) covers cold-start + long
+        // generation for any current model on M-series Macs without
+        // letting a genuinely wedged connection hang forever.
+        // Per-call overrides via `chat(requestTimeoutSeconds:)` let
+        // callers tighten this for lighter turns.
+        config.timeoutIntervalForRequest = AppConfig.ollamaHTTPRequestTimeoutSeconds
         self.session = URLSession(configuration: config)
     }
 
@@ -58,23 +71,64 @@ actor OllamaClient {
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
         urlRequest.httpBody = try JSONEncoder().encode(request)
 
+        let lastUserOrToolPreview: String = {
+            // Most useful debug field is the last non-system message —
+            // that's what the model is actually reacting to.
+            for msg in messages.reversed() where msg.role != "system" {
+                return msg.content.replacingOccurrences(of: "\n", with: " ")
+            }
+            return ""
+        }()
+        let requestStartedAt = Date()
+        DebugLog.log(.ollama, "request", [
+            "model": model,
+            "msgs": "\(messages.count)",
+            "tools": "\(tools?.count ?? 0)",
+            "numCtx": "\(numCtx)",
+            "lastMsgPreview": String(lastUserOrToolPreview.prefix(200))
+        ])
+
         let (data, response): (Data, URLResponse)
         do {
             (data, response) = try await session.data(for: urlRequest)
         } catch let error as URLError where error.code == .cannotConnectToHost
             || error.code == .networkConnectionLost {
+            DebugLog.log(.error, "ollama-connection-refused", ["model": model])
             throw OllamaError.connectionRefused
         } catch let error as URLError where error.code == .timedOut {
+            let elapsed = Int(Date().timeIntervalSince(requestStartedAt) * 1000)
+            DebugLog.log(.timeout, "ollama-http-timeout", [
+                "model": model,
+                "elapsedMs": "\(elapsed)",
+                "configuredCapMs": "\(Int(AppConfig.ollamaHTTPRequestTimeoutSeconds * 1000))"
+            ])
             throw OllamaError.timeout
         }
 
         if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode != 200 {
+            DebugLog.log(.error, "ollama-http-error", [
+                "model": model,
+                "status": "\(httpResponse.statusCode)"
+            ])
             throw OllamaError.httpError(httpResponse.statusCode)
         }
 
         do {
-            return try JSONDecoder().decode(OllamaChatResponse.self, from: data)
+            let decoded = try JSONDecoder().decode(OllamaChatResponse.self, from: data)
+            let elapsed = Int(Date().timeIntervalSince(requestStartedAt) * 1000)
+            DebugLog.log(.ollama, "response", [
+                "model": model,
+                "elapsedMs": "\(elapsed)",
+                "contentLen": "\(decoded.message.content.count)",
+                "toolCalls": "\(decoded.message.toolCalls?.count ?? 0)",
+                "thinkingLen": "\(decoded.message.thinking?.count ?? 0)"
+            ])
+            return decoded
         } catch {
+            DebugLog.log(.error, "ollama-decode-failed", [
+                "model": model,
+                "error": error.localizedDescription
+            ])
             throw OllamaError.decodingError(error.localizedDescription)
         }
     }

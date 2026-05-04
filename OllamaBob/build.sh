@@ -41,9 +41,9 @@ cat > "$CONTENTS/Info.plist" <<'PLIST'
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0.43</string>
+    <string>1.0.53</string>
     <key>CFBundleVersion</key>
-    <string>143</string>
+    <string>153</string>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>CFBundleIconName</key>
@@ -102,15 +102,36 @@ fi
 # EventKit, etc.) — the cached signature becomes invalid.
 #
 # Prefer a stable code-signing identity over ad-hoc (`-`) signing: ad-hoc
-# signatures use a per-binary hash, so every rebuild invalidates the prior
-# Keychain "Always Allow" ACLs and the user gets re-prompted for every
-# secret on every launch. A stable identity gives a consistent hash, so
-# Keychain ACLs persist across rebuilds.
+# signatures have NO stable identity, so every rebuild invalidates Keychain
+# "Always Allow" ACLs and the user gets re-prompted for every secret on
+# every launch. A stable identity (e.g. "Apple Development: ...") makes the
+# bundle's Designated Requirement constant across rebuilds, so once the user
+# clicks "Always Allow" the ACL persists.
+#
+# We do NOT silently fall back to ad-hoc on transient signing failures —
+# that would silently invalidate the user's Keychain grants. If the chosen
+# identity is configured but signing fails for any reason, we surface the
+# error so the user can fix it, rather than secretly downgrading.
 SIGNING_IDENTITY="${OLLAMABOB_SIGNING_IDENTITY:-Apple Development}"
 if security find-identity -v -p codesigning 2>/dev/null | grep -q "$SIGNING_IDENTITY"; then
-    codesign --force --deep --sign "$SIGNING_IDENTITY" "$APP_BUNDLE" > /dev/null 2>&1 || \
-        codesign --force --deep --sign - "$APP_BUNDLE" > /dev/null 2>&1 || true
+    if ! codesign --force --deep --sign "$SIGNING_IDENTITY" "$APP_BUNDLE" 2>&1; then
+        echo "ERROR: codesign with '$SIGNING_IDENTITY' failed." >&2
+        echo "       Refusing to silently fall back to ad-hoc — that would" >&2
+        echo "       invalidate your Keychain 'Always Allow' grants and re-prompt" >&2
+        echo "       for every secret on next launch." >&2
+        echo "       Fix the signing issue, or set OLLAMABOB_SIGNING_IDENTITY=- to opt into ad-hoc." >&2
+        exit 1
+    fi
+    echo "Signed with: $SIGNING_IDENTITY"
+elif [[ "$SIGNING_IDENTITY" == "-" ]]; then
+    # User explicitly opted into ad-hoc. Honor it but warn.
+    codesign --force --deep --sign - "$APP_BUNDLE" > /dev/null 2>&1 || true
+    echo "WARNING: ad-hoc signed (OLLAMABOB_SIGNING_IDENTITY=-). Keychain prompts will recur every build." >&2
 else
+    echo "WARNING: no codesigning identity matching '$SIGNING_IDENTITY' found." >&2
+    echo "         Falling back to ad-hoc signing — Keychain prompts will recur every build." >&2
+    echo "         To stop this, install an Apple Development certificate, or set" >&2
+    echo "         OLLAMABOB_SIGNING_IDENTITY to an identity from \`security find-identity -v -p codesigning\`." >&2
     codesign --force --deep --sign - "$APP_BUNDLE" > /dev/null 2>&1 || true
 fi
 

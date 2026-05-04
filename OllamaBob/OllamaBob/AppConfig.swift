@@ -10,8 +10,8 @@ struct AppConfig {
     }
 
     // MARK: - App Version
-    static let appVersion = "1.0.43"
-    static let appBuild = "143"
+    static let appVersion = "1.0.53"
+    static let appBuild = "153"
 
     // MARK: - HTML Sanitizer
     /// Bumped whenever PresentationService's HTML allowlist or
@@ -86,10 +86,70 @@ struct AppConfig {
     static let toolTimeoutSeconds: TimeInterval = 30
     static let agentLoopMaxIterations = 10
     static let agentLoopTimeoutSeconds: TimeInterval = 120
+    /// HTTP idle timeout for /api/chat requests. Decoupled from the
+    /// agent-loop budget (v1.0.46) — that's the WHOLE TURN budget,
+    /// this is per-MODEL-RESPONSE. URLSession's
+    /// `timeoutIntervalForRequest` is inter-byte; with `stream: false`
+    /// no bytes arrive until generation is done, so this must
+    /// accommodate the longest acceptable single-response time.
+    /// 600s (10 min) covers cold-load + long generation for 27B
+    /// models on M-series hardware. Bob's user-facing Cancel button
+    /// (⌘.) is the actual escape hatch for stuck requests.
+    static let ollamaHTTPRequestTimeoutSeconds: TimeInterval = 600
+    /// Wall-clock cap on a single Ollama request (v1.0.52). Independent
+    /// of URLSession's idle-only timeout — that one never fires when
+    /// Ollama keeps the TCP socket alive while doing nothing (the
+    /// 19-minute wedge the user hit). This is the absolute ceiling
+    /// from "request fired" to "force-cancel". 600s gives huge models
+    /// (qwen3.6:27b cold-load + long generation) breathing room while
+    /// putting a hard floor under wedge cases.
+    static let ollamaSingleRequestWallClockCapSeconds: TimeInterval = 600
+    /// How often the OllamaHeartbeat polls /api/ps while a chat call
+    /// is in flight (v1.0.52). 5s is the Goldilocks zone: fast enough
+    /// to detect mid-request model unload within a single avatar
+    /// glance, slow enough that 12 GETs/min on a local Ollama is
+    /// trivially cheap. Not user-configurable.
+    static let ollamaHeartbeatIntervalSeconds: TimeInterval = 5
+    /// Pre-flight context-pressure threshold (v1.0.52). When the
+    /// estimated prompt tokens for the next chat request would exceed
+    /// this fraction of the configured numCtx, surface a soft warning
+    /// to the user before sending. 0.6 is conservative — gemma4:e4b
+    /// gets sluggish well before 100% context utilization.
+    static let chatContextPressureWarningFraction: Double = 0.6
     static let batchAudioAgentLoopMaxIterations = 160
     static let batchAudioAgentLoopTimeoutSeconds: TimeInterval = 3_600
     static let batchAudioContinuationNudgeMax = 64
+    /// Generic "announce-and-stop" continuation nudge cap. The agent loop
+    /// detects when the assistant ends a non-tool-call turn with future-action
+    /// language ("now running X", "let me X", "I'll X") and nudges Bob to
+    /// actually call the tool. Capped low: if Bob still emits the same
+    /// pattern after one nudge, give up rather than spin — show the user the
+    /// broken reply so they can intervene.
+    static let continuationNudgeMax = 1
+    /// Shell-recovery guard cap (v1.0.46). Mirror of continuationNudgeMax.
+    /// Same reasoning: one nudge to diagnose+retry, then surface to user.
+    static let shellRecoveryNudgeMax = 1
     static let processOutputMaxBytes = 1_000_000
+
+    // MARK: - Shell Tool Timeouts
+    /// Idle timeout for the `shell` tool: kill the command if no stdout/stderr
+    /// activity for this many seconds. Resets on each output byte. Default 60s.
+    /// Overridable per-call via `idle_timeout_seconds` arg, clamped [5, 600].
+    static let shellIdleTimeoutSeconds: TimeInterval = 60
+    /// Hard cap for the `shell` tool: kill the command after this many seconds
+    /// of total wall time regardless of activity. Default 1800s (30 min).
+    /// Overridable per-call via `max_total_seconds` arg, clamped [10, 7200].
+    static let shellMaxTotalSeconds: TimeInterval = 1_800
+    /// Grace period between SIGTERM and SIGKILL when terminating a child
+    /// process. Lets well-behaved processes flush; SIGKILL fires after this
+    /// for ones that ignore SIGTERM (e.g. `trap '' TERM`, some brew paths).
+    static let processKillGraceSeconds: TimeInterval = 2.0
+    /// Clamps for shell-tool overrides. Bob can request larger values for
+    /// huge builds, but never beyond these absolute ceilings.
+    static let shellIdleTimeoutMin: TimeInterval = 5
+    static let shellIdleTimeoutMax: TimeInterval = 600
+    static let shellMaxTotalMin: TimeInterval = 10
+    static let shellMaxTotalMax: TimeInterval = 7_200
 
     // MARK: - Brave Search
     /// Read order: Keychain (Phase 0c migration target) -> process env -> UserDefaults legacy.

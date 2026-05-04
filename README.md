@@ -2,7 +2,7 @@
 
 OllamaBob is a native macOS menu-bar assistant for local Ollama models. It is a SwiftUI/AppKit app that talks directly to `http://localhost:11434/api/chat`, owns its agent loop in Swift, runs first-party tools, and stores local data in SQLite through GRDB.
 
-Current app version: `1.0.40`
+Current app version: `1.0.53`
 
 ## Quick Start
 
@@ -51,10 +51,18 @@ swift run OllamaBob
 - Preferences tool badges can be clicked to set per-tool `Auto`, `Ask`, or `Deny` behavior.
 - Naughty Bob v1 as a per-conversation uncensored mode. Tools and compaction are disabled while uncensored mode is active, and the app does not silently fall back to the standard model stack.
 - Jarvis phone tools behind explicit Preferences gating and a modal approval for outbound calls, with recent OllamaBob session context and earlier-work highlights attached for context-aware recap calls.
+- Live Call view for active Jarvis calls, with post-call action items extracted from the transcript; clicking an action item sends it directly to Bob's agent loop as a fresh prompt.
 - Desk status chips now surface captured Mac context, Code Companion mode, walkie-talkie state, and Focus Guardian state in the live chat surface.
 - Clipboard Cortex stack-trace chips open Bob's Desk and submit a wrapped, untrusted stack-trace summary prompt.
 - Daily Briefing history is available from the menu bar.
 - Untrusted-output taint protection disables write/action tools after file, web, mail, clipboard, YouTube-search, or screen-OCR data enters a turn until the user sends a fresh message or types `/lift`.
+- Long-running shell commands use an idle timer (default 60s, clamped 5–600s) plus a hard cap (default 30min, clamped 10s–2h) instead of a fixed 30s timeout; builds like `brew upgrade` run to completion without fighting the model timeout.
+- Shell tool optional args `idle_timeout_seconds` and `max_total_seconds` let Bob (or the user) tune limits per command.
+- Live stdout/stderr streams into the Tool Activity row and inline chat transcript as the command runs, not as a stale snapshot.
+- Cancel button (`Cmd-.` shortcut) stops an in-flight turn; the Send button toggles to Stop while a turn is running, and active ProcessRunners are killed via SIGTERM then SIGKILL.
+- Tool-call wall time is excluded from the agent-loop budget so a long install does not race the model timeout.
+- Shell runs in a login shell (`/bin/zsh -lc`) so `/opt/homebrew/bin` is on PATH when the app is launched from Finder or the Dock.
+- Tool-call-only assistant turns (no body text) now render inline in the transcript; the `thinking` field renders as a collapsible inline strip when present.
 
 ## Safety Model
 

@@ -24,6 +24,11 @@ struct PreferencesView: View {
     @State private var editingContent: String = ""
     @State private var jarvisHealthState = JarvisHealthState()
     @State private var briefingRunState = BriefingRunState()
+    /// v1.0.53: keychain reset UI state. Confirmation alert + "X
+    /// keys cleared" status banner that fades next time the section
+    /// re-renders.
+    @State private var showKeychainResetConfirm = false
+    @State private var keychainResetStatus: String?
 
     // MARK: Body
 
@@ -129,6 +134,13 @@ struct PreferencesView: View {
                 .padding(.top, 12)
 
             jarvisPhoneServiceSection
+
+            Divider()
+                .background(PreferencesView.phosphorGreen.opacity(0.2))
+                .padding(.horizontal, 24)
+                .padding(.top, 12)
+
+            keychainDiagnosticsSection
         }
     }
 
@@ -177,6 +189,12 @@ struct PreferencesView: View {
                 title: "Activity Timeline (local)",
                 subtitle: "Record local tool calls and chat messages so Bob can answer what you were doing. Stays on your Mac. Default OFF.",
                 isOn: $settings.activityTimelineEnabled,
+                dimmed: false
+            )
+            toggleRow(
+                title: "Debug logging",
+                subtitle: "Append every Ollama request/response, tool dispatch, guard fire, shell exit, and timeout to a log file under ~/Library/Logs/OllamaBob/. Default OFF — turn on only while reproducing a bug.",
+                isOn: $settings.debugLoggingEnabled,
                 dimmed: false
             )
             sliderRow(
@@ -448,6 +466,94 @@ struct PreferencesView: View {
         .padding(.horizontal, 24)
         .padding(.vertical, 14)
         .background(PreferencesView.bgPanel)
+    }
+
+    /// v1.0.53: Keychain ACL maintenance. Each ad-hoc-signed build of
+    /// Bob added a new per-cdhash entry to the keychain ACL of every
+    /// secret the app reads. By the time we shipped stable signing
+    /// (v1.0.42), ACLs already had 6+ stale entries flagged
+    /// `errSecCSStaticCodeChanged`. macOS Sequoia's strict ACL
+    /// evaluation pops the password prompt anyway when stale entries
+    /// are present alongside the good DR-based entry — so the user
+    /// gets a prompt every time they rebuild and relaunch.
+    /// Reset deletes all the keychain items; user re-enters once with
+    /// the current build, the ACL pins cleanly to the stable DR, and
+    /// future rebuilds are silent.
+    private var keychainDiagnosticsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("KEYCHAIN MAINTENANCE")
+                    .font(.system(.caption, design: .monospaced).weight(.bold))
+                    .foregroundColor(PreferencesView.phosphorGreen)
+                Text("If macOS keeps prompting you for the keychain password every time Bob launches, click Reset below — it deletes Bob's keychain items so the next time you re-enter them, the ACLs pin cleanly to the current build (and stay pinned). Your secrets are gone after this; have them ready to re-paste.")
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundColor(PreferencesView.textGrey)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .lineSpacing(2)
+            }
+
+            HStack(spacing: 10) {
+                Button("Reset Keychain Pins") {
+                    showKeychainResetConfirm = true
+                }
+                .buttonStyle(.plain)
+                .font(.system(.caption2, design: .monospaced).weight(.bold))
+                .foregroundColor(PreferencesView.phosphorGreen)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .stroke(PreferencesView.phosphorGreen, lineWidth: 1)
+                )
+
+                if let status = keychainResetStatus {
+                    Text(status)
+                        .font(.system(.caption2, design: .monospaced))
+                        .foregroundColor(PreferencesView.phosphorGreen)
+                }
+            }
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 14)
+        .background(PreferencesView.bgPanel)
+        .alert("Reset Keychain Pins?", isPresented: $showKeychainResetConfirm) {
+            Button("Cancel", role: .cancel) { }
+            Button("Reset", role: .destructive) {
+                performKeychainReset()
+            }
+        } message: {
+            Text("This deletes Bob's stored Brave / Jarvis / ElevenLabs secrets from the macOS Keychain. You'll need to re-enter them in Preferences. Your in-memory copy in this Preferences pane will be cleared too. Proceed?")
+        }
+    }
+
+    /// Wipe every secret Bob owns. Refresh the in-memory mirrors on
+    /// AppSettings so the SecureField bindings show empty (otherwise
+    /// the user might think their key is still set when it isn't).
+    /// Surfaces a count in the status text so the user has feedback
+    /// that the action ran.
+    private func performKeychainReset() {
+        var deleted = 0
+        for key in KeychainSecretKey.allCases {
+            do {
+                try KeychainService.current.delete(key)
+                deleted += 1
+            } catch {
+                // delete throws on errSecItemNotFound — already-gone
+                // is fine; everything else is logged but doesn't
+                // block the rest of the reset.
+                DebugLog.log(.error, "keychain-reset-failed", [
+                    "key": key.rawValue,
+                    "error": error.localizedDescription
+                ])
+            }
+        }
+        // Mirror the cleared state into AppSettings so the
+        // SecureFields update.
+        settings.braveAPIKey = ""
+        settings.jarvisAPIKey = ""
+        settings.jarvisOperatorSecret = ""
+        keychainResetStatus = "✓ Cleared \(deleted) keys. Re-enter above."
+        DebugLog.log(.agent, "keychain-reset-complete", ["cleared": "\(deleted)"])
     }
 
     private var uncensoredModeSection: some View {
@@ -1786,7 +1892,9 @@ struct PreferencesView: View {
                     • Read a file — "show me my .zshrc"
                     • Search across files — "find every TODO in this repo"
                     • Search the web — "what's new with Swift 6 concurrency?"
-                    • Run commands — "which version of ffmpeg do I have?"
+                    • Run commands — "which version of ffmpeg do I have?" \
+                    Long-running commands (brew upgrade, slow builds) run to \
+                    completion; press ⌘. to cancel at any time.
                     • Write files — "save this snippet to \
                     ~/Desktop/note.md" (asks for approval first)
                     • Use your clipboard — "summarize what I just copied" \
@@ -1795,6 +1903,8 @@ struct PreferencesView: View {
                     Reminders" or "create a note titled 'meeting' in Notes"
                     • Remember things — tell Bob to "remember I prefer tabs \
                     over spaces" and he will carry that across sessions
+                    • Place phone calls via Jarvis — post-call action items \
+                    appear in chat; tap one to hand it back to Bob as a task
                     """)
 
                 helpSection(title: "Example prompts", body: """

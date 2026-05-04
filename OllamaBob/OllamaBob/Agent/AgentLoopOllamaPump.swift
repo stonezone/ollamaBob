@@ -32,7 +32,27 @@ extension AgentLoop {
         let isListedTrackBatch = normalized.contains("all these")
             && (normalized.contains("track") || normalized.contains("song"))
 
-        if isAudioBatch || isListedTrackBatch {
+        // v1.0.48: track-list detection. Catches the case where the user
+        // pastes a multi-line list of "Song — Artist" pairs (or "Song -
+        // Artist") and asks for them, even when the action verb is
+        // misspelled ("downlaod"), missing entirely, or replaced with a
+        // colloquial one we don't enumerate. 3+ list lines + at least
+        // one music/youtube keyword anywhere in the message is a strong
+        // signal: this is a music-batch turn, give it the longer budget
+        // so the batch-audit continuation guard can actually fire.
+        let listLines = userMessage.split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { line -> Bool in
+                guard line.count >= 5, line.count <= 200 else { return false }
+                // em-dash, en-dash, or hyphen-with-spaces all count.
+                return line.contains(" — ") || line.contains(" – ") || line.contains(" - ")
+            }
+        let musicKeywordPresent = ["mp3", "m4a", "flac", "song", "track",
+                                   "album", "playlist", "youtube", "youtu.be"]
+            .contains { normalized.contains($0) }
+        let hasPastedTrackList = listLines.count >= 3 && musicKeywordPresent
+
+        if isAudioBatch || isListedTrackBatch || hasPastedTrackList {
             return LoopBudget(
                 maxIterations: AppConfig.batchAudioAgentLoopMaxIterations,
                 timeoutSeconds: AppConfig.batchAudioAgentLoopTimeoutSeconds
