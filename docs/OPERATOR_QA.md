@@ -106,6 +106,7 @@
    - expected: approval modal for `phone_call`
    - expected: if the call should reference current work, the approval modal includes a concise `Context:` preview from the recent OllamaBob session plus earlier-work highlights when older same-day work would otherwise fall out of the tail
    - after approval: either a returned `callSid` or a precise auth failure
+   - after approval (v1.0.42+): the Live Call window opens automatically and the call appears in its active-calls picker. The window also exposes manual inject + hangup, so this scenario covers both the agent-tool path AND the UI path.
 5. If the daemon returns `401`:
    - capital-`U` `Unauthorized` means the operator secret failed
    - lowercase `unauthorized` means the Jarvis API key failed
@@ -115,6 +116,7 @@
    - expected: `phone_get_transcript` runs silently and returns timestamped `[caller]` / `[callee]` lines
 8. Ask Bob to inject a short update into an active `callID`.
    - expected: `phone_inject` shows a native approval modal before POSTing to Jarvis
+   - note: this exercises the agent-tool path. The Live Call section below has a complementary scenario for the UI-driven inject (typing into the window's inject field). Both paths use the same approval policy and the same daemon endpoint; if one works the other should, but they exercise different code (`PhoneInjectTool` vs `LiveCallView.inject`), so keep both.
 
 ### Jarvis Call Prompt Policy
 

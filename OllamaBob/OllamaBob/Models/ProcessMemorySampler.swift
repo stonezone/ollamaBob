@@ -30,6 +30,19 @@ enum ProcessMemorySampler {
         return String(format: "%.1fM", mib)
     }
 
+    /// v1.0.54: split-display formatter. The previous `format(_:)` summed
+    /// Bob's RSS + Ollama's RSS into a single number, which was technically
+    /// accurate but misleading: when Ollama unloads a model after its
+    /// `keep_alive` expires (or never loaded one), Bob alone is ~150–250 MB
+    /// and the strip would read "ram 200M" — making it look like the
+    /// model itself was tiny. Split the labels so "bob 200M / ollama 9.7G"
+    /// vs "bob 200M / ollama --" makes the truth obvious.
+    static func splitFormat(bob: Int64?, ollama: Int64?) -> String {
+        let b = format(bob)
+        let o = format(ollama)
+        return "bob \(b) · ollama \(o)"
+    }
+
     private static func rssForCurrentProcess() async -> Int64? {
         await rssForPID(ProcessInfo.processInfo.processIdentifier)
     }

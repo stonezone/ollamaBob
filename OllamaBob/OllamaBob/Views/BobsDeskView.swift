@@ -800,15 +800,14 @@ struct BobsDeskView: View {
         Task {
             let snapshot = await ProcessMemorySampler.sample()
             await MainActor.run {
-                let total: Int64? = {
-                    switch (snapshot.bobBytes, snapshot.ollamaBytes) {
-                    case let (b?, o?): return b + o
-                    case let (b?, nil): return b
-                    case let (nil, o?): return o
-                    case (nil, nil):   return nil
-                    }
-                }()
-                totalMemoryLabel = ProcessMemorySampler.format(total)
+                // v1.0.54: split label so "bob 200M · ollama --" is
+                // distinguishable from "bob 200M · ollama 9.7G". The
+                // previous summed total dropped to ~150 MB when Ollama
+                // unloaded its model and looked like a bug.
+                totalMemoryLabel = ProcessMemorySampler.splitFormat(
+                    bob: snapshot.bobBytes,
+                    ollama: snapshot.ollamaBytes
+                )
             }
         }
     }

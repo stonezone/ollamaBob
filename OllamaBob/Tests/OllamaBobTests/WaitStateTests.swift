@@ -103,6 +103,33 @@ final class WaitStateTests: XCTestCase {
         XCTAssertEqual(AppConfig.chatContextPressureWarningFraction, 0.6, accuracy: 0.0001)
     }
 
+    // MARK: - Per-model wall-clock cap (v1.0.54)
+
+    func testWallClockCapBigModelsGetLongerCeiling() {
+        // Bigger models legitimately need more time for cold-load +
+        // first-token. The map should give them ≥ the global default.
+        let big = AppConfig.wallClockCap(for: "qwen3.6:27b")
+        let global = AppConfig.ollamaSingleRequestWallClockCapSeconds
+        XCTAssertGreaterThanOrEqual(big, global,
+            "27B models must get at least the global cap, ideally more")
+    }
+
+    func testWallClockCapUnknownModelFallsBackToGlobal() {
+        // Defense for future model tags we haven't characterized yet —
+        // they get the safe global default rather than 0 or some
+        // surprise value.
+        let cap = AppConfig.wallClockCap(for: "some-future-model:99b")
+        XCTAssertEqual(cap, AppConfig.ollamaSingleRequestWallClockCapSeconds)
+    }
+
+    func testWallClockCapKnownPrimaryAndFallbackModels() {
+        // Smoke: the configured primary + fallback models are both
+        // in the table so we never silently fall back to the global
+        // default for the most common cases.
+        XCTAssertNotNil(AppConfig.ollamaWallClockCapByModel[AppConfig.primaryModel])
+        XCTAssertNotNil(AppConfig.ollamaWallClockCapByModel[AppConfig.fallbackModel])
+    }
+
     func testWallClockCapIsHigherThanHTTPIdleTimeout() {
         // The wall-clock cap exists BECAUSE the HTTP idle timeout
         // doesn't fire when Ollama keeps the TCP alive while doing
@@ -112,6 +139,35 @@ final class WaitStateTests: XCTestCase {
             AppConfig.ollamaSingleRequestWallClockCapSeconds,
             AppConfig.ollamaHTTPRequestTimeoutSeconds
         )
+    }
+
+    // MARK: - LoadedModel.expires_at parsing (v1.0.54)
+
+    func testLoadedModelParsesISO8601WithFractionalSecondsAndTimezone() {
+        // Ollama's actual /api/ps response shape, captured live:
+        // "expires_at":"2026-05-02T21:28:51.193776-10:00"
+        let raw = "2026-05-02T21:28:51.193776-10:00"
+        let parsed = OllamaHeartbeat.LoadedModel.parseExpiresAt(raw)
+        XCTAssertNotNil(parsed, "must parse RFC3339-with-fractional-seconds")
+    }
+
+    func testLoadedModelParsesISO8601WithoutFractionalSeconds() {
+        let raw = "2026-05-02T21:28:51-10:00"
+        let parsed = OllamaHeartbeat.LoadedModel.parseExpiresAt(raw)
+        XCTAssertNotNil(parsed, "fallback path must handle no-fractional-seconds")
+    }
+
+    func testLoadedModelHandlesUnparseableExpiry() {
+        let parsed = OllamaHeartbeat.LoadedModel.parseExpiresAt("not a date")
+        XCTAssertNil(parsed)
+    }
+
+    func testLoadedModelSecondsUntilUnloadComputesAgainstNow() {
+        let twentySecondsFromNow = Date().addingTimeInterval(20)
+        let model = OllamaHeartbeat.LoadedModel(name: "gemma4:e4b", expiresAt: twentySecondsFromNow)
+        let s = model.secondsUntilUnload()
+        XCTAssertNotNil(s)
+        XCTAssertEqual(s!, 20, accuracy: 0.5)
     }
 
     func testHeartbeatIntervalIsInGoldilocksRange() {

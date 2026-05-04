@@ -134,11 +134,59 @@ final class OllamaHeartbeat {
 
     struct LoadedModel: Decodable, Equatable, Sendable {
         let name: String
-        let expiresAt: String?
+        /// ISO8601 timestamp at which Ollama will unload this model
+        /// (driven by `keep_alive`). `nil` if the daemon didn't
+        /// include the field. v1.0.54: parsed as `Date` so callers
+        /// can compute "seconds until unload" directly.
+        let expiresAt: Date?
 
         enum CodingKeys: String, CodingKey {
             case name
             case expiresAt = "expires_at"
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            name = try c.decode(String.self, forKey: .name)
+            if let raw = try c.decodeIfPresent(String.self, forKey: .expiresAt) {
+                expiresAt = Self.parseExpiresAt(raw)
+            } else {
+                expiresAt = nil
+            }
+        }
+
+        /// Test/mock-friendly memberwise initializer. The Decodable
+        /// initializer above is what JSONDecoder uses in production.
+        init(name: String, expiresAt: Date?) {
+            self.name = name
+            self.expiresAt = expiresAt
+        }
+
+        /// Seconds until Ollama unloads this model. Negative if
+        /// already past the deadline. `nil` if `expires_at` was
+        /// missing or unparseable.
+        func secondsUntilUnload(now: Date = Date()) -> TimeInterval? {
+            expiresAt.map { $0.timeIntervalSince(now) }
+        }
+
+        /// Ollama's `expires_at` format is RFC3339 with fractional
+        /// seconds and an explicit timezone offset, e.g.
+        /// `2026-05-02T21:28:51.193776-10:00`. ISO8601DateFormatter
+        /// with `.withFractionalSeconds` covers it. Falls back to a
+        /// no-fractional-seconds attempt for daemons that omit them.
+        private static let iso8601WithFractional: ISO8601DateFormatter = {
+            let f = ISO8601DateFormatter()
+            f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            return f
+        }()
+        private static let iso8601Plain: ISO8601DateFormatter = {
+            let f = ISO8601DateFormatter()
+            f.formatOptions = [.withInternetDateTime]
+            return f
+        }()
+        static func parseExpiresAt(_ raw: String) -> Date? {
+            iso8601WithFractional.date(from: raw)
+                ?? iso8601Plain.date(from: raw)
         }
     }
 

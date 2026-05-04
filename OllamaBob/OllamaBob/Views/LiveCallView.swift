@@ -518,6 +518,23 @@ struct LiveCallView: View {
 
     // MARK: - Action Items ("Bob noticed:")
 
+    // TODO(v1.0.55+): action-items persistence + chat re-show.
+    // Currently the items live in `actionItemsByCallID` @State only —
+    // closing this Live Call window loses them and the user has to
+    // reopen + re-fetch from the daemon. Two improvements stacked:
+    //   1. Persist to the existing `ollamabob.sqlite` (new table
+    //      `call_action_items` with callID, outcome, followUps,
+    //      facts, fetchedAt) so action items survive window close
+    //      and Bob can recall "what did the call yesterday produce?"
+    //   2. Auto-emit a brief "📞 Call ended — Bob noticed: ..." chip
+    //      in the main chat transcript when a call finalizes, so the
+    //      user sees action items even if the Live Call window is
+    //      closed. Needs a chat-message-injection path that bypasses
+    //      the agent loop (DeskPromptInbox enqueues a USER prompt
+    //      which is the wrong shape — we want the chip to be a
+    //      system/tool-style entry, not something Bob responds to).
+    // Estimated 2–3 hours; defer to a focused session.
+
     /// Renders the post-call extraction once the daemon's
     /// `GET /call/action-items/:id` returns. Empty view while the call is
     /// still in flight, while extraction is loading, or when the call

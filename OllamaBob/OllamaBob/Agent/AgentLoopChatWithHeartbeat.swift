@@ -81,7 +81,10 @@ extension AgentLoop {
         }
 
         // Race: chat() vs wall-clock sleep. First to finish wins.
-        let cap = AppConfig.ollamaSingleRequestWallClockCapSeconds
+        // v1.0.54: cap is now per-model. Bigger models get longer
+        // ceilings to absorb cold-load + first-token; small models
+        // stay tight so a hung 4B request can't burn the full 15 min.
+        let cap = AppConfig.wallClockCap(for: model)
         return try await withThrowingTaskGroup(of: OllamaChatResponse?.self) { group in
             // The real chat call.
             group.addTask { [client] in

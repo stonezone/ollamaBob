@@ -18,6 +18,24 @@ enum OllamaError: Error, LocalizedError {
     }
 }
 
+// MARK: - Future: protocolization for integration tests
+//
+// TODO(v1.0.55+): introduce `protocol OllamaChatProviding: Sendable {
+//     func chat(model: String, messages: [OllamaMessage],
+//               tools: [OllamaToolDef]?, numCtx: Int,
+//               keepAlive: String?) async throws -> OllamaChatResponse
+// }` and have `OllamaClient` conform. Then change
+// `AgentLoop.client: OllamaClient` and `ConversationCompactor`'s
+// client param to `any OllamaChatProviding`. That unlocks integration
+// tests for AgentLoop.process() — currently the four guards
+// (BatchContinuation, BatchAudit, GenericContinuation, ShellRecovery)
+// are unit-tested at the static-helper level only; the wiring in
+// process() is "tested" by reading source. A mock conforming to the
+// protocol can drive process() with synthetic OllamaChatResponse
+// streams to verify each guard fires correctly. Estimated 1–2 hours;
+// touches: this file, AgentLoop.swift (1 type annotation),
+// ConversationCompactor.swift (2 sites), Preflight.swift (2 sites).
+
 actor OllamaClient {
     private let session: URLSession
     private let baseURL: String

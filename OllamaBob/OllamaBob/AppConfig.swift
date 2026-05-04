@@ -10,8 +10,8 @@ struct AppConfig {
     }
 
     // MARK: - App Version
-    static let appVersion = "1.0.53"
-    static let appBuild = "153"
+    static let appVersion = "1.0.54"
+    static let appBuild = "154"
 
     // MARK: - HTML Sanitizer
     /// Bumped whenever PresentationService's HTML allowlist or
@@ -104,6 +104,29 @@ struct AppConfig {
     /// (qwen3.6:27b cold-load + long generation) breathing room while
     /// putting a hard floor under wedge cases.
     static let ollamaSingleRequestWallClockCapSeconds: TimeInterval = 600
+
+    /// v1.0.54: per-model wall-clock cap overrides. Bigger models
+    /// (qwen3.6:27b, gemma4:26b, gpt-oss:20b) can legitimately spend
+    /// longer on cold-load + first-token than the global default. The
+    /// global cap stays as a safety net; lookups here scale up only
+    /// for known-heavy models. Anything not in this map uses the
+    /// global default.
+    static let ollamaWallClockCapByModel: [String: TimeInterval] = [
+        "qwen3.6:27b": 900,
+        "qwen3:14b": 600,
+        "gemma4:e4b": 600,
+        "gemma4:26b": 900,
+        "gpt-oss:20b": 900,
+        "huihui_ai/qwen3-abliterated:8b": 600
+    ]
+
+    /// Resolve the wall-clock cap for a specific model, with
+    /// fallback to the global default. Match is exact-name first
+    /// (e.g. "qwen3.6:27b"); if the model tag isn't in the table,
+    /// returns `ollamaSingleRequestWallClockCapSeconds`.
+    static func wallClockCap(for model: String) -> TimeInterval {
+        ollamaWallClockCapByModel[model] ?? ollamaSingleRequestWallClockCapSeconds
+    }
     /// How often the OllamaHeartbeat polls /api/ps while a chat call
     /// is in flight (v1.0.52). 5s is the Goldilocks zone: fast enough
     /// to detect mid-request model unload within a single avatar
