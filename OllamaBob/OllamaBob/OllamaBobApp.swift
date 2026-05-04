@@ -143,6 +143,10 @@ final class AppState: ObservableObject {
     // Global HUD summon hotkey listener (nil when disabled).
     private var hudSummonHotkey: MenuBarSummonHotkey?
 
+    // Local Jarvis webhook receiver. Starts only when Jarvis phone is fully
+    // configured; deregisters best-effort on app quit.
+    private var jarvisWebhookListener: JarvisWebhookListener?
+
     /// Closure registered by the SwiftUI scene that knows how to open the
     /// HUD window. `nil` until the scene mounts. Driven via the same pattern
     /// as `PresentationService.registerOpenRichHTMLWindow`.
@@ -159,6 +163,7 @@ final class AppState: ObservableObject {
         setupClipboardCortex()
         setupBriefingScheduler()
         setupHUDSummonHotkey()
+        setupJarvisWebhookListener()
     }
 
     /// Register the visual personas the app ships with. Future personas slot
@@ -270,6 +275,12 @@ final class AppState: ObservableObject {
         if AppSettings.shared.briefingScheduleEnabled {
             SchedulerService.shared.start()
         }
+    }
+
+    private func setupJarvisWebhookListener() {
+        let listener = JarvisWebhookListener()
+        jarvisWebhookListener = listener
+        listener.startIfConfigured()
     }
 
     /// Phase 0c: one-time prompt to move legacy UserDefaults secrets into the

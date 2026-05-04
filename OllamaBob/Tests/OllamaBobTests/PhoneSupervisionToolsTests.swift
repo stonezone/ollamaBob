@@ -107,6 +107,26 @@ final class PhoneSupervisionToolsTests: XCTestCase {
         XCTAssertEqual(calls[0].status, "in-progress")
     }
 
+    func testHTTPListCallsIncludesRecentEndedCalls() async throws {
+        let secrets = PhoneSupervisionSecretsScope(apiKey: "unit-test-key", operatorSecret: "unit-test-operator")
+        defer { _ = secrets }
+
+        PhoneSupervisionURLProtocol.requestHandler = { request in
+            XCTAssertEqual(request.httpMethod, "GET")
+            XCTAssertEqual(request.url?.absoluteString, "\(AppConfig.jarvisBaseURL)/calls/active")
+
+            let body = Data(#"{"active":[{"callSid":"call_active","caller":"bob","to":"+18085550100","status":"in_progress","startedAt":1700000000000}],"recent":[{"callSid":"call_ended","caller":"bob","to":"+18085550101","status":"ended","startedAt":1700000100000,"durationSeconds":97}]}"#.utf8)
+            return Self.response(request: request, statusCode: 200, body: body)
+        }
+        defer { PhoneSupervisionURLProtocol.requestHandler = nil }
+
+        let calls = try await JarvisCallClientHTTP().listCalls()
+
+        XCTAssertEqual(calls.map(\.callID), ["call_active", "call_ended"])
+        XCTAssertEqual(calls[1].status, "ended")
+        XCTAssertEqual(calls[1].durationSeconds, 97)
+    }
+
     func testHTTPTranscriptMapsStatusTranscriptLines() async throws {
         let secrets = PhoneSupervisionSecretsScope(apiKey: "unit-test-key", operatorSecret: "unit-test-operator")
         defer { _ = secrets }
@@ -155,6 +175,68 @@ final class PhoneSupervisionToolsTests: XCTestCase {
 
         XCTAssertEqual(result.callID, "call_123")
         XCTAssertTrue(result.acknowledged)
+    }
+
+    func testHTTPRegisterWebhookPostsURLAndEvents() async throws {
+        let secrets = PhoneSupervisionSecretsScope(apiKey: "unit-test-key", operatorSecret: "unit-test-operator")
+        defer { _ = secrets }
+
+        PhoneSupervisionURLProtocol.requestHandler = { request in
+            XCTAssertEqual(request.httpMethod, "POST")
+            XCTAssertEqual(request.url?.absoluteString, "\(AppConfig.jarvisBaseURL)/call/webhooks/register")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Type"), "application/json")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "X-Jarvis-Key"), "unit-test-key")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "x-operator-secret"), "unit-test-operator")
+
+            let body = try XCTUnwrap(Self.requestBodyData(from: request))
+            let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+            XCTAssertEqual(object["url"] as? String, "http://127.0.0.1:3101/jarvis-webhook")
+            XCTAssertEqual(object["events"] as? [String], ["call.ended", "call.action-items.ready"])
+
+            return Self.response(request: request, statusCode: 200, body: Data(#"{"subscriberId":"sub_123"}"#.utf8))
+        }
+        defer { PhoneSupervisionURLProtocol.requestHandler = nil }
+
+        let id = try await JarvisCallClientHTTP().registerWebhook(
+            url: URL(string: "http://127.0.0.1:3101/jarvis-webhook")!,
+            events: ["call.ended", "call.action-items.ready"]
+        )
+
+        XCTAssertEqual(id, "sub_123")
+    }
+
+    func testHTTPUnregisterWebhookDeletesSubscriber() async throws {
+        let secrets = PhoneSupervisionSecretsScope(apiKey: "unit-test-key", operatorSecret: "unit-test-operator")
+        defer { _ = secrets }
+
+        PhoneSupervisionURLProtocol.requestHandler = { request in
+            XCTAssertEqual(request.httpMethod, "DELETE")
+            XCTAssertEqual(request.url?.absoluteString, "\(AppConfig.jarvisBaseURL)/call/webhooks/register/sub_123")
+            return Self.response(request: request, statusCode: 204, body: Data())
+        }
+        defer { PhoneSupervisionURLProtocol.requestHandler = nil }
+
+        try await JarvisCallClientHTTP().unregisterWebhook(id: "sub_123")
+    }
+
+    func testHTTPListWebhookSubscriberIDsUsesAdminEndpoint() async throws {
+        let secrets = PhoneSupervisionSecretsScope(apiKey: "unit-test-key", operatorSecret: "unit-test-operator")
+        defer { _ = secrets }
+
+        PhoneSupervisionURLProtocol.requestHandler = { request in
+            XCTAssertEqual(request.httpMethod, "GET")
+            XCTAssertEqual(request.url?.absoluteString, "\(AppConfig.jarvisBaseURL)/call/webhooks")
+            return Self.response(
+                request: request,
+                statusCode: 200,
+                body: Data(#"{"subscribers":[{"id":"sub_123"},{"subscriberId":"sub_456"}]}"#.utf8)
+            )
+        }
+        defer { PhoneSupervisionURLProtocol.requestHandler = nil }
+
+        let ids = try await JarvisCallClientHTTP().webhookSubscriberIDs()
+
+        XCTAssertEqual(ids, Set(["sub_123", "sub_456"]))
     }
 
     func testHTTPClientMapsUnauthorizedToAuthFailure() async {

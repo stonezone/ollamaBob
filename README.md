@@ -2,7 +2,7 @@
 
 OllamaBob is a native macOS menu-bar assistant for local Ollama models. It is a SwiftUI/AppKit app that talks directly to `http://localhost:11434/api/chat`, owns its agent loop in Swift, runs first-party tools, and stores local data in SQLite through GRDB.
 
-Current app version: `1.0.55`
+Current app version: `1.0.56`
 
 ## Quick Start
 
@@ -52,6 +52,7 @@ swift run OllamaBob
 - Naughty Bob v1 as a per-conversation uncensored mode. Tools and compaction are disabled while uncensored mode is active, and the app does not silently fall back to the standard model stack.
 - Jarvis phone tools behind explicit Preferences gating and a modal approval for outbound calls, with recent OllamaBob session context and earlier-work highlights attached for context-aware recap calls.
 - Live Call view for active Jarvis calls, with post-call action items extracted from the transcript; clicking an action item sends it directly to Bob's agent loop as a fresh prompt.
+- Local Jarvis webhook receiver registers with the daemon so call-ended and action-items-ready events refresh the Live Call surface without waiting for manual refresh/reopen.
 - Desk status chips now surface captured Mac context, Code Companion mode, walkie-talkie state, and Focus Guardian state in the live chat surface.
 - Clipboard Cortex stack-trace chips open Bob's Desk and submit a wrapped, untrusted stack-trace summary prompt.
 - Daily Briefing history is available from the menu bar.

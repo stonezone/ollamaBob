@@ -105,6 +105,12 @@ struct LiveCallView: View {
         .task { await refresh() }
         .onAppear { startTranscriptRefresh() }
         .onDisappear { stopTranscriptRefresh() }
+        .onReceive(NotificationCenter.default.publisher(for: .jarvisCallEndedWebhook)) { note in
+            handleCallEndedWebhook(note)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .jarvisActionItemsReadyWebhook)) { note in
+            handleActionItemsReadyWebhook(note)
+        }
     }
 
     private var liveCallHeader: some View {
@@ -805,6 +811,24 @@ struct LiveCallView: View {
             // Bail when status flips out of pending.
             let current = actionItemsStatusByCallID[callID] ?? .unknown
             if current != .pending { return }
+        }
+    }
+
+    private func handleCallEndedWebhook(_ note: Notification) {
+        guard let callID = note.userInfo?[JarvisWebhookNotifications.callIDKey] as? String else { return }
+        Task { @MainActor in
+            await refresh()
+            if selectedCallID == callID {
+                await loadTranscript()
+            }
+        }
+    }
+
+    private func handleActionItemsReadyWebhook(_ note: Notification) {
+        guard let callID = note.userInfo?[JarvisWebhookNotifications.callIDKey] as? String else { return }
+        Task { @MainActor in
+            actionItemsStatusByCallID[callID] = .ready
+            await fetchActionItemsLegacy(for: callID)
         }
     }
 

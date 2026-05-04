@@ -3,7 +3,7 @@ import Foundation
 // MARK: - JarvisCallClientHTTP
 // Production HTTP client for Jarvis call supervision.
 
-final class JarvisCallClientHTTP: JarvisCallClient {
+final class JarvisCallClientHTTP: JarvisCallClient, JarvisWebhookRegistrationClient {
 
     private let baseURL: URL
     private let session: URLSession
@@ -19,7 +19,8 @@ final class JarvisCallClientHTTP: JarvisCallClient {
     func listCalls() async throws -> [JarvisCallSummary] {
         let data = try await send(method: "GET", path: "/calls/active", body: nil)
         let response = try decode(ActiveCallsResponse.self, from: data)
-        return response.active.map { $0.summary(now: Date()) }
+        let now = Date()
+        return (response.active + response.recent).map { $0.summary(now: now) }
     }
 
     func transcript(callID: String) async throws -> JarvisTranscript {
@@ -98,6 +99,38 @@ final class JarvisCallClientHTTP: JarvisCallClient {
             acknowledged: response.ok ?? response.acknowledged ?? false,
             detail: response.message ?? response.detail
         )
+    }
+
+    func registerWebhook(url: URL, events: [String]) async throws -> String {
+        let trimmedEvents = events
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { $0.isEmpty == false }
+        guard trimmedEvents.isEmpty == false else {
+            throw JarvisCallClientError.other("Missing webhook events.")
+        }
+        let request = RegisterWebhookRequest(url: url.absoluteString, events: trimmedEvents)
+        let body = try JSONEncoder().encode(request)
+        let data = try await send(method: "POST", path: "/call/webhooks/register", body: body)
+        let response = try decode(RegisterWebhookResponse.self, from: data)
+        guard let id = response.resolvedID?.trimmingCharacters(in: .whitespacesAndNewlines),
+              id.isEmpty == false else {
+            throw JarvisCallClientError.other("Jarvis webhook registration returned no subscriber id.")
+        }
+        return id
+    }
+
+    func unregisterWebhook(id: String) async throws {
+        let trimmed = id.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.isEmpty == false else {
+            throw JarvisCallClientError.other("Missing webhook subscriber id.")
+        }
+        _ = try await send(method: "DELETE", path: "/call/webhooks/register/\(Self.pathSegment(trimmed))", body: nil)
+    }
+
+    func webhookSubscriberIDs() async throws -> Set<String> {
+        let data = try await send(method: "GET", path: "/call/webhooks", body: nil)
+        let response = try decode(WebhookSubscribersResponse.self, from: data)
+        return response.resolvedIDs
     }
 
     private func send(method: String, path: String, body: Data?) async throws -> Data {
@@ -205,6 +238,18 @@ final class JarvisCallClientHTTP: JarvisCallClient {
 
 private struct ActiveCallsResponse: Decodable {
     let active: [CallSummaryDTO]
+    let recent: [CallSummaryDTO]
+
+    private enum CodingKeys: String, CodingKey {
+        case active
+        case recent
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.active = try container.decodeIfPresent([CallSummaryDTO].self, forKey: .active) ?? []
+        self.recent = try container.decodeIfPresent([CallSummaryDTO].self, forKey: .recent) ?? []
+    }
 }
 
 private struct CallSummaryDTO: Decodable {
@@ -268,6 +313,62 @@ private struct TranscriptLineDTO: Decodable {
 private struct InjectRequest: Encodable {
     let text: String
     let role: String
+}
+
+private struct RegisterWebhookRequest: Encodable {
+    let url: String
+    let events: [String]
+}
+
+private struct RegisterWebhookResponse: Decodable {
+    let id: String?
+    let subscriberId: String?
+    let subscriberID: String?
+    let subscriptionId: String?
+    let subscriptionID: String?
+
+    var resolvedID: String? {
+        id ?? subscriberId ?? subscriberID ?? subscriptionId ?? subscriptionID
+    }
+}
+
+private struct WebhookSubscribersResponse: Decodable {
+    let subscribers: [WebhookSubscriberDTO]
+    let webhooks: [WebhookSubscriberDTO]
+
+    private enum CodingKeys: String, CodingKey {
+        case subscribers
+        case webhooks
+    }
+
+    init(from decoder: Decoder) throws {
+        if let array = try? [WebhookSubscriberDTO](from: decoder) {
+            self.subscribers = array
+            self.webhooks = []
+            return
+        }
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.subscribers = try container.decodeIfPresent([WebhookSubscriberDTO].self, forKey: .subscribers) ?? []
+        self.webhooks = try container.decodeIfPresent([WebhookSubscriberDTO].self, forKey: .webhooks) ?? []
+    }
+
+    var resolvedIDs: Set<String> {
+        Set((subscribers + webhooks).compactMap { $0.resolvedID })
+    }
+}
+
+private struct WebhookSubscriberDTO: Decodable {
+    let id: String?
+    let subscriberId: String?
+    let subscriberID: String?
+    let subscriptionId: String?
+    let subscriptionID: String?
+
+    var resolvedID: String? {
+        let value = id ?? subscriberId ?? subscriberID ?? subscriptionId ?? subscriptionID
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed?.isEmpty == false ? trimmed : nil
+    }
 }
 
 private struct InjectResponse: Decodable {

@@ -52,7 +52,7 @@ Key constraints:
 
 ## Current State
 
-Current visible app version: `1.0.55`
+Current visible app version: `1.0.56`
 
 Current model defaults:
 
@@ -73,6 +73,7 @@ Current shipped surface:
 - Jarvis phone tools gated by Preferences and both Jarvis secrets, with bounded recent OllamaBob session context and earlier-work highlights attached to outbound recap calls when useful.
 - Jarvis call supervision tools for listing active calls, reading active-call transcripts, and modal-gated mid-call message injection (`phone_inject` requires `modal` approval per injection).
 - Live Call view (rebuilt) surfaces the active call; post-call action items are extracted from the transcript and rendered as tappable chips that dispatch a fresh prompt to `AgentLoop`.
+- Local Jarvis webhook receiver binds to `127.0.0.1`, registers `call.ended` / `call.action-items.ready` with the daemon, and refreshes Live Call state without manual reopen/refresh.
 - Mumbai Bob image avatar; avatar-only mode behavior unchanged.
 - Bob's Desk status strip surfaces Mac context, Code Companion mode, walkie-talkie state, and Focus Guardian state when active.
 - Clipboard Cortex stack traces and walkie-talkie transcripts can be submitted into Bob's Desk.

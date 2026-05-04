@@ -3,7 +3,7 @@
 **Date:** 2026-05-04
 **Audience:** the next coding agent or operator picking the project up cold.
 
-## Open Work — Phase C: Jarvis lifecycle webhook receiver (next session)
+## Latest Shipped — v1.0.56 Jarvis lifecycle webhook receiver
 
 The Jarvis-phone-service Opus shipped (commit `2e15c71` on their `origin/main`):
 - `POST /call/webhooks/register` — runtime subscriber registration with `{ url, events }`
@@ -11,64 +11,21 @@ The Jarvis-phone-service Opus shipped (commit `2e15c71` on their `origin/main`):
 - `actionItemsStatus` tri-state on `/call/status/:id`
 - `recordingUrl` on `/call/action-items/:id` (was already in 31d9be7)
 
-OllamaBob v1.0.55 (2026-05-04) consumes the tri-state and `recordingUrl` (Phases A + B). **Phase C — the webhook receiver — is the remaining work.**
+OllamaBob v1.0.56 (2026-05-04) now consumes the lifecycle webhook endpoints too:
 
-### What needs to happen
+- `JarvisWebhookListener` binds a tiny local HTTP receiver to `127.0.0.1`, default port `3101`, retrying through a short port range on collision.
+- At launch, when Jarvis phone is fully configured, the app registers `call.ended` and `call.action-items.ready` with the daemon via `POST /call/webhooks/register`.
+- On quit, it deregisters the subscriber id best-effort via `DELETE /call/webhooks/register/:id`.
+- A registration monitor checks `GET /call/webhooks` every 60s and re-registers if the daemon restarted and lost the in-memory subscriber.
+- Incoming webhook bodies are parsed with a minimal HTTP parser that only accepts `POST /jarvis-webhook`, `Content-Length`, and small JSON payloads.
+- `call.ended` posts a notification consumed by `LiveCallView` to refresh calls/transcript.
+- `call.action-items.ready` posts a notification consumed by `LiveCallView` to fetch action items immediately.
+- `JarvisCallClientHTTP.listCalls()` now includes both `active` and `recent` call arrays so recently ended calls can remain visible for action-item rendering.
 
-A localhost HTTP listener inside OllamaBob.app that:
+### Remaining Jarvis Call Work
 
-1. **Starts at app launch.** Bound to `127.0.0.1` only (security — daemon doesn't sign payloads, we trust localhost).
-2. **Picks a port** at startup (configurable; default `3101`). On collision, retry the next port up to a small range.
-3. **Registers with the daemon** via `POST /call/webhooks/register` once the listener is bound and we know our URL. Body: `{"url":"http://127.0.0.1:<port>/jarvis-webhook","events":["call.ended","call.action-items.ready"]}`. Stores returned subscriber id.
-4. **Deregisters at quit** via `DELETE /call/webhooks/register/:id`. Best-effort; if the daemon is unreachable at shutdown, the in-memory registry on the daemon side cleans up on its own restart.
-5. **Receives** `POST <url>` from the daemon and routes the JSON body by `event`:
-   - `call.ended` → refresh LiveCallView's calls list + transcript for the affected callID
-   - `call.action-items.ready` → fetch fresh action items for the affected callID, mutate `actionItemsByCallID`, optionally surface a chat-transcript "Bob noticed:" chip
-6. **Reregisters on daemon-restart detection.** Either by polling `GET /call/webhooks` periodically and re-POSTing if our id is missing, or by handling the daemon's startup signal another way.
-
-### Recommended implementation: NWListener (Network framework)
-
-Apple-native, no third-party deps. Approximate skeleton:
-
-```swift
-import Network
-
-@MainActor
-final class JarvisWebhookListener {
-    private var listener: NWListener?
-    private(set) var port: UInt16 = 0
-    private(set) var subscriberId: String?
-    let onCallEnded: (String) -> Void
-    let onActionItemsReady: (String) -> Void
-
-    func start() throws { /* bind to 127.0.0.1, accept connections, parse minimal HTTP */ }
-    func stop() { /* deregister + cancel */ }
-}
-```
-
-The HTTP parsing surface is tiny — only need to read the request line, the `Content-Length` header, and the body. No keepalive / no streaming / no chunked-transfer support needed.
-
-### Effort estimate
-
-2–3 hours including:
-- NWListener wiring (~80 LOC)
-- Minimal HTTP request parser (~50 LOC)
-- Lifecycle integration in `OllamaBobApp.swift` (`onAppear` start, `applicationWillTerminate` stop)
-- Registration + deregistration via existing `JarvisCallClientHTTP.send` helper (need 2 new client methods: `registerWebhook(url:events:) async throws -> String` and `unregisterWebhook(id:) async throws`)
-- LiveCallView wiring: `.onReceive` a Notification or NotificationCenter post from the listener so the existing `actionItemsByCallID` state mutates without coupling LiveCallView to the listener directly
-- Tests: parser test (well-formed POST → callbacks fire), bad payload (rejects), registration round-trip via mock daemon
-
-### Done criteria
-
-- App launches → listener binds → daemon receives a registration → starts a call → ends a call → daemon POSTs `call.ended` → LiveCallView refreshes within ~100ms
-- Action items extract → daemon POSTs `call.action-items.ready` → LiveCallView shows "Bob noticed:" without manual refresh
-- App quits → daemon's `GET /call/webhooks` no longer lists OllamaBob's subscriber
-- Tests cover the wiring without needing the real daemon
-
-### What's NOT in Phase C
-
-- SSE/WebSocket transcript stream (#2 from the original ask) — still on jarvis-phone-service's TODO. Different feature. Keep the 5s polling in LiveCallView until that ships.
-- Action-items SQLite persistence (#9 from v1.0.53 backlog) — separate concern, can ship before or after Phase C.
+- SSE/WebSocket transcript stream (#2 from the original ask) is still on jarvis-phone-service's TODO. Keep the 5s transcript polling in LiveCallView until that ships.
+- Action-items SQLite persistence (#9 from the v1.0.53 backlog) remains separate. Current action items are still held in LiveCallView state only.
 
 ## Wake-Up Summary (v1.0.46, 2026-05-02 overnight pass)
 
@@ -106,7 +63,7 @@ Zack went to sleep mid-debug at v1.0.45 with three production failures: (1) `nma
 - This branch adds the 2026 UI modernization (Phases 1–5 + 4.5 + 5.5 + visibility/UX fixes) as a single bundled commit on top of codex's main. Pre-rebase backup tagged at `backup/ui-phases-pre-rebase-20260429`.
 - `docs/ACTIVE_EXECUTION_PLAN.md` is tracked. Next default phase after Phase E is F.1 (ArtifactStore + kinds); UI modernization runs in parallel and does not block F.1.
 - Active docs are intentionally small; historical plans, old peer-review notes, and superseded handoffs are in `archive/`.
-- Current visible app version: `1.0.55`.
+- Current visible app version: `1.0.56`.
 
 Local-only notes for Zack's workstation:
 
@@ -272,14 +229,15 @@ swift test
 ./build.sh --run
 ```
 
-Last verified on 2026-05-01 (v1.0.44):
+Last verified on 2026-05-04 (v1.0.56):
 
 - `swift build` passed
-- `swift test` passed: 505 tests, 0 failures
-- `./build.sh` passed and assembled `build/OllamaBob.app`
-- bundle metadata reports `CFBundleShortVersionString = 1.0.44` and `CFBundleVersion = 144`
-- new files since v1.0.40: `OllamaBob/Models/JarvisCallTypes.swift` (`JarvisCallActionItems`), `Views/LiveCallView.swift` (rebuilt with action-items section), `Tests/OllamaBobTests/ShellLongRunningTests.swift`
-- key changes since v1.0.40: Mumbai Bob image avatar; clickable post-call action items via `DeskPromptInbox`; `ProcessRunner` dual-timer/streaming/cancel architecture; `ToolLogEntry` promoted to `ObservableObject`; `ShellTool` login-shell and timeout args; `AgentLoop` cancel registry and tool-time-excluded loop budget; `ChatBubble`/`DeskTranscriptView` `fullChatMode` flag; `build.sh` signing hard-error
+- `swift test` passed: 569 tests, 0 failures
+- `./build.sh` passed and assembled signed `build/OllamaBob.app`
+- `git diff --check` passed
+- bundle metadata is generated from `AppConfig` / `build.sh` at `CFBundleShortVersionString = 1.0.56` and `CFBundleVersion = 156`
+- new files since v1.0.55: `OllamaBob/Services/JarvisWebhookListener.swift` (local webhook receiver/registration monitor), `Tests/OllamaBobTests/JarvisWebhookListenerTests.swift`
+- key changes since v1.0.55: OllamaBob registers Jarvis `call.ended` and `call.action-items.ready` webhooks, deregisters best-effort on quit, refreshes Live Call state from webhook notifications, includes daemon `recent` calls in `JarvisCallClientHTTP.listCalls()`, and keeps the legacy 5s transcript poll until the daemon ships a transcript stream
 
 Earlier verification on the 2026-04-29 UI modernization rebase pass (v1.0.40):
 
