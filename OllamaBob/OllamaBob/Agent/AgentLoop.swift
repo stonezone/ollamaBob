@@ -123,7 +123,10 @@ final class AgentLoop: ObservableObject {
     // mutate the same in-flight state. The class is `final` and the
     // module is the trust boundary; nothing outside the module can
     // reach these names.
-    let client: OllamaClient
+    /// v1.0.57: protocol-typed so tests can inject a
+    /// `MockOllamaChatProvider`. Production builds pass an
+    /// `OllamaClient` actor, which conforms.
+    let client: any OllamaChatProviding
     let registry: ToolRegistry
     var searchProvider: SearchProvider?
     var consecutiveFailures = 0
@@ -302,7 +305,7 @@ final class AgentLoop: ObservableObject {
         }
     }
 
-    init(client: OllamaClient = OllamaClient(), braveKeyAvailable: Bool = !AppConfig.braveAPIKey.isEmpty) {
+    init(client: any OllamaChatProviding = OllamaClient(), braveKeyAvailable: Bool = !AppConfig.braveAPIKey.isEmpty) {
         self.client = client
         self.registry = ToolRegistry(braveKeyAvailable: braveKeyAvailable)
         self.currentModel = AppSettings.shared.effectiveStandardModelName
@@ -347,10 +350,17 @@ final class AgentLoop: ObservableObject {
         let effectiveTools: [OllamaToolDef] = uncensoredMode ? [] : registry.toolDefs
 
         if uncensoredMode {
-            let installedModels = await client.installedModels()
-            guard installedModels.contains(effectiveModel) else {
-                bobMood = .confused
-                throw AgentLoopError.uncensoredModelUnavailable(effectiveModel)
+            // v1.0.57: `installedModels` lives on the concrete
+            // `OllamaClient`, not the chat-only protocol. Production
+            // path always has a real client. Tests injecting a mock
+            // skip this preflight — the chat call itself will fail
+            // naturally if the model isn't pulled.
+            if let concrete = client as? OllamaClient {
+                let installedModels = await concrete.installedModels()
+                guard installedModels.contains(effectiveModel) else {
+                    bobMood = .confused
+                    throw AgentLoopError.uncensoredModelUnavailable(effectiveModel)
+                }
             }
         }
 

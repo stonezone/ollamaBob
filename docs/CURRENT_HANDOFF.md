@@ -63,7 +63,7 @@ Zack went to sleep mid-debug at v1.0.45 with three production failures: (1) `nma
 - This branch adds the 2026 UI modernization (Phases 1–5 + 4.5 + 5.5 + visibility/UX fixes) as a single bundled commit on top of codex's main. Pre-rebase backup tagged at `backup/ui-phases-pre-rebase-20260429`.
 - `docs/ACTIVE_EXECUTION_PLAN.md` is tracked. Next default phase after Phase E is F.1 (ArtifactStore + kinds); UI modernization runs in parallel and does not block F.1.
 - Active docs are intentionally small; historical plans, old peer-review notes, and superseded handoffs are in `archive/`.
-- Current visible app version: `1.0.56`.
+- Current visible app version: `1.0.57`.
 
 Local-only notes for Zack's workstation:
 

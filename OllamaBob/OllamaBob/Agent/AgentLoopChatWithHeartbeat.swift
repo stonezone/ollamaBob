@@ -88,11 +88,14 @@ extension AgentLoop {
         return try await withThrowingTaskGroup(of: OllamaChatResponse?.self) { group in
             // The real chat call.
             group.addTask { [client] in
+                // v1.0.57: protocol requires explicit keepAlive
+                // (defaulted-to-nil isn't expressible in protocols).
                 try await client.chat(
                     model: model,
                     messages: messages,
                     tools: tools,
-                    numCtx: numCtx
+                    numCtx: numCtx,
+                    keepAlive: nil
                 )
             }
             // The wall-clock cap. Returns nil to signal "the cap won".

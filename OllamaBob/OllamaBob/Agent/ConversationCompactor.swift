@@ -75,7 +75,7 @@ enum ConversationCompactor {
     /// content is kept in a shortened form so the turn is never lost.
     static func compact(
         messages: [OllamaMessage],
-        client: OllamaClient
+        client: any OllamaChatProviding
     ) async -> [OllamaMessage] {
         var result: [OllamaMessage] = []
 
@@ -147,7 +147,7 @@ enum ConversationCompactor {
     /// Returns the extracted bullet list (without the leading "- " markers),
     /// or nil if the call fails. Uses keep_alive=0 so qwen3 unloads
     /// immediately after.
-    private static func extractFacts(from content: String, client: OllamaClient) async -> String? {
+    private static func extractFacts(from content: String, client: any OllamaChatProviding) async -> String? {
         let messages: [OllamaMessage] = [
             .system(extractionSystemPrompt),
             .user(content)
