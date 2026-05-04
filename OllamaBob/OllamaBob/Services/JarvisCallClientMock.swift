@@ -108,8 +108,18 @@ final class JarvisCallClientMock: JarvisCallClient, @unchecked Sendable {
                 "Follow up about the dinner Friday",
             ],
             facts: ["Glennel was at the office until 6pm."],
-            topics: ["family", "logistics"]
+            topics: ["family", "logistics"],
+            recordingUrl: "http://127.0.0.1:3100/call/recording/\(callID).mp3"
         )
+    }
+
+    func actionItemsStatus(callID: String) async throws -> JarvisActionItemsStatus {
+        // Mock always claims `ready` for any callID it has a transcript
+        // for, `unknown` otherwise. Lets DEBUG UI exercise both code
+        // paths without spinning up the real daemon.
+        lock.lock()
+        defer { lock.unlock() }
+        return _transcripts[callID] != nil ? .ready : .unknown
     }
 
     func inject(callID: String, text: String) async throws -> JarvisInjectResult {

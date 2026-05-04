@@ -1,7 +1,74 @@
 # OllamaBob - Current Handoff
 
-**Date:** 2026-05-02
+**Date:** 2026-05-04
 **Audience:** the next coding agent or operator picking the project up cold.
+
+## Open Work — Phase C: Jarvis lifecycle webhook receiver (next session)
+
+The Jarvis-phone-service Opus shipped (commit `2e15c71` on their `origin/main`):
+- `POST /call/webhooks/register` — runtime subscriber registration with `{ url, events }`
+- `DELETE /call/webhooks/register/:id`, `GET /call/webhooks` — admin endpoints
+- `actionItemsStatus` tri-state on `/call/status/:id`
+- `recordingUrl` on `/call/action-items/:id` (was already in 31d9be7)
+
+OllamaBob v1.0.55 (2026-05-04) consumes the tri-state and `recordingUrl` (Phases A + B). **Phase C — the webhook receiver — is the remaining work.**
+
+### What needs to happen
+
+A localhost HTTP listener inside OllamaBob.app that:
+
+1. **Starts at app launch.** Bound to `127.0.0.1` only (security — daemon doesn't sign payloads, we trust localhost).
+2. **Picks a port** at startup (configurable; default `3101`). On collision, retry the next port up to a small range.
+3. **Registers with the daemon** via `POST /call/webhooks/register` once the listener is bound and we know our URL. Body: `{"url":"http://127.0.0.1:<port>/jarvis-webhook","events":["call.ended","call.action-items.ready"]}`. Stores returned subscriber id.
+4. **Deregisters at quit** via `DELETE /call/webhooks/register/:id`. Best-effort; if the daemon is unreachable at shutdown, the in-memory registry on the daemon side cleans up on its own restart.
+5. **Receives** `POST <url>` from the daemon and routes the JSON body by `event`:
+   - `call.ended` → refresh LiveCallView's calls list + transcript for the affected callID
+   - `call.action-items.ready` → fetch fresh action items for the affected callID, mutate `actionItemsByCallID`, optionally surface a chat-transcript "Bob noticed:" chip
+6. **Reregisters on daemon-restart detection.** Either by polling `GET /call/webhooks` periodically and re-POSTing if our id is missing, or by handling the daemon's startup signal another way.
+
+### Recommended implementation: NWListener (Network framework)
+
+Apple-native, no third-party deps. Approximate skeleton:
+
+```swift
+import Network
+
+@MainActor
+final class JarvisWebhookListener {
+    private var listener: NWListener?
+    private(set) var port: UInt16 = 0
+    private(set) var subscriberId: String?
+    let onCallEnded: (String) -> Void
+    let onActionItemsReady: (String) -> Void
+
+    func start() throws { /* bind to 127.0.0.1, accept connections, parse minimal HTTP */ }
+    func stop() { /* deregister + cancel */ }
+}
+```
+
+The HTTP parsing surface is tiny — only need to read the request line, the `Content-Length` header, and the body. No keepalive / no streaming / no chunked-transfer support needed.
+
+### Effort estimate
+
+2–3 hours including:
+- NWListener wiring (~80 LOC)
+- Minimal HTTP request parser (~50 LOC)
+- Lifecycle integration in `OllamaBobApp.swift` (`onAppear` start, `applicationWillTerminate` stop)
+- Registration + deregistration via existing `JarvisCallClientHTTP.send` helper (need 2 new client methods: `registerWebhook(url:events:) async throws -> String` and `unregisterWebhook(id:) async throws`)
+- LiveCallView wiring: `.onReceive` a Notification or NotificationCenter post from the listener so the existing `actionItemsByCallID` state mutates without coupling LiveCallView to the listener directly
+- Tests: parser test (well-formed POST → callbacks fire), bad payload (rejects), registration round-trip via mock daemon
+
+### Done criteria
+
+- App launches → listener binds → daemon receives a registration → starts a call → ends a call → daemon POSTs `call.ended` → LiveCallView refreshes within ~100ms
+- Action items extract → daemon POSTs `call.action-items.ready` → LiveCallView shows "Bob noticed:" without manual refresh
+- App quits → daemon's `GET /call/webhooks` no longer lists OllamaBob's subscriber
+- Tests cover the wiring without needing the real daemon
+
+### What's NOT in Phase C
+
+- SSE/WebSocket transcript stream (#2 from the original ask) — still on jarvis-phone-service's TODO. Different feature. Keep the 5s polling in LiveCallView until that ships.
+- Action-items SQLite persistence (#9 from v1.0.53 backlog) — separate concern, can ship before or after Phase C.
 
 ## Wake-Up Summary (v1.0.46, 2026-05-02 overnight pass)
 
@@ -39,7 +106,7 @@ Zack went to sleep mid-debug at v1.0.45 with three production failures: (1) `nma
 - This branch adds the 2026 UI modernization (Phases 1–5 + 4.5 + 5.5 + visibility/UX fixes) as a single bundled commit on top of codex's main. Pre-rebase backup tagged at `backup/ui-phases-pre-rebase-20260429`.
 - `docs/ACTIVE_EXECUTION_PLAN.md` is tracked. Next default phase after Phase E is F.1 (ArtifactStore + kinds); UI modernization runs in parallel and does not block F.1.
 - Active docs are intentionally small; historical plans, old peer-review notes, and superseded handoffs are in `archive/`.
-- Current visible app version: `1.0.54`.
+- Current visible app version: `1.0.55`.
 
 Local-only notes for Zack's workstation:
 

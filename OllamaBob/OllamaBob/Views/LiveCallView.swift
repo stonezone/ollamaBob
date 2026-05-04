@@ -27,6 +27,13 @@ struct LiveCallView: View {
     // reset the data each time.
     @State private var actionItemsByCallID: [String: JarvisCallActionItems] = [:]
     @State private var actionItemsLoadingForCallID: String? = nil
+    /// v1.0.55: tri-state extraction status from `/call/status/:id`.
+    /// Distinguishes "extracting…" from "no items" so the UI doesn't
+    /// look stuck while the daemon's LLM pass is still running.
+    @State private var actionItemsStatusByCallID: [String: JarvisActionItemsStatus] = [:]
+    /// Re-poll handle for `pending` extractions. Cancelled when call
+    /// switches or status flips to a terminal state.
+    @State private var actionItemsPollTask: Task<Void, Never>? = nil
 
     @Environment(\.openWindow) private var openWindow
 
@@ -543,54 +550,143 @@ struct LiveCallView: View {
     private var actionItemsSection: some View {
         if let callID = selectedCallID,
            let call = calls.first(where: { $0.callID == callID }),
-           call.status == "ended",
-           let items = actionItemsByCallID[callID],
-           items.followUps.isEmpty == false || items.outcome.isEmpty == false {
-            Divider()
-            VStack(alignment: .leading, spacing: BobSpacing.sm) {
-                HStack(spacing: BobSpacing.xs + 2) {
-                    Image(systemName: "lightbulb.fill")
-                        .foregroundStyle(BobColors.Signal.warn)
-                    Text("Bob noticed:")
-                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                        .foregroundStyle(BobColors.Text.onGlass)
+           call.status == "ended" {
+            // v1.0.55: render based on tri-state status. Branches:
+            //   - .ready + items present → full action-items UI
+            //   - .pending → "Extracting… (Bob is thinking)" placeholder
+            //   - .skipped → "No action items (call too short / voicemail)"
+            //   - .failed → "Extraction failed" with no retry button
+            //   - .unknown → fall back to legacy fetch behavior so older
+            //     daemons still work
+            let status = actionItemsStatusByCallID[callID] ?? .unknown
+            switch status {
+            case .ready, .unknown:
+                if let items = actionItemsByCallID[callID],
+                   items.followUps.isEmpty == false || items.outcome.isEmpty == false {
+                    readyActionItemsView(items: items, call: call)
+                } else {
+                    // Triggers the initial fetch even when nothing
+                    // has been cached yet — covers the freshly-ended
+                    // call case AND the legacy fallback for daemons
+                    // without status field.
+                    Color.clear
+                        .frame(height: 0)
+                        .task(id: callID) { await refreshActionItems(for: callID) }
                 }
+            case .pending:
+                pendingActionItemsView()
+                    .task(id: callID) { await pollWhilePending(callID: callID) }
+            case .skipped:
+                terminalActionItemsView(
+                    icon: "info.circle",
+                    color: BobColors.Text.onGlassSecondary,
+                    title: "No action items",
+                    detail: "Call was too short, voicemail, or had nothing extractable."
+                )
+            case .failed:
+                terminalActionItemsView(
+                    icon: "exclamationmark.triangle",
+                    color: BobColors.Signal.warn,
+                    title: "Extraction failed",
+                    detail: "The daemon's LLM pass errored on this call."
+                )
+            }
+        }
+    }
 
-                if items.outcome.isEmpty == false {
-                    Text(items.outcome)
-                        .font(.system(size: 12))
-                        .foregroundStyle(BobColors.Text.onGlassSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
+    @ViewBuilder
+    private func readyActionItemsView(items: JarvisCallActionItems, call: JarvisCallSummary) -> some View {
+        Divider()
+        VStack(alignment: .leading, spacing: BobSpacing.sm) {
+            HStack(spacing: BobSpacing.xs + 2) {
+                Image(systemName: "lightbulb.fill")
+                    .foregroundStyle(BobColors.Signal.warn)
+                Text("Bob noticed:")
+                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(BobColors.Text.onGlass)
+                Spacer(minLength: 0)
+                if let url = items.recordingUrl, let parsed = URL(string: url) {
+                    recordingPlayButton(url: parsed)
                 }
+            }
 
-                ForEach(items.followUps, id: \.self) { item in
-                    actionItemButton(item: item, for: call)
-                }
+            if items.outcome.isEmpty == false {
+                Text(items.outcome)
+                    .font(.system(size: 12))
+                    .foregroundStyle(BobColors.Text.onGlassSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
-                if items.facts.isEmpty == false {
-                    Text("Facts: \(items.facts.joined(separator: " · "))")
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundStyle(BobColors.Text.onGlassSecondary)
-                        .padding(.top, 2)
-                }
+            ForEach(items.followUps, id: \.self) { item in
+                actionItemButton(item: item, for: call)
+            }
 
-                Text("Tap any item to hand it to Bob.")
-                    .font(.system(size: 10))
+            if items.facts.isEmpty == false {
+                Text("Facts: \(items.facts.joined(separator: " · "))")
+                    .font(.system(size: 10, design: .monospaced))
                     .foregroundStyle(BobColors.Text.onGlassSecondary)
                     .padding(.top, 2)
             }
-            .padding(.vertical, BobSpacing.xs + 2)
-            .task(id: callID) { await fetchActionItemsIfNeeded(for: callID) }
-        } else if let callID = selectedCallID,
-                  let call = calls.first(where: { $0.callID == callID }),
-                  call.status == "ended" {
-            // Triggers the fetch even when nothing has been cached yet, so
-            // a freshly-ended call has its action items loaded the first
-            // time the user looks at it.
-            Color.clear
-                .frame(height: 0)
-                .task(id: callID) { await fetchActionItemsIfNeeded(for: callID) }
+
+            Text("Tap any item to hand it to Bob.")
+                .font(.system(size: 10))
+                .foregroundStyle(BobColors.Text.onGlassSecondary)
+                .padding(.top, 2)
         }
+        .padding(.vertical, BobSpacing.xs + 2)
+    }
+
+    @ViewBuilder
+    private func pendingActionItemsView() -> some View {
+        Divider()
+        HStack(spacing: BobSpacing.xs + 2) {
+            ProgressView()
+                .controlSize(.small)
+            Text("Extracting action items…")
+                .font(.system(size: 12, design: .monospaced))
+                .foregroundStyle(BobColors.Text.onGlassSecondary)
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, BobSpacing.xs + 2)
+    }
+
+    @ViewBuilder
+    private func terminalActionItemsView(icon: String, color: Color, title: String, detail: String) -> some View {
+        Divider()
+        VStack(alignment: .leading, spacing: BobSpacing.xs) {
+            HStack(spacing: BobSpacing.xs + 2) {
+                Image(systemName: icon)
+                    .foregroundStyle(color)
+                Text(title)
+                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(BobColors.Text.onGlass)
+            }
+            Text(detail)
+                .font(.system(size: 11))
+                .foregroundStyle(BobColors.Text.onGlassSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.vertical, BobSpacing.xs + 2)
+    }
+
+    /// v1.0.55: opens the recording URL in the user's default audio
+    /// player via NSWorkspace. No streaming/buffering UI — keeps this
+    /// shippable in one commit. Future polish: in-window AVAudioPlayer
+    /// with scrubber.
+    @ViewBuilder
+    private func recordingPlayButton(url: URL) -> some View {
+        Button {
+            NSWorkspace.shared.open(url)
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "play.circle.fill")
+                Text("Play recording")
+                    .font(.system(size: 11, design: .monospaced))
+            }
+            .foregroundStyle(BobColors.Signal.success)
+        }
+        .buttonStyle(.plain)
+        .help("Open the cached recording in your default audio player.")
     }
 
     /// One bullet button for a follow-up item. Tapping hands the item off
@@ -643,12 +739,46 @@ struct LiveCallView: View {
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    private func fetchActionItemsIfNeeded(for callID: String) async {
-        if actionItemsByCallID[callID] != nil { return }
+    /// v1.0.55: status-aware refresh. Asks the daemon for the
+    /// `actionItemsStatus` tri-state first, then either fetches the
+    /// items (if `ready`), records the terminal state (if `skipped` /
+    /// `failed`), or schedules a re-poll (if `pending`). For older
+    /// daemons that return `unknown`, falls back to the legacy "fetch
+    /// and treat 404 as no items" behavior.
+    private func refreshActionItems(for callID: String) async {
         if actionItemsLoadingForCallID == callID { return }
         actionItemsLoadingForCallID = callID
         defer { actionItemsLoadingForCallID = nil }
 
+        let client = JarvisCallClientFactory.current()
+        let status: JarvisActionItemsStatus
+        do {
+            status = try await client.actionItemsStatus(callID: callID)
+        } catch {
+            // Status fetch failed (network, decode). Fall back to
+            // legacy behavior — try the items endpoint directly so
+            // pre-2026-05-04 daemons keep working.
+            await fetchActionItemsLegacy(for: callID)
+            return
+        }
+
+        await MainActor.run {
+            actionItemsStatusByCallID[callID] = status
+        }
+
+        switch status {
+        case .ready, .unknown:
+            await fetchActionItemsLegacy(for: callID)
+        case .pending, .skipped, .failed:
+            // No items to fetch yet (pending) or ever (skipped /
+            // failed). UI renders the appropriate placeholder.
+            break
+        }
+    }
+
+    /// Legacy items-only fetch path. Kept intact so unknown / pre-
+    /// status-field daemons still work.
+    private func fetchActionItemsLegacy(for callID: String) async {
         let client = JarvisCallClientFactory.current()
         do {
             if let items = try await client.actionItems(callID: callID) {
@@ -657,8 +787,24 @@ struct LiveCallView: View {
                 }
             }
         } catch {
-            // 404 / not-yet-ready surfaces as nil from the client; other
-            // errors are logged but don't block the UI.
+            // Errors logged elsewhere; don't block UI.
+        }
+    }
+
+    /// Re-poll status every 3s while extraction is `pending`. Stops
+    /// on terminal state or call-id switch (the `.task(id: callID)`
+    /// modifier cancels the prior task automatically). Capped at
+    /// 60s of polling to avoid hammering on a stuck daemon.
+    private func pollWhilePending(callID: String) async {
+        let pollInterval: UInt64 = 3 * 1_000_000_000
+        let maxPolls = 20  // 60s total
+        for _ in 0..<maxPolls {
+            try? await Task.sleep(nanoseconds: pollInterval)
+            if Task.isCancelled { return }
+            await refreshActionItems(for: callID)
+            // Bail when status flips out of pending.
+            let current = actionItemsStatusByCallID[callID] ?? .unknown
+            if current != .pending { return }
         }
     }
 

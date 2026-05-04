@@ -54,7 +54,8 @@ final class JarvisCallClientHTTP: JarvisCallClient {
                 outcome: response.outcome,
                 followUps: response.followUps,
                 facts: response.facts,
-                topics: response.topics
+                topics: response.topics,
+                recordingUrl: response.recordingUrl
             )
         } catch JarvisCallClientError.other(let detail) where detail.contains("404") {
             // Daemon returns 404 while the call is still in flight or when
@@ -62,6 +63,20 @@ final class JarvisCallClientHTTP: JarvisCallClient {
             // let the UI render an empty state instead of erroring.
             return nil
         }
+    }
+
+    func actionItemsStatus(callID: String) async throws -> JarvisActionItemsStatus {
+        let trimmed = callID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.isEmpty == false else {
+            throw JarvisCallClientError.other("Missing call_id.")
+        }
+        let data = try await send(method: "GET", path: "/call/status/\(Self.pathSegment(trimmed))", body: nil)
+        let response = try decode(CallStatusResponse.self, from: data)
+        guard let raw = response.actionItemsStatus,
+              let parsed = JarvisActionItemsStatus(rawValue: raw) else {
+            return .unknown
+        }
+        return parsed
     }
 
     func inject(callID: String, text: String) async throws -> JarvisInjectResult {
@@ -226,6 +241,9 @@ private struct CallStatusResponse: Decodable {
     let callSid: String?
     let callID: String?
     let transcript: [TranscriptLineDTO]?
+    /// v1.0.55: tri-state extraction status.
+    /// `pending` | `ready` | `skipped` | `failed` | nil (unknown / pre-2026-05-04).
+    let actionItemsStatus: String?
 }
 
 private struct TranscriptLineDTO: Decodable {
@@ -265,4 +283,6 @@ private struct ActionItemsResponse: Decodable {
     let followUps: [String]
     let facts: [String]
     let topics: [String]
+    /// v1.0.55: optional MP3 URL added daemon-side in commit 31d9be7.
+    let recordingUrl: String?
 }

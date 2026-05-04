@@ -54,4 +54,52 @@ final class JarvisCallMockTests: XCTestCase {
     }
 
     // HTTP route/auth coverage lives in PhoneSupervisionToolsTests.
+
+    // MARK: - v1.0.55: actionItemsStatus tri-state + recordingUrl
+
+    func testMockActionItemsIncludeRecordingUrl() async throws {
+        // v1.0.55 daemon-side change: GET /call/action-items/:id now
+        // returns an optional `recordingUrl` field. Mock mirrors that
+        // so DEBUG UI can exercise the Play button without spinning
+        // up the real daemon.
+        let mock = JarvisCallClientMock.shared
+        mock.reset()
+        let items = try await mock.actionItems(callID: JarvisCallClientMock.fixtureCallID)
+        let unwrapped = try XCTUnwrap(items)
+        XCTAssertNotNil(unwrapped.recordingUrl, "mock should populate recordingUrl for fixture call")
+        XCTAssertTrue(unwrapped.recordingUrl?.hasPrefix("http://") ?? false)
+    }
+
+    func testMockActionItemsStatusIsReadyForFixtureCall() async throws {
+        // v1.0.55: daemon emits actionItemsStatus on /call/status/:id;
+        // mock returns `.ready` for any call it has a transcript for
+        // so the LiveCallView's status-aware branching path can be
+        // exercised end-to-end.
+        let mock = JarvisCallClientMock.shared
+        mock.reset()
+        let status = try await mock.actionItemsStatus(callID: JarvisCallClientMock.fixtureCallID)
+        XCTAssertEqual(status, .ready)
+    }
+
+    func testMockActionItemsStatusIsUnknownForUnseenCallID() async throws {
+        // Negative case: the mock has no record of arbitrary callIDs,
+        // so it falls back to `.unknown` (the conservative state that
+        // tells the UI to use legacy fetch behavior). Distinguishes
+        // "I don't know about this call" from "I know it has no items".
+        let mock = JarvisCallClientMock.shared
+        mock.reset()
+        let status = try await mock.actionItemsStatus(callID: "nonexistent-call-id")
+        XCTAssertEqual(status, .unknown)
+    }
+
+    func testJarvisActionItemsStatusRawValuesMatchDaemonContract() {
+        // The daemon ships these exact strings in the
+        // actionItemsStatus field. If either side renames a state,
+        // this test catches it before the UI silently falls into
+        // `.unknown` and degrades to legacy behavior.
+        XCTAssertEqual(JarvisActionItemsStatus.pending.rawValue, "pending")
+        XCTAssertEqual(JarvisActionItemsStatus.ready.rawValue, "ready")
+        XCTAssertEqual(JarvisActionItemsStatus.skipped.rawValue, "skipped")
+        XCTAssertEqual(JarvisActionItemsStatus.failed.rawValue, "failed")
+    }
 }
